@@ -1,0 +1,7 @@
+{
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json",
+    "C_Cpp.codeAnalysis.clangTidy.enabled": true,
+    "C_Cpp.codeAnalysis.clangTidy.useConfigFile": true,
+    "editor.defaultFormatter": "xaver.clang-format",
+    "C_Cpp.formatting": "clangFormat"
+}

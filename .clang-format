@@ -1,0 +1,14 @@
+---
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+BreakBeforeBraces: Attach
+ColumnLimit: 100
+
+# my custom
+
+AlwaysBreakTemplateDeclarations: Yes
+
+DerivePointerAlignment: false
+PointerAlignment: Left

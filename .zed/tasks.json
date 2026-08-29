@@ -1,0 +1,22 @@
+[
+  {
+    "label": "PIO: Build",
+    "command": "pio run"
+  },
+  {
+    "label": "PIO: Upload",
+    "command": "pio run -t upload"
+  },
+  {
+    "label": "PIO: Monitor",
+    "command": "pio device monitor"
+  },
+  {
+    "label": "PIO: Clean",
+    "command": "pio run -t clean"
+  },
+  {
+    "label": "PIO: Generate compile_commands.json",
+    "command": "pio run -t compiledb -v"
+  }
+]

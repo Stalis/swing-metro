@@ -1,0 +1,19 @@
+{
+  "languages": {
+    "C": {
+      "format_on_save": "on",
+    },
+    "C++": {
+      "format_on_save": "on",
+    },
+  },
+  "lsp": {
+    "clangd": {
+      "binary": {
+        "arguments": [
+          "--query-driver=/Users/stalis/.platformio/packages/*/bin/*",
+        ],
+      },
+    },
+  },
+}
