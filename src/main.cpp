@@ -2,12 +2,19 @@
 #include <array>
 #include <pico/time.h>
 #include "drivers/button_matrix.h"
+#include "drivers/7seg_disp.h"
 
 // put function declarations here:
 
 constexpr std::array<uint8_t, 4> INPUT_PINS = {D0, D1, D2, D3};
 constexpr std::array<uint8_t, 4> OUTPUT_PINS = {D4, D5, D6, D7};
 ButtonMatrix<4,4> buttonMatrix(INPUT_PINS, OUTPUT_PINS, 1);
+
+SevenSegmentDisplay sevenSeg(ShiftRegisterPins{
+  data: D15,
+  clock: D14,
+  latch: D13
+});
 
 repeating_timer_t timer;
 
@@ -27,6 +34,8 @@ void setup() {
     nullptr,
     &timer
   );
+  sevenSeg.init();
+  sevenSeg.setNumber(1111);
 
 }
 
@@ -46,4 +55,8 @@ void loop() {
   }
 
   buttonMatrix.update();
+
+  sevenSeg.update();
+  tone(D27, 1000, 100);
+  delay(500);
 }
