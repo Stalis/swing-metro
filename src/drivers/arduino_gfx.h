@@ -12,7 +12,7 @@ constexpr const uint8_t DISPLAY_BACKLIGHT_PIN    = 15;
 constexpr const int16_t DISPLAY_WIDTH  = 128;
 constexpr const int16_t DISPLAY_HEIGHT = 160;
 
-Arduino_DataBus *bus = new Arduino_RPiPicoSPI(
+inline Arduino_DataBus *bus = new Arduino_RPiPicoSPI(
     DISPLAY_DATA_COMMAND_PIN,
     DISPLAY_CHIP_SELECT_PIN,
     DISPLAY_SPI_CLOCK_PIN,
@@ -20,11 +20,11 @@ Arduino_DataBus *bus = new Arduino_RPiPicoSPI(
     0, 
     spi1); // Constructor
 
-Arduino_GFX *gfx = new Arduino_ST7735(bus, DISPLAY_RESET_PIN, 1U, false, DISPLAY_WIDTH, DISPLAY_HEIGHT); // Constructor
+inline Arduino_GFX *gfx = new Arduino_ST7735(bus, DISPLAY_RESET_PIN, 1U, false, DISPLAY_WIDTH, DISPLAY_HEIGHT); // Constructor
 
 #define GFX_BL DISPLAY_BACKLIGHT_PIN
 
-void display_setup(void)
+inline void gfx_setup(void)
 {
 #ifdef DEV_DEVICE_INIT
   DEV_DEVICE_INIT();
@@ -49,16 +49,15 @@ void display_setup(void)
 
   gfx->setCursor(10, 10);
   gfx->setTextColor(RGB565_RED);
-  gfx->println("Hello World!");
+  gfx->println("Swing Metro");
 
-  delay(5000); // 5 seconds
+  delay(500); // 5 seconds
 }
 
-void display_loop()
+inline void display_loop()
 {
   gfx->setCursor(random(gfx->width()), random(gfx->height()));
   gfx->setTextColor(random(0xffff), random(0xffff));
   gfx->setTextSize(random(6) + 1 /* x scale */, random(6) + 1 /* y scale */, random(2) /* pixel_margin */);
   gfx->println("Hello World!");
-
 }

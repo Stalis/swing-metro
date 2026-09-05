@@ -2,14 +2,13 @@
 #include "drivers/encoder.h"
 // #include "drivers/spi_display.h"
 #include "drivers/arduino_gfx.h"
+#include "components/main_display.h"
 #include <Arduino.h>
 #include <array>
 #include <pico/time.h>
 #include <tuple>
 
 #include "utils/counter.h"
-
-// put function declarations here:
 
 constexpr std::array<uint8_t, 4> INPUT_PINS = {D0, D1, D2, D3};
 constexpr std::array<uint8_t, 4> OUTPUT_PINS = {D4, D5, D6, D7};
@@ -39,7 +38,7 @@ constexpr EncoderSettings swingEncoderSettings{
 Encoder swingEncoder(swingEncoderSettings);
 Counter<uint8_t> swingCounter({.step = 1,
                                .value = 50,
-                               .minValue = 0,
+                               .minValue = 50,
                                .maxValue = 100,
                                .overflowBehavior = CounterOverflowBehavior::Clamp});
 
@@ -52,7 +51,7 @@ constexpr EncoderSettings volumeEncoderSettings{
 };
 Encoder volumeEncoder(volumeEncoderSettings);
 Counter<uint8_t> volumeCounter({.step = 1,
-                                .value = 50,
+                                .value = 100,
                                 .minValue = 0,
                                 .maxValue = 100,
                                 .overflowBehavior = CounterOverflowBehavior::Clamp});
@@ -104,10 +103,6 @@ void setup() {
     // display_setup();
 }
 
-void setup1() {
-  display_setup();
-}
-
 uint8_t volume_last_value = volumeCounter.getValue();
 uint8_t swing_last_value = swingCounter.getValue();
 uint8_t tempo_last_value = tempoCounter.getValue();
@@ -151,6 +146,18 @@ void loop() {
     }
 }
 
+
+MainDisplay mainDisplay(*gfx);
+
+void setup1() {
+    gfx_setup();
+    mainDisplay.init();
+}
+
 void loop1() {
-  // display_loop();
+  mainDisplay.updateTempo(tempoCounter.getValue());
+  mainDisplay.updateSwing(swingCounter.getValue());
+  mainDisplay.updateVolume(volumeCounter.getValue());
+
+  gfx->flush();
 }

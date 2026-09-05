@@ -1,3 +1,5 @@
+#pragma once
+
 #include <Arduino.h>
 #include <SPI.h>
 
@@ -243,12 +245,12 @@ void draw_cycle() {
     }
 }
 
-void display_loop() {
-    if (skip_counter == 0) {
-        skip_counter = COUNTER_STEP;
-        draw_cycle();
-        DRAW_CYCLE = !DRAW_CYCLE;
-    } else {
-        skip_counter--;
-    }
-}
+// void display_loop() {
+//     if (skip_counter == 0) {
+//         skip_counter = COUNTER_STEP;
+//         draw_cycle();
+//         DRAW_CYCLE = !DRAW_CYCLE;
+//     } else {
+//         skip_counter--;
+//     }
+// }
