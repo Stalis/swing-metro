@@ -1,6 +1,7 @@
 #include "drivers/button_matrix.h"
 #include "drivers/encoder.h"
-#include "drivers/spi_display.h"
+// #include "drivers/spi_display.h"
+#include "drivers/arduino_gfx.h"
 #include <Arduino.h>
 #include <array>
 #include <pico/time.h>
@@ -113,21 +114,21 @@ uint8_t tempo_last_value = tempoCounter.getValue();
 
 
 void loop() {
-    // for (size_t input = 0; input < buttonMatrix.getInputCount(); input++) {
-    //   for (size_t output = 0; output < buttonMatrix.getOutputCount(); output++) {
-    //     if (buttonMatrix.isButtonPressed(input, output)) {
-    //       Serial.print("Pressed button #");
-    //       Serial.print((output*4) + input);
-    //       Serial.print("\t [");
-    //       Serial.print(input);
-    //       Serial.print("; ");
-    //       Serial.print(output);
-    //       Serial.println(" ]");
-    //     }
-    //   }
-    // }
+    for (size_t input = 0; input < buttonMatrix.getInputCount(); input++) {
+      for (size_t output = 0; output < buttonMatrix.getOutputCount(); output++) {
+        if (buttonMatrix.isButtonPressed(input, output)) {
+          Serial.print("Pressed button #");
+          Serial.print((output*4) + input);
+          Serial.print("\t [");
+          Serial.print(input);
+          Serial.print("; ");
+          Serial.print(output);
+          Serial.println(" ]");
+        }
+      }
+    }
 
-    // buttonMatrix.update();
+    buttonMatrix.update();
 
     std::apply([](auto&... objects) { (objects.update(), ...); }, updatables);
 
@@ -151,5 +152,5 @@ void loop() {
 }
 
 void loop1() {
-  display_loop();
+  // display_loop();
 }
