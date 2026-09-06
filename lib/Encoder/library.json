@@ -3,8 +3,5 @@
   "version": "0.1.0",
   "description": "Arduino GPIO rotary encoder driver.",
   "frameworks": "arduino",
-  "platforms": "*",
-  "dependencies": {
-    "utils": "*"
-  }
+  "platforms": "*"
 }

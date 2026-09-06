@@ -77,7 +77,7 @@ EncoderDirection getDirectionFromStates(const EncoderState& previous, const Enco
 
 
 Encoder::Encoder(const EncoderSettings& settings) noexcept
-    : _pinA(settings.pinA), _pinB(settings.pinB), _pinSwitch(settings.pinSwitch), _handler(settings.handler), _switchHandler(settings.switchHandler)
+    : _pinA(settings.pinA), _pinB(settings.pinB), _pinSwitch(settings.pinSwitch), _handler(settings.handler), _switchHandler(settings.switchHandler), _switchDebouncing(settings.switchDebouncing & 0x0F)
 {}
 
 void Encoder::init() {
@@ -85,6 +85,9 @@ void Encoder::init() {
     pinMode(_pinB, INPUT_PULLUP);
     if (_pinSwitch.has_value()) {
         pinMode(_pinSwitch.value(), INPUT_PULLUP);
+        _switchCandidateState = !getSwitch();
+        _previousSwitchState = _switchCandidateState;
+        _currentSwitchState = _switchCandidateState;
     }
 
     _currentState = getState();
@@ -92,6 +95,8 @@ void Encoder::init() {
 }
 
 void Encoder::update() {
+    updateSwitch();
+
     auto state = getState();
 
     if (state == _currentState) {
@@ -103,6 +108,8 @@ void Encoder::update() {
 
     auto direction = getDirectionFromStates(_previousState, _currentState);
     if (direction == EncoderDirection::Undefined) {
+        _lastDirection = EncoderDirection::Undefined;
+        _accumulatedSteps = 0;
         return;
     }
 
@@ -125,6 +132,31 @@ void Encoder::update() {
         }
         _accumulatedSteps = 0;
     }
+
+}
+
+void Encoder::updateSwitch() {
+    if (!_pinSwitch.has_value()) {
+        return;
+    }
+
+    const bool state = !getSwitch();
+    if (state != _switchCandidateState) {
+        _currentSwitchDebouncing = 0;
+        _switchCandidateState = state;
+    }
+
+    if (_currentSwitchDebouncing < _switchDebouncing) {
+        _currentSwitchDebouncing++;
+        return;
+    }
+    _currentSwitchDebouncing = 0;
+    _currentSwitchState = state;
+
+    if (!_previousSwitchState && _currentSwitchState && _switchHandler != nullptr) {
+        _switchHandler();
+    }
+    _previousSwitchState = _currentSwitchState;
 }
 
 bool Encoder::getPinA() const {

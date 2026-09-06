@@ -3,23 +3,34 @@
 // #include "drivers/spi_display.h"
 #include "drivers/arduino_gfx.h"
 #include "components/main_display.h"
+#include "components/ui_view_model.h"
 #include <Arduino.h>
 #include <array>
-#include <pico/time.h>
 #include <tuple>
 
 #include <utils/counter.h>
 
+struct PadButtonIds {
+    static constexpr std::array<uint8_t, 16> values = {
+        0, 1, 8, 9,
+        2, 3, 10, 11,
+        4, 5, 12, 13,
+        6, 7, 14, 15,
+    };
+};
+
 constexpr std::array<uint8_t, 4> INPUT_PINS = {D0, D1, D2, D3};
 constexpr std::array<uint8_t, 4> OUTPUT_PINS = {D4, D5, D6, D7};
-ButtonMatrix<4, 4> buttonMatrix(INPUT_PINS, OUTPUT_PINS, 1);
+ButtonMatrix<4, 4, PadButtonIds> buttonMatrix(INPUT_PINS, OUTPUT_PINS, 1);
 
 void tempoEncoderHandler(EncoderDirection direction);
+void tempoEncoderSwitchHandler();
 constexpr EncoderSettings tempoEncoderSettings{
     .pinA = 16,
     .pinB = 17,
     .pinSwitch = 18,
     .handler = tempoEncoderHandler,
+    .switchHandler = tempoEncoderSwitchHandler,
 };
 Encoder tempoEncoder(tempoEncoderSettings);
 Counter<uint8_t> tempoCounter({.step = 1,
@@ -29,11 +40,13 @@ Counter<uint8_t> tempoCounter({.step = 1,
                                .overflowBehavior = CounterOverflowBehavior::Clamp});
 
 void swingEncoderHandler(EncoderDirection direction);
+void swingEncoderSwitchHandler();
 constexpr EncoderSettings swingEncoderSettings{
     .pinA = 19,
     .pinB = 20,
     .pinSwitch = 21,
     .handler = swingEncoderHandler,
+    .switchHandler = swingEncoderSwitchHandler,
 };
 Encoder swingEncoder(swingEncoderSettings);
 Counter<uint8_t> swingCounter({.step = 1,
@@ -43,11 +56,13 @@ Counter<uint8_t> swingCounter({.step = 1,
                                .overflowBehavior = CounterOverflowBehavior::Clamp});
 
 void volumeEncoderHandler(EncoderDirection direction);
+void volumeEncoderSwitchHandler();
 constexpr EncoderSettings volumeEncoderSettings{
     .pinA = 22,
     .pinB = 26,
     .pinSwitch = 27,
     .handler = volumeEncoderHandler,
+    .switchHandler = volumeEncoderSwitchHandler,
 };
 Encoder volumeEncoder(volumeEncoderSettings);
 Counter<uint8_t> volumeCounter({.step = 1,
@@ -57,8 +72,7 @@ Counter<uint8_t> volumeCounter({.step = 1,
                                 .overflowBehavior = CounterOverflowBehavior::Clamp});
 
 constexpr const auto updatables = std::tie(tempoEncoder, swingEncoder, volumeEncoder);
-
-repeating_timer_t timer;
+UiViewModel uiViewModel;
 
 void volumeEncoderHandler(EncoderDirection direction) {
     if (direction == EncoderDirection::Right) {
@@ -84,9 +98,16 @@ void tempoEncoderHandler(EncoderDirection direction) {
     }
 }
 
-bool button_scan(repeating_timer_t*) {
-    buttonMatrix.readButtons();
-    return true;
+void tempoEncoderSwitchHandler() {
+    Serial.println("[Tempo encoder] Pressed");
+}
+
+void swingEncoderSwitchHandler() {
+    Serial.println("[Swing encoder] Pressed");
+}
+
+void volumeEncoderSwitchHandler() {
+    Serial.println("[Volume encoder] Pressed");
 }
 
 void setup() {
@@ -94,11 +115,10 @@ void setup() {
     Serial.begin(9600);
     buttonMatrix.init();
 
-    add_repeating_timer_ms(1, button_scan, nullptr, &timer);
-
     tempoEncoder.init();
     swingEncoder.init();
     volumeEncoder.init();
+    uiViewModel.publish({tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue()});
 
     // display_setup();
 }
@@ -109,11 +129,13 @@ uint8_t tempo_last_value = tempoCounter.getValue();
 
 
 void loop() {
+    buttonMatrix.readButtons();
+
     for (size_t input = 0; input < buttonMatrix.getInputCount(); input++) {
       for (size_t output = 0; output < buttonMatrix.getOutputCount(); output++) {
         if (buttonMatrix.isButtonPressed(input, output)) {
           Serial.print("Pressed button #");
-          Serial.print((output*4) + input);
+          Serial.print(buttonMatrix.getButtonId(input, output));
           Serial.print("\t [");
           Serial.print(input);
           Serial.print("; ");
@@ -144,6 +166,8 @@ void loop() {
         Serial.println(tempoCounter.getValue());
         tempo_last_value = tempoCounter.getValue();
     }
+
+    uiViewModel.publish({tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue()});
 }
 
 
@@ -155,9 +179,10 @@ void setup1() {
 }
 
 void loop1() {
-  mainDisplay.updateTempo(tempoCounter.getValue());
-  mainDisplay.updateSwing(swingCounter.getValue());
-  mainDisplay.updateVolume(volumeCounter.getValue());
+  const UiSettings settings = uiViewModel.read();
+  mainDisplay.updateTempo(settings.tempo);
+  mainDisplay.updateSwing(settings.swing);
+  mainDisplay.updateVolume(settings.volume);
 
   gfx->flush();
 }

@@ -2,7 +2,6 @@
 
 #include <Arduino.h>
 #include <optional>
-#include <utils/round_buffer.h>
 
 enum class EncoderDirection : uint8_t {
     Clockwise = 0,
@@ -22,6 +21,7 @@ struct EncoderSettings {
 
     EncoderHandler handler = nullptr;
     SwitchHandler switchHandler = nullptr;
+    uint8_t switchDebouncing = 3;
 };
 
 struct EncoderState {
@@ -42,6 +42,7 @@ public:
     Encoder(const EncoderSettings& settings) noexcept;
 
     void init();
+    // Call regularly from one context; switchHandler runs there on active-low press.
     void update();
 
     [[nodiscard]] bool getPinA() const;
@@ -65,6 +66,11 @@ private:
 
     EncoderHandler _handler;
     SwitchHandler _switchHandler;
+    uint8_t _switchDebouncing;
+    uint8_t _currentSwitchDebouncing = 0;
+    bool _switchCandidateState = false;
+    bool _previousSwitchState = false;
+    bool _currentSwitchState = false;
 
-    RoundBuffer<EncoderState> _stateBuffer{4};
+    void updateSwitch();
 };

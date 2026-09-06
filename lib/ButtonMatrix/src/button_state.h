@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Arduino.h>
+#include <cstdint>
 
 class ButtonState {
   public:
@@ -8,6 +8,8 @@ class ButtonState {
     ButtonState(uint8_t debouncing) noexcept;
 
     void setDebounce(uint8_t debouncing);
+    void reset(uint8_t state);
+    // A state change is accepted after debouncing + 1 identical samples.
     void newState(uint8_t state);
     void update();
 

@@ -7,6 +7,13 @@ ButtonState::ButtonState(uint8_t debouncing) noexcept
 
 void ButtonState::setDebounce(uint8_t debouncing) { _debouncing = debouncing & 0x0F; }
 
+void ButtonState::reset(uint8_t state) {
+    _currentDebouncing = 0;
+    _candidateState = state;
+    _previousState = state;
+    _currentState = state;
+}
+
 void ButtonState::newState(uint8_t state) {
     if (state != _candidateState) {
         _currentDebouncing = 0;

@@ -1,14 +1,14 @@
 #pragma once
 #include "button_matrix.h"
 
-template <int INPUT_PINS, int OUTPUT_PINS>
-ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::ButtonMatrix(const InputPins& inputPins,
-                                                     const OutputPins& outputPins,
-                                                     uint8_t debouncing) noexcept
+template <int INPUT_PINS, int OUTPUT_PINS, typename ButtonIds>
+ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::ButtonMatrix(const InputPins& inputPins,
+                                                                const OutputPins& outputPins,
+                                                                uint8_t debouncing) noexcept
     : _inputPins(inputPins), _outputPins(outputPins), _debouncing(debouncing), _buttonStates() {}
 
-template <int INPUT_PINS, int OUTPUT_PINS>
-void ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::init() {
+template <int INPUT_PINS, int OUTPUT_PINS, typename ButtonIds>
+void ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::init() {
     for (int input = 0; input < INPUT_PINS; ++input) {
         for (int output = 0; output < OUTPUT_PINS; ++output) {
             getButton(input, output).setDebounce(_debouncing);
@@ -24,8 +24,8 @@ void ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::init() {
     }
 }
 
-template <int INPUT_PINS, int OUTPUT_PINS>
-void ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::readButtons() {
+template <int INPUT_PINS, int OUTPUT_PINS, typename ButtonIds>
+void ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::readButtons() {
     for (uint8_t output = 0; output < OUTPUT_PINS; ++output) {
         digitalWrite(_outputPins[output], LOW);
         delayMicroseconds(5);
@@ -39,8 +39,8 @@ void ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::readButtons() {
     }
 }
 
-template <int INPUT_PINS, int OUTPUT_PINS>
-void ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::update() {
+template <int INPUT_PINS, int OUTPUT_PINS, typename ButtonIds>
+void ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::update() {
     for (uint8_t output = 0; output < OUTPUT_PINS; ++output) {
         for (uint8_t input = 0; input < INPUT_PINS; ++input) {
             getButton(input, output).update();
@@ -48,8 +48,8 @@ void ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::update() {
     }
 }
 
-template <int INPUT_PINS, int OUTPUT_PINS>
-void ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::getButtonStates(ButtonStates& states) const {
+template <int INPUT_PINS, int OUTPUT_PINS, typename ButtonIds>
+void ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::getButtonStates(ButtonStates& states) const {
     for (int input = 0; input < INPUT_PINS; ++input) {
         for (int output = 0; output < OUTPUT_PINS; ++output) {
             states[input][output] = isButtonPressed(input, output);
@@ -57,23 +57,24 @@ void ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::getButtonStates(ButtonStates& states
     }
 }
 
-template <int INPUT_PINS, int OUTPUT_PINS>
-bool ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::isButtonPressed(int input, int output) const {
+template <int INPUT_PINS, int OUTPUT_PINS, typename ButtonIds>
+bool ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::isButtonPressed(int input, int output) const {
     return getButton(input, output).isJustPressed();
 }
 
-template <int INPUT_PINS, int OUTPUT_PINS>
-bool ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::isButtonPressed(int number) const {
+template <int INPUT_PINS, int OUTPUT_PINS, typename ButtonIds>
+bool ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::isButtonPressed(int number) const {
     return isButtonPressed(number / OUTPUT_PINS, number % OUTPUT_PINS);
 }
 
-template <int INPUT_PINS, int OUTPUT_PINS>
-inline const ButtonState& ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::getButton(int input,
-                                                                             int output) const {
+template <int INPUT_PINS, int OUTPUT_PINS, typename ButtonIds>
+inline const ButtonState& ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::getButton(int input,
+                                                                                        int output) const {
     return _buttonStates[input][output];
 }
 
-template <int INPUT_PINS, int OUTPUT_PINS>
-inline ButtonState& ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::getButton(int input, int output) {
+template <int INPUT_PINS, int OUTPUT_PINS, typename ButtonIds>
+inline ButtonState& ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::getButton(int input,
+                                                                                   int output) {
     return _buttonStates[input][output];
 }
