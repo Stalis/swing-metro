@@ -1,5 +1,5 @@
-#include "drivers/button_matrix.h"
-#include "drivers/encoder.h"
+#include <button_matrix.h>
+#include <encoder.h>
 // #include "drivers/spi_display.h"
 #include "drivers/arduino_gfx.h"
 #include "components/main_display.h"
@@ -8,7 +8,7 @@
 #include <pico/time.h>
 #include <tuple>
 
-#include "utils/counter.h"
+#include <utils/counter.h>
 
 constexpr std::array<uint8_t, 4> INPUT_PINS = {D0, D1, D2, D3};
 constexpr std::array<uint8_t, 4> OUTPUT_PINS = {D4, D5, D6, D7};

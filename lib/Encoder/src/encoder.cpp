@@ -127,7 +127,7 @@ void Encoder::update() {
     }
 }
 
-bool Encoder::getPinA() const { 
+bool Encoder::getPinA() const {
     return digitalRead(_pinA) > 0;
 }
 

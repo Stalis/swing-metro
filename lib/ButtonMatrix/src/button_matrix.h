@@ -37,3 +37,5 @@ class ButtonMatrix {
 
     std::array<std::array<ButtonState, OUTPUT_PINS>, INPUT_PINS> _buttonStates;
 };
+
+#include "button_matrix.ipp"

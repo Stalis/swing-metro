@@ -1,9 +1,10 @@
+#pragma once
 #include "button_matrix.h"
 
 template <int INPUT_PINS, int OUTPUT_PINS>
 ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::ButtonMatrix(const InputPins& inputPins,
-                                                    const OutputPins& outputPins,
-                                                    uint8_t debouncing) noexcept
+                                                     const OutputPins& outputPins,
+                                                     uint8_t debouncing) noexcept
     : _inputPins(inputPins), _outputPins(outputPins), _debouncing(debouncing), _buttonStates() {}
 
 template <int INPUT_PINS, int OUTPUT_PINS>
@@ -68,7 +69,7 @@ bool ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::isButtonPressed(int number) const {
 
 template <int INPUT_PINS, int OUTPUT_PINS>
 inline const ButtonState& ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::getButton(int input,
-                                                                          int output) const {
+                                                                             int output) const {
     return _buttonStates[input][output];
 }
 
@@ -76,5 +77,3 @@ template <int INPUT_PINS, int OUTPUT_PINS>
 inline ButtonState& ButtonMatrix<INPUT_PINS, OUTPUT_PINS>::getButton(int input, int output) {
     return _buttonStates[input][output];
 }
-
-#include "button_matrix.instantiations.inc"

@@ -9,7 +9,7 @@ enum class EncoderDirection : uint8_t {
     CounterClockwise = 1,
     Left = CounterClockwise,
     Right = Clockwise,
-    Undefined = 0xFF
+    Undefined = 0xFF,
 };
 
 using EncoderHandler = void(*)(EncoderDirection direction);

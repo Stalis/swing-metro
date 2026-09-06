@@ -1,0 +1,7 @@
+{
+  "name": "ButtonMatrix",
+  "version": "0.1.0",
+  "description": "Arduino GPIO button matrix driver.",
+  "frameworks": "arduino",
+  "platforms": "*"
+}
