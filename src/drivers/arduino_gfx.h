@@ -19,8 +19,15 @@ inline Arduino_DataBus *bus = new Arduino_RPiPicoSPI(
     DISPLAY_SPI_DATA_OUT_PIN,
     0, 
     spi1); // Constructor
-
-inline Arduino_GFX *gfx = new Arduino_ST7735(bus, DISPLAY_RESET_PIN, 1U, false, DISPLAY_WIDTH, DISPLAY_HEIGHT); // Constructor
+    
+inline Arduino_GFX *gfx = new Arduino_ST7735(bus, 
+    DISPLAY_RESET_PIN, 
+    1U, 
+    false, 
+    DISPLAY_WIDTH, DISPLAY_HEIGHT,
+    0, 0,
+    0, 0, false
+  ); // Constructor
 
 #define GFX_BL DISPLAY_BACKLIGHT_PIN
 
@@ -42,14 +49,15 @@ inline void gfx_setup(void)
   }
   gfx->fillScreen(RGB565_BLACK);
 
+  
+
 #ifdef GFX_BL
   pinMode(GFX_BL, OUTPUT);
   digitalWrite(GFX_BL, HIGH);
 #endif
-
-  gfx->setCursor(10, 10);
+  // gfx->setCursor(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2);
   gfx->setTextColor(RGB565_RED);
-  gfx->println("Swing Metro");
+  gfx->printCenterText("Swing Metro v1.0",  DISPLAY_HEIGHT / 2, DISPLAY_WIDTH / 2);
 
   delay(500); // 5 seconds
 }

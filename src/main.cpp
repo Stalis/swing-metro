@@ -21,7 +21,7 @@ struct PadButtonIds {
 
 constexpr std::array<uint8_t, 4> INPUT_PINS = {D0, D1, D2, D3};
 constexpr std::array<uint8_t, 4> OUTPUT_PINS = {D4, D5, D6, D7};
-ButtonMatrix<4, 4, PadButtonIds> buttonMatrix(INPUT_PINS, OUTPUT_PINS, 1);
+ButtonMatrix<4, 4, PadButtonIds> buttonMatrix(INPUT_PINS, OUTPUT_PINS, 3);
 
 void tempoEncoderHandler(EncoderDirection direction);
 void tempoEncoderSwitchHandler();
@@ -128,14 +128,19 @@ uint8_t swing_last_value = swingCounter.getValue();
 uint8_t tempo_last_value = tempoCounter.getValue();
 
 
+std::bitset<16> notesState{};
+
 void loop() {
     buttonMatrix.readButtons();
 
     for (size_t input = 0; input < buttonMatrix.getInputCount(); input++) {
       for (size_t output = 0; output < buttonMatrix.getOutputCount(); output++) {
         if (buttonMatrix.isButtonPressed(input, output)) {
+          auto buttonId = buttonMatrix.getButtonId(input, output);
+          notesState.flip(buttonId);
+
           Serial.print("Pressed button #");
-          Serial.print(buttonMatrix.getButtonId(input, output));
+          Serial.print(buttonId);
           Serial.print("\t [");
           Serial.print(input);
           Serial.print("; ");
@@ -167,7 +172,7 @@ void loop() {
         tempo_last_value = tempoCounter.getValue();
     }
 
-    uiViewModel.publish({tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue()});
+    uiViewModel.publish({tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue(), notesState});
 }
 
 
@@ -183,6 +188,8 @@ void loop1() {
   mainDisplay.updateTempo(settings.tempo);
   mainDisplay.updateSwing(settings.swing);
   mainDisplay.updateVolume(settings.volume);
+
+  mainDisplay.updateNotesStates(settings.notesState);
 
   gfx->flush();
 }

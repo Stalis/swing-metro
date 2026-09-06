@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino_GFX_Library.h>
 #include <cstdint>
+#include <bitset>
 
 class MainDisplay {
 public:
@@ -12,8 +13,11 @@ public:
     void updateSwing(uint8_t swing);
     void updateVolume(uint8_t volume);
 
+    void updateNotesStates(std::bitset<16> notesStates);
+
 private:
     void drawValue(uint8_t value, int16_t y, uint16_t color);
+    void drawNoteState(uint8_t noteNumber, bool state);
 
     Arduino_GFX& _gfx;
 };
