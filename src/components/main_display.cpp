@@ -21,7 +21,7 @@ void MainDisplay::init() {
     _gfx.print("Volume: ");
 
     for (int i = 0; i < 16; i++) {
-        drawNoteState(i, false);
+        drawNoteState(i, false, false);
     }
 }
 
@@ -41,7 +41,7 @@ constexpr uint8_t xGap = 1;
 constexpr uint8_t yGap = 1;
 constexpr uint8_t lineCount = 8;
 
-void MainDisplay::drawNoteState(uint8_t noteNumber, bool state) {
+void MainDisplay::drawNoteState(uint8_t noteNumber, bool state, bool active) {
     const uint8_t line = noteNumber >= lineCount ? 1 : 0;
     const uint8_t column = noteNumber >= lineCount ? noteNumber - 8 : noteNumber;
 
@@ -51,7 +51,7 @@ void MainDisplay::drawNoteState(uint8_t noteNumber, bool state) {
     _gfx.drawRect(
         x1, y1,
         size, size,
-        RGB565_YELLOW
+        active ? RGB565_RED : RGB565_YELLOW
     );
     _gfx.fillRect(
         x1 + 1, y1 + 1,
@@ -72,8 +72,8 @@ void MainDisplay::updateVolume(uint8_t volume) {
     drawValue(volume, 50, RGB565_BLUE);
 }
 
-void MainDisplay::updateNotesStates(std::bitset<16> notesState) {
+void MainDisplay::updateNotesStates(std::bitset<16> notesState, uint8_t activeNoteNumber) {
     for (int i = 0; i < notesState.size(); i++) {
-        drawNoteState(i, notesState[i]);
+        drawNoteState(i, notesState[i], activeNoteNumber == i);
     }
 }

@@ -126,7 +126,10 @@ void setup() {
 uint8_t volume_last_value = volumeCounter.getValue();
 uint8_t swing_last_value = swingCounter.getValue();
 uint8_t tempo_last_value = tempoCounter.getValue();
+uint8_t activeNote = 0;
 
+constexpr uint16_t BASE_COUNTER = UINT16_MAX / 2;
+uint16_t fake_counter = BASE_COUNTER;
 
 std::bitset<16> notesState{};
 
@@ -172,9 +175,27 @@ void loop() {
         tempo_last_value = tempoCounter.getValue();
     }
 
-    uiViewModel.publish({tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue(), notesState});
+    fake_counter--;
+    if (fake_counter == 0) {
+        activeNote++;
+        fake_counter = BASE_COUNTER;
+
+        Serial.print("active note: ");
+        Serial.print(activeNote);
+        Serial.println();
+    }
+
+    if (activeNote >= 16) {
+        activeNote = 0;
+    }
+
+    uiViewModel.publish({tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue(), activeNote, notesState});
 }
 
+/* 
+ * Second core code
+ * 
+ */
 
 MainDisplay mainDisplay(*gfx);
 
@@ -189,7 +210,7 @@ void loop1() {
   mainDisplay.updateSwing(settings.swing);
   mainDisplay.updateVolume(settings.volume);
 
-  mainDisplay.updateNotesStates(settings.notesState);
+  mainDisplay.updateNotesStates(settings.notesState, settings.activeNote);
 
   gfx->flush();
 }
