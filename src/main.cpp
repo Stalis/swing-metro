@@ -10,6 +10,11 @@
 
 #include <utils/counter.h>
 #include "engine/sequencer.h"
+#include <Adafruit_TinyUSB.h>
+
+constexpr int SERIAL_BAUD_RATE = 115200;
+
+Adafruit_USBD_MIDI usbMidi;
 
 Sequencer mainSequencer;
 
@@ -114,10 +119,51 @@ void volumeEncoderSwitchHandler() {
     Serial.println("[Volume encoder] Pressed");
 }
 
+constexpr uint8_t MIDI_CHANNEL_1 = 0;
+
+void midiSendNoteOn(uint8_t note, uint8_t velocity) {
+    const uint8_t packet[4] = {
+        0x09, // MIDI command: Note on
+        static_cast<uint8_t>(MIDI_CHANNEL_1 | 0x90),
+        note,
+        velocity,
+    };
+    usbMidi.writePacket(packet);
+}
+
+void midiSendNoteOff(uint8_t note) {
+    const uint8_t packet[4] = {
+        0x08, // MIDI command: Note on
+        static_cast<uint8_t>(MIDI_CHANNEL_1 | 0x80),
+        note,
+        0,
+    };
+    usbMidi.writePacket(packet);
+}
+
 
 void setup() {
 
-    Serial.begin(115200);
+    Serial.begin(SERIAL_BAUD_RATE);
+
+
+    // USB setup
+    if (!TinyUSBDevice.isInitialized()) {
+        TinyUSBDevice.begin(0);
+    }
+
+    // MIDI setup
+    usbMidi.setStringDescriptor("Swing Metro MIDI");
+    usbMidi.begin();
+
+    if (TinyUSBDevice.mounted()) {
+        TinyUSBDevice.detach();
+        delay(10);
+        TinyUSBDevice.attach();
+    }
+
+    // Devices setup
+
     buttonMatrix.init();
 
     tempoEncoder.init();
@@ -133,12 +179,8 @@ uint8_t volume_last_value = volumeCounter.getValue();
 uint8_t swing_last_value = swingCounter.getValue();
 uint8_t tempo_last_value = tempoCounter.getValue();
 
-uint8_t activeNote = 0;
-
-constexpr uint16_t BASE_COUNTER = UINT16_MAX / 2;
-uint16_t fake_counter = BASE_COUNTER;
-
-std::bitset<16> notesState{};
+bool note_sent = false;
+uint8_t last_note_sent = 0;
 
 void loop() {
     buttonMatrix.readButtons();
@@ -147,17 +189,16 @@ void loop() {
       for (size_t output = 0; output < buttonMatrix.getOutputCount(); output++) {
         if (buttonMatrix.isButtonPressed(input, output)) {
           auto buttonId = buttonMatrix.getButtonId(input, output);
-          notesState.flip(buttonId);
 
           mainSequencer.toggleStep(buttonId);
 
-          Serial.print("Pressed button #");
-          Serial.print(buttonId);
-          Serial.print("\t [");
-          Serial.print(input);
-          Serial.print("; ");
-          Serial.print(output);
-          Serial.println(" ]");
+        //   Serial.print("Pressed button #");
+        //   Serial.print(buttonId);
+        //   Serial.print("\t [");
+        //   Serial.print(input);
+        //   Serial.print("; ");
+        //   Serial.print(output);
+        //   Serial.println(" ]");
         }
       }
     }
@@ -184,34 +225,29 @@ void loop() {
         tempo_last_value = tempoCounter.getValue();
     }
 
-    // fake_counter--;
-    // if (fake_counter == 0) {
-    //     activeNote++;
-    //     fake_counter = BASE_COUNTER;
-
-    //     Serial.print("active note: ");
-    //     Serial.print(activeNote);
-    //     Serial.println();
-    // }
-
-    // if (activeNote >= 16) {
-    //     activeNote = 0;
-    // }
     if (mainSequencer.update(micros())) {
+        midiSendNoteOff(last_note_sent);
         Serial.printf(
             "step=%u enabled=%u t=%lu\n",
-            mainSequencer.getCurrentStep(),
+            mainSequencer.getCurrentStepIndex(),
             static_cast<int>(mainSequencer.isCurrentStepEnabled()),
             micros()
         );
+
+        if (mainSequencer.isCurrentStepEnabled()) {
+            auto note = mainSequencer.currentStepMidiNote();
+
+            last_note_sent = note;
+            note_sent = true;
+            midiSendNoteOn(note, mainSequencer.currentStepVelocity());
+        }
     }
-    
 
     uiViewModel.publish({
         tempoCounter.getValue(), 
         swingCounter.getValue(), 
         volumeCounter.getValue(), 
-        mainSequencer.getCurrentStep(), 
+        mainSequencer.getCurrentStepIndex(), 
         mainSequencer.getStepsEnabled(),
     });
 }

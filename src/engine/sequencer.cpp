@@ -15,7 +15,7 @@ constexpr uint8_t clampBpm(uint8_t bpm) {
 }
 
 Sequencer::Sequencer()
-    : _currentStep(0), _bpm(DEFAULT_BPM), _stepPeriodUs(getStepPeriodUs()), _lastStepAt(0)
+    : _currentStepIndex(0), _bpm(DEFAULT_BPM), _stepPeriodUs(getStepPeriodUs()), _lastStepAt(0)
  {}
 
 uint8_t Sequencer::getBpm() const {
@@ -32,7 +32,7 @@ std::bitset<STEPS_COUNT> Sequencer::getStepsEnabled() const {
     return res; 
 }
 
-StepIndex Sequencer::getCurrentStep() const { return _currentStep; }
+StepIndex Sequencer::getCurrentStepIndex() const { return _currentStepIndex; }
 
 void Sequencer::setBpm(uint8_t bpm) {
     if (bpm == _bpm) {
@@ -56,13 +56,13 @@ uint32_t Sequencer::getStepPeriodUs() const {
 
 void Sequencer::sync(uint32_t micros) {
     _lastStepAt = micros;
-    _currentStep = STEPS_COUNT - 1;
+    _currentStepIndex = STEPS_COUNT - 1;
 }
 
 bool Sequencer::update(uint32_t micros) {
     if (micros - _lastStepAt >= _stepPeriodUs) {
         _lastStepAt += _stepPeriodUs;
-        _currentStep = (_currentStep + 1) % STEPS_COUNT;
+        _currentStepIndex = (_currentStepIndex + 1) % STEPS_COUNT;
 
         return true;
     }
@@ -71,5 +71,13 @@ bool Sequencer::update(uint32_t micros) {
 }
 
 bool Sequencer::isCurrentStepEnabled() const {
-    return _steps[_currentStep].isEnabled;
+    return _steps[_currentStepIndex].isEnabled;
+}
+
+uint8_t Sequencer::currentStepMidiNote() const {
+    return _steps[_currentStepIndex].note;
+}
+
+uint8_t Sequencer::currentStepVelocity() const {
+    return _steps[_currentStepIndex].velocity;
 }
