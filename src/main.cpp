@@ -1,16 +1,17 @@
 #include <button_matrix.h>
 #include <encoder.h>
 // #include "drivers/spi_display.h"
-#include "drivers/arduino_gfx.h"
+// #include "drivers/arduino_gfx.h"
 #include "components/main_display.h"
 #include "components/ui_view_model.h"
+#include "drivers/lvgl_ui.h"
 #include <Arduino.h>
 #include <array>
 #include <tuple>
 
-#include <utils/counter.h>
 #include "engine/sequencer.h"
 #include <Adafruit_TinyUSB.h>
+#include <utils/counter.h>
 
 constexpr int SERIAL_BAUD_RATE = 115200;
 
@@ -20,10 +21,7 @@ Sequencer mainSequencer;
 
 struct PadButtonIds {
     static constexpr std::array<uint8_t, 16> values = {
-        0, 1, 8, 9,
-        2, 3, 10, 11,
-        4, 5, 12, 13,
-        6, 7, 14, 15,
+        0, 1, 8, 9, 2, 3, 10, 11, 4, 5, 12, 13, 6, 7, 14, 15,
     };
 };
 
@@ -107,17 +105,11 @@ void tempoEncoderHandler(EncoderDirection direction) {
     mainSequencer.setBpm(tempoCounter.getValue());
 }
 
-void tempoEncoderSwitchHandler() {
-    Serial.println("[Tempo encoder] Pressed");
-}
+void tempoEncoderSwitchHandler() { Serial.println("[Tempo encoder] Pressed"); }
 
-void swingEncoderSwitchHandler() {
-    Serial.println("[Swing encoder] Pressed");
-}
+void swingEncoderSwitchHandler() { Serial.println("[Swing encoder] Pressed"); }
 
-void volumeEncoderSwitchHandler() {
-    Serial.println("[Volume encoder] Pressed");
-}
+void volumeEncoderSwitchHandler() { Serial.println("[Volume encoder] Pressed"); }
 
 constexpr uint8_t MIDI_CHANNEL_1 = 0;
 
@@ -141,11 +133,9 @@ void midiSendNoteOff(uint8_t note) {
     usbMidi.writePacket(packet);
 }
 
-
 void setup() {
 
     Serial.begin(SERIAL_BAUD_RATE);
-
 
     // USB setup
     if (!TinyUSBDevice.isInitialized()) {
@@ -169,7 +159,8 @@ void setup() {
     tempoEncoder.init();
     swingEncoder.init();
     volumeEncoder.init();
-    uiViewModel.publish({tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue()});
+    uiViewModel.publish(
+        {tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue()});
 
     mainSequencer.sync(micros());
     // display_setup();
@@ -186,21 +177,21 @@ void loop() {
     buttonMatrix.readButtons();
 
     for (size_t input = 0; input < buttonMatrix.getInputCount(); input++) {
-      for (size_t output = 0; output < buttonMatrix.getOutputCount(); output++) {
-        if (buttonMatrix.isButtonPressed(input, output)) {
-          auto buttonId = buttonMatrix.getButtonId(input, output);
+        for (size_t output = 0; output < buttonMatrix.getOutputCount(); output++) {
+            if (buttonMatrix.isButtonPressed(input, output)) {
+                auto buttonId = buttonMatrix.getButtonId(input, output);
 
-          mainSequencer.toggleStep(buttonId);
+                mainSequencer.toggleStep(buttonId);
 
-        //   Serial.print("Pressed button #");
-        //   Serial.print(buttonId);
-        //   Serial.print("\t [");
-        //   Serial.print(input);
-        //   Serial.print("; ");
-        //   Serial.print(output);
-        //   Serial.println(" ]");
+                //   Serial.print("Pressed button #");
+                //   Serial.print(buttonId);
+                //   Serial.print("\t [");
+                //   Serial.print(input);
+                //   Serial.print("; ");
+                //   Serial.print(output);
+                //   Serial.println(" ]");
+            }
         }
-      }
     }
 
     buttonMatrix.update();
@@ -227,12 +218,8 @@ void loop() {
 
     if (mainSequencer.update(micros())) {
         midiSendNoteOff(last_note_sent);
-        Serial.printf(
-            "step=%u enabled=%u t=%lu\n",
-            mainSequencer.getCurrentStepIndex(),
-            static_cast<int>(mainSequencer.isCurrentStepEnabled()),
-            micros()
-        );
+        Serial.printf("step=%u enabled=%u t=%lu\n", mainSequencer.getCurrentStepIndex(),
+                      static_cast<int>(mainSequencer.isCurrentStepEnabled()), micros());
 
         if (mainSequencer.isCurrentStepEnabled()) {
             auto note = mainSequencer.currentStepMidiNote();
@@ -244,33 +231,36 @@ void loop() {
     }
 
     uiViewModel.publish({
-        tempoCounter.getValue(), 
-        swingCounter.getValue(), 
-        volumeCounter.getValue(), 
-        mainSequencer.getCurrentStepIndex(), 
+        tempoCounter.getValue(),
+        swingCounter.getValue(),
+        volumeCounter.getValue(),
+        mainSequencer.getCurrentStepIndex(),
         mainSequencer.getStepsEnabled(),
     });
 }
 
-/* 
+/*
  * Second core code
- * 
+ *
  */
 
-MainDisplay mainDisplay(*gfx);
+// MainDisplay mainDisplay(*gfx);
+LVGL_Ui ui_provider{};
 
 void setup1() {
-    gfx_setup();
-    mainDisplay.init();
+    ui_provider.setup();
+
+    // mainDisplay.init();
 }
 
 void loop1() {
-  const UiSettings settings = uiViewModel.read();
-  mainDisplay.updateTempo(settings.tempo);
-  mainDisplay.updateSwing(settings.swing);
-  mainDisplay.updateVolume(settings.volume);
+    ui_provider.loop();
+    //   const UiSettings settings = uiViewModel.read();
+    //   mainDisplay.updateTempo(settings.tempo);
+    //   mainDisplay.updateSwing(settings.swing);
+    //   mainDisplay.updateVolume(settings.volume);
 
-  mainDisplay.updateNotesStates(settings.notesState, settings.activeNote);
+    //   mainDisplay.updateNotesStates(settings.notesState, settings.activeNote);
 
-  gfx->flush();
+    //   gfx->flush();
 }

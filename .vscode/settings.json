@@ -3,5 +3,6 @@
     "C_Cpp.codeAnalysis.clangTidy.enabled": true,
     "C_Cpp.codeAnalysis.clangTidy.useConfigFile": true,
     "editor.defaultFormatter": "xaver.clang-format",
-    "C_Cpp.formatting": "clangFormat"
+    "C_Cpp.formatting": "clangFormat",
+    "editor.formatOnSave": true
 }

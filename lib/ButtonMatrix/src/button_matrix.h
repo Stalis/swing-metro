@@ -6,7 +6,7 @@
 
 template <int INPUT_PINS, int OUTPUT_PINS>
 struct DefaultButtonIds {
-    inline static constexpr std::array<uint8_t, INPUT_PINS * OUTPUT_PINS> values = [] {
+    static constexpr std::array<uint8_t, INPUT_PINS * OUTPUT_PINS> values = [] {
         std::array<uint8_t, INPUT_PINS * OUTPUT_PINS> ids{};
         for (uint8_t index = 0; index < ids.size(); ++index) {
             ids[index] = index;
