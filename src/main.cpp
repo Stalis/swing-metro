@@ -255,6 +255,7 @@ void setup1() {
 
 void loop1() {
     ui_provider.loop();
+    ui_provider.readViewModel(uiViewModel);
     //   const UiSettings settings = uiViewModel.read();
     //   mainDisplay.updateTempo(settings.tempo);
     //   mainDisplay.updateSwing(settings.swing);

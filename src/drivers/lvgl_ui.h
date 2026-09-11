@@ -4,6 +4,8 @@
 #include <array>
 #include <lvgl.h>
 
+#include "components/ui_view_model.h"
+
 constexpr const uint8_t DISPLAY_SPI_CLOCK_PIN = 10;
 constexpr const uint8_t DISPLAY_SPI_DATA_OUT_PIN = 11;
 constexpr const uint8_t DISPLAY_DATA_COMMAND_PIN = 12;
@@ -16,10 +18,19 @@ constexpr const int16_t DISPLAY_HEIGHT = 160;
 constexpr const int16_t BUFFER_ROWS = 40;
 constexpr const int16_t BUFFER_SIZE = DISPLAY_HEIGHT * BUFFER_ROWS;
 
+constexpr const uint8_t SEQUENCER_STEPS_COUNT = 16;
+
 class LVGL_Ui {
   public:
     void setup();
     void loop();
+
+    void readViewModel(const UiViewModel& viewModel);
+
+    void setTempo(uint8_t);
+    void setSwing(uint8_t);
+    void setVolume(uint8_t);
+    void setSteps(std::bitset<SEQUENCER_STEPS_COUNT> stepsState, uint8_t activeStep);
 
   private:
     std::array<lv_color_t, BUFFER_SIZE> _drawBuffer{};
@@ -38,11 +49,21 @@ class LVGL_Ui {
     // SCREENS
     lv_obj_t* _mainScreen;
 
+    // Main screen
+    std::array<lv_obj_t*, SEQUENCER_STEPS_COUNT> _stepSquares{};
+
     void initMainScreen();
+    void drawSequencerSteps();
+    void drawSequencerSteps(uint32_t rawValue);
 
     // DATA
-    lv_obj_t* _tempo{};
-    lv_obj_t* _swing{};
-    lv_obj_t* _volume{};
-    std::array<lv_obj_t*, 16> sequencerSteps{};
+    lv_subject_t _tempoSubject;
+    lv_subject_t _swingSubject;
+    lv_subject_t _volumeSubject;
+
+    lv_subject_t _sequencerStepsSubject;
+
+    // HANDLERS
+    static void onMainScreenLoaded(lv_event_t* event);
+    static void onStepsChanged(lv_observer_t* observer, lv_subject_t* subject);
 };
