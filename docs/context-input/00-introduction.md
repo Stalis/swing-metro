@@ -128,10 +128,10 @@ lib/ContextInput/
   library.json
   src/
     context_input.h
-    context_input.ipp
     input_event.h
     dispatch_result.h
-    context_ref.h
+    router.h
+    router.ipp
     adapters/
       encoder_input.h
       button_input.h

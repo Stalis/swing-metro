@@ -1,6 +1,6 @@
 # Этап 3. Ограниченный стек контекстов
 
-Статус: запланировано.
+Статус: выполнено 2026-09-11.
 
 ## Задача для агента
 
@@ -83,7 +83,7 @@ release: Released / NotFound
   порядка остальных контекстов.
 - Библиотека не уничтожает объекты контекстов.
 
-Изменять стек из `Context::handle()` запрещено контрактом. Приложение сначала
+Изменять стек из `TContext::handle()` запрещено контрактом. Приложение сначала
 получает результат `dispatch()`, затем применяет смысловое событие и меняет стек.
 
 ## Обязательные тесты
@@ -120,6 +120,109 @@ release: Released / NotFound
 
 ## Передача результата
 
-Зафиксировать фактический шаблон `ContextInput::Router`, ограничения времени жизни,
-результаты операций add/release, расположение шаблонных определений и результаты
-проверок. Эти сведения являются входом для адаптера энкодера.
+### Фактический публичный API
+
+```cpp
+namespace ContextInput {
+
+enum class AddContextResult : std::uint8_t {
+    Added,
+    AlreadyPresent,
+    StackFull,
+};
+
+enum class ReleaseContextResult : std::uint8_t {
+    Released,
+    NotFound,
+};
+
+template <typename TInputEvent, typename TOutputEvent, std::size_t Capacity>
+class Router {
+public:
+    template <typename TContext>
+    [[nodiscard]] auto addContext(TContext& context) noexcept
+        -> AddContextResult;
+
+    template <typename TContext>
+    [[nodiscard]] auto releaseContext(TContext& context) noexcept
+        -> ReleaseContextResult;
+
+    template <typename TContext>
+    [[nodiscard]] auto contains(const TContext& context) const noexcept -> bool;
+
+    [[nodiscard]] auto dispatch(const TInputEvent& event)
+        -> DispatchResult<TOutputEvent>;
+
+    [[nodiscard]] auto size() const noexcept -> std::size_t;
+    [[nodiscard]] static constexpr auto capacity() noexcept -> std::size_t;
+};
+
+} // namespace ContextInput
+```
+
+`Capacity == 0` запрещена понятным `static_assert`. Проверка контекста реализована
+через C++17 detection idiom: `handle(const TInputEvent&)` должен возвращать точно
+`DispatchResult<TOutputEvent>`. Контекстный метод может быть неконстантным или
+константным, но в стек добавляется неконстантный объект.
+
+### Хранение и маршрутизация
+
+Каждый занятый слот содержит только `void*` на исходный объект и обычный указатель
+на type-erasure thunk. Массив слотов — `std::array<ContextRef, Capacity>`; текущий
+размер хранится отдельно. `std::function`, virtual interface и heap отсутствуют.
+
+Первый добавленный объект образует основание, последний — верхушку. `dispatch()`
+идёт в обратном порядке. `Unhandled` продолжает проход, `Consumed` и `Emitted`
+останавливают его немедленно. Если никто не обработал вход, возвращается `pass()`.
+Поддерживаются move-only выходные события.
+
+`addContext()` сначала проверяет наличие объекта, затем заполненность. Поэтому
+повторное добавление в полный стек возвращает `AlreadyPresent`, а не `StackFull`.
+Добавление нового объекта сверх ёмкости ничего не меняет.
+
+`releaseContext()` удаляет объект из любой позиции и компактирует массив с
+сохранением порядка. `contains()` и операции удаления идентифицируют контекст через
+его стабильный адрес, полученный `std::addressof()`.
+
+### Время жизни контекстов
+
+- Контексты заранее создаются и принадлежат приложению.
+- `Router` не создаёт, не копирует, не перемещает и не уничтожает их.
+- `releaseContext()` удаляет только невладеющую ссылку.
+- Удалённый объект сохраняет состояние и может быть добавлен снова.
+- Контекст обязан жить и оставаться по тому же адресу всё время нахождения в стеке.
+- Перед уничтожением или перемещением объект необходимо удалить из `Router`.
+- Изменение состава стека из `handle()` запрещено контрактом и отдельно в runtime
+  не отслеживается.
+
+### Файлы
+
+- `lib/ContextInput/src/router.h` — публичный шаблон, enum-результаты, detection
+  trait и закрытый `ContextRef`;
+- `lib/ContextInput/src/router.ipp` — определения операций и type-erasure thunk;
+- `lib/ContextInput/src/context_input.h` — экспорт `router.h`;
+- `test/test_native/context_input/test_router.h` и `.cpp` — 16 тестов;
+- `test/test_native/main.cpp` — регистрация тестов маршрутизатора.
+
+### Проверки
+
+- `make format` и `make format-check` — успешно;
+- прямой `clang-tidy` нового заголовка — без замечаний к коду; ожидаемое
+  предупреждение относится к анализу `#pragma once` как отдельной единицы;
+- `make verify` — успешно;
+- native-тесты — 45 из 45 прошли;
+- отдельный smoke-тест публичного API ARM-компилятором — успешно;
+- firmware `rpipico2` — успешно собрана;
+- RAM: 165532 из 524288 байт, 31.6%;
+- Flash: 660880 из 4190208 байт, 15.8%.
+
+### Условия для этапа 4
+
+- Адаптер энкодера создаёт `InputEvent<TSourceId>`, но сам не вызывает и не хранит
+  `Router`.
+- Сквозной тест может создать обычный контекст, добавить его в `Router` и явно
+  передать результат адаптера в `dispatch()`.
+- Проверять результаты `addContext()` и `releaseContext()`: оба метода помечены
+  `[[nodiscard]]`.
+- Не изменять семантику порядка, `Unhandled`, `Consumed` и `Emitted`.
+- Не добавлять владение контекстами или динамическую память.
