@@ -1,5 +1,7 @@
 #include "encoder.h"
 
+#include <Arduino.h>
+
 /*
 
 Вправо

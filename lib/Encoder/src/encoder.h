@@ -1,9 +1,9 @@
 #pragma once
 
-#include <Arduino.h>
+#include <cstdint>
 #include <optional>
 
-enum class EncoderDirection : uint8_t {
+enum class EncoderDirection : std::uint8_t {
     Clockwise = 0,
     CounterClockwise = 1,
     Left = CounterClockwise,
@@ -15,13 +15,13 @@ using EncoderHandler = void (*)(EncoderDirection direction);
 using SwitchHandler = void (*)();
 
 struct EncoderSettings {
-    uint8_t pinA;
-    uint8_t pinB;
-    std::optional<uint8_t> pinSwitch = std::nullopt;
+    std::uint8_t pinA;
+    std::uint8_t pinB;
+    std::optional<std::uint8_t> pinSwitch = std::nullopt;
 
     EncoderHandler handler = nullptr;
     SwitchHandler switchHandler = nullptr;
-    uint8_t switchDebouncing = 3;
+    std::uint8_t switchDebouncing = 3;
 };
 
 struct EncoderState {
@@ -47,23 +47,23 @@ class Encoder {
     [[nodiscard]] bool getSwitch() const;
 
   private:
-    uint8_t _pinA;
-    uint8_t _pinB;
-    std::optional<uint8_t> _pinSwitch;
+    std::uint8_t _pinA;
+    std::uint8_t _pinB;
+    std::optional<std::uint8_t> _pinSwitch;
 
     bool _aBuf = false;
     bool _bBuf = false;
 
-    static const uint8_t _targetSteps = 4;
-    uint8_t _accumulatedSteps = 0;
+    static const std::uint8_t _targetSteps = 4;
+    std::uint8_t _accumulatedSteps = 0;
     EncoderDirection _lastDirection = EncoderDirection::Undefined;
     EncoderState _currentState;
     EncoderState _previousState;
 
     EncoderHandler _handler;
     SwitchHandler _switchHandler;
-    uint8_t _switchDebouncing;
-    uint8_t _currentSwitchDebouncing = 0;
+    std::uint8_t _switchDebouncing;
+    std::uint8_t _currentSwitchDebouncing = 0;
     bool _switchCandidateState = false;
     bool _previousSwitchState = false;
     bool _currentSwitchState = false;

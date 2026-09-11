@@ -1,6 +1,6 @@
 # Этап 4. Адаптер энкодера
 
-Статус: запланировано.
+Статус: выполнено 2026-09-11.
 
 ## Задача для агента
 
@@ -89,6 +89,109 @@ std::optional<InputEvent<InputId>> event = tempoInput.translate(direction);
 
 ## Передача результата
 
-Записать имя и точную сигнатуру адаптера, правила dependency/include, изменения в
-`Encoder` (если понадобились), тесты и пример вызова для этапа 5.
+### Фактический публичный API
 
+Адаптер находится в отдельном необязательном заголовке и не входит в umbrella
+ядра:
+
+```cpp
+#include <adapters/encoder_input.h>
+
+namespace ContextInput {
+
+template <typename TSourceId>
+class EncoderInputAdapter {
+public:
+    explicit constexpr EncoderInputAdapter(const TSourceId& source);
+
+    [[nodiscard]] auto translate(EncoderDirection direction) const
+        -> std::optional<InputEvent<TSourceId>>;
+};
+
+} // namespace ContextInput
+```
+
+`TSourceId` хранится по значению и должен быть copy-constructible, что проверяется
+через `static_assert`. Адаптер не хранит `Encoder`, callback или `Router` и не имеет
+изменяемого состояния.
+
+Фактическое преобразование:
+
+```text
+Clockwise / Right         -> EncoderInput{+1}
+CounterClockwise / Left  -> EncoderInput{-1}
+Undefined                -> std::nullopt
+любое неизвестное значение enum -> std::nullopt
+```
+
+Алиасы enum обрабатываются через канонические значения `Clockwise` и
+`CounterClockwise`; дублирующих `case` нет.
+
+### Изоляция зависимостей
+
+- `lib/ContextInput/src/context_input.h` не подключает адаптер, `encoder.h` или
+  `Arduino.h`.
+- Пользователь явно подключает `<adapters/encoder_input.h>`.
+- Адаптер подключает публичный `<encoder.h>` и использует `EncoderDirection` как
+  единственный источник истины.
+- Обязательная зависимость на Arduino или `Encoder` в `ContextInput/library.json`
+  не добавлена.
+- В native environment добавлен только `-I lib/Encoder/src`; несовместимая с
+  native аппаратная реализация `encoder.cpp` не собирается.
+
+### Изменения Encoder
+
+`lib/Encoder/src/encoder.h` больше не включает `Arduino.h`: он использует
+`<cstdint>`, `std::uint8_t` и `<optional>`. `lib/Encoder/src/encoder.cpp` теперь сам
+явно включает `Arduino.h`, поскольку именно там вызываются `pinMode()`,
+`digitalRead()` и используется `INPUT_PULLUP`.
+
+Алгоритм квадратуры, callback-интерфейсы, debounce и поведение кнопки не менялись.
+
+### Пример для этапа 5
+
+```cpp
+ContextInput::EncoderInputAdapter<InputId> tempoInput{InputId::TempoEncoder};
+
+void tempoEncoderHandler(EncoderDirection direction) {
+    const auto input = tempoInput.translate(direction);
+    if (!input.has_value()) {
+        return;
+    }
+
+    const auto result = router.dispatch(*input);
+    if (result.hasEvent()) {
+        handleAppEvent(result.event());
+    }
+}
+```
+
+На этапе 4 этот код в `src/main.cpp` не добавлялся.
+
+### Файлы
+
+- `lib/ContextInput/src/adapters/encoder_input.h` — адаптер;
+- `lib/Encoder/src/encoder.h` и `.cpp` — перенос Arduino include к реализации;
+- `platformio.ini` — include path переносимого `encoder.h` для native-тестов;
+- `test/test_native/context_input/test_encoder_input_adapter.h` и `.cpp` — 8
+  тестов;
+- `test/test_native/main.cpp` — регистрация набора тестов.
+
+### Проверки
+
+- `make format` и `make format-check` — успешно;
+- отдельный `clang-tidy` адаптера — без замечаний к новому коду; показаны только
+  ранее существовавшие style warnings из `encoder.h` и ожидаемый `#pragma once`;
+- native-тесты — 53 из 53 прошли;
+- прямой ARM syntax smoke-test адаптера — успешно;
+- `make verify` — успешно;
+- firmware `rpipico2` — успешно собрана.
+
+### Условия для этапа 5
+
+- Создать по одному `EncoderInputAdapter<InputId>` для tempo, swing и volume.
+- В callbacks передавать `EncoderDirection` соответствующему адаптеру, проверять
+  `optional`, затем явно вызывать `Router::dispatch()`.
+- `Undefined` не должен создавать dispatch-вызов.
+- Кнопки энкодеров не входят в rotary adapter и пока не маршрутизируются.
+- Не подключать `<adapters/encoder_input.h>` через общий `context_input.h`.

@@ -1,5 +1,6 @@
 #include "../test/test_native/components/test_ui_view_model.h"
 #include "../test/test_native/context_input/test_dispatch_result.h"
+#include "../test/test_native/context_input/test_encoder_input_adapter.h"
 #include "../test/test_native/context_input/test_input_event.h"
 #include "../test/test_native/context_input/test_router.h"
 #include "../test/test_native/utils/counter/test_counter.h"
@@ -23,6 +24,7 @@ int main() {
     test_input_event_main();
     test_dispatch_result_main();
     test_router_main();
+    test_encoder_input_adapter_main();
 
     UNITY_END();
 }
