@@ -1,6 +1,6 @@
 # Этап 5. Интеграция энкодеров Swing Metro
 
-Статус: запланировано.
+Статус: выполнено 2026-09-11.
 
 ## Задача для агента
 
@@ -118,6 +118,116 @@ LVGL напрямую.
 
 ## Передача результата
 
-Зафиксировать AppEvent/InputId, расположение `MainDisplayContext`, ёмкость стека,
-callback-путь, автоматические и аппаратные проверки. Следующий агент должен иметь
-точные типы, к которым добавит кнопочные события.
+### Фактические типы приложения
+
+Все app-level типы находятся в namespace `SwingMetro` и определены в
+`src/input/app_input.h`:
+
+```cpp
+enum class InputId : std::uint8_t {
+    TempoEncoder,
+    SwingEncoder,
+    VolumeEncoder,
+};
+
+struct AdjustTempo { std::int8_t delta; };
+struct AdjustSwing { std::int8_t delta; };
+struct AdjustVolume { std::int8_t delta; };
+
+using InputEvent = ContextInput::InputEvent<InputId>;
+using AppEvent = std::variant<AdjustTempo, AdjustSwing, AdjustVolume>;
+```
+
+Эти типы не входят в универсальную библиотеку и могут расширяться приложением на
+следующих этапах.
+
+### Контекст и применение событий
+
+`SwingMetro::MainDisplayContext` находится в
+`src/input/main_display_context.h/.cpp`. Он не хранит состояние и преобразует
+`ContextInput::EncoderInput` согласно таблице из постановки. Другие payload и
+неизвестные значения `InputId` возвращают `DispatchResult::pass()`.
+
+`SwingMetro::AppEventHandler` находится в `src/input/app_event_handler.h/.cpp`.
+Зависимости передаются именованной структурой со ссылками на три существующих
+`Counter<std::uint8_t>` и `Sequencer`, чтобы однотипные счётчики нельзя было молча
+перепутать в позиционных аргументах:
+
+```cpp
+struct AppEventHandlerDependencies {
+    Counter<std::uint8_t>& tempo;
+    Counter<std::uint8_t>& swing;
+    Counter<std::uint8_t>& volume;
+    Sequencer& sequencer;
+};
+```
+
+Обработчик применяет всё signed-значение `delta` через `Counter::stepUp()` и
+`Counter::stepDown()`, поэтому сохраняет существующее clamp-поведение. После
+`AdjustTempo` он синхронно вызывает `Sequencer::setBpm()`; swing и volume не меняют
+sequencer.
+
+### Стек и callback-путь
+
+В `src/main.cpp` заранее созданы один `MainDisplayContext`, три
+`EncoderInputAdapter<InputId>` и
+`ContextInput::Router<InputEvent, AppEvent, 8>`. Ёмкость `8` оставляет место для
+главного, глобального, экранных и временных контекстов без динамической памяти.
+Главный контекст добавляется один раз в `setup()`.
+
+Общий шаблонный bridge использует согласованный префикс `T` для типа адаптера:
+
+```text
+Encoder callback
+  -> EncoderInputAdapter::translate(direction)
+  -> Router::dispatch(input)
+  -> AppEventHandler::handle(event)
+  -> Counter и, только для tempo, Sequencer
+```
+
+При `EncoderDirection::Undefined` адаптер возвращает `std::nullopt`, поэтому ни
+dispatch, ни app-level обработчик не вызываются. В rotary callbacks больше нет
+прямых `stepUp()`/`stepDown()`. Существующие callbacks кнопок энкодеров оставлены
+без функциональных изменений и в маршрутизацию пока не включены.
+
+### Native-сборка
+
+Для проверки app-level слоя native environment теперь собирает только переносимые
+части `src`: `engine/sequencer.cpp` и каталог `input/`. Аппаратный `src/main.cpp` и
+Arduino-драйверы в native-тест не попадают.
+
+### Файлы
+
+- `src/input/app_input.h` — идентификаторы физических источников и смысловые
+  события;
+- `src/input/main_display_context.h/.cpp` — преобразование входов главного экрана;
+- `src/input/app_event_handler.h/.cpp` — применение смысловых событий;
+- `src/main.cpp` — экземпляры стека и адаптеров, bridge и подключение callbacks;
+- `platformio.ini` — выбор переносимых app-level исходников для native-тестов;
+- `test/test_native/input/` — тесты контекста, обработчика и полного encoder path;
+- `test/test_native/main.cpp` — регистрация новых наборов тестов;
+- `compile_commands.json` — обновлённая база команд сборки для статического анализа.
+
+### Проверки
+
+- `make format` и `make format-check` — успешно;
+- native-тесты — 67 из 67 прошли;
+- `clang-tidy` в составе `make verify` — завершён успешно; оставшиеся сообщения
+  относятся к ранее существующим style-предупреждениям проекта и SDK;
+- firmware `rpipico2` — успешно собрана;
+- RAM: 165620 из 524288 байт (31.6%);
+- Flash: 661488 из 4190208 байт (15.8%).
+
+Аппаратная проверка пока не выполнена: её нужно провести на устройстве по списку
+выше. Успешная сборка её не заменяет.
+
+### Условия для этапа 6
+
+- Расширять существующие `SwingMetro::InputId` и `SwingMetro::AppEvent`, не вводя
+  параллельную модель событий.
+- `MainDisplayContext` уже принимает общий `InputEvent`; кнопочные payload могут
+  быть добавлены в него или пропущены вниз согласно новой семантике.
+- Кнопка энкодера остаётся отдельным физическим источником и не должна становиться
+  частью `EncoderInputAdapter`.
+- App-level обработчики не должны попадать в `lib/ContextInput`.
+- Стек уже имеет ёмкость `8`; менять её для первого кнопочного адаптера не требуется.

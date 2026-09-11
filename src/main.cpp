@@ -1,12 +1,18 @@
+#include <adapters/encoder_input.h>
 #include <button_matrix.h>
+#include <context_input.h>
 #include <encoder.h>
 // #include "drivers/spi_display.h"
 // #include "drivers/arduino_gfx.h"
 #include "components/main_display.h"
 #include "components/ui_view_model.h"
 #include "drivers/lvgl_ui.h"
+#include "input/app_event_handler.h"
+#include "input/app_input.h"
+#include "input/main_display_context.h"
 #include <Arduino.h>
 #include <array>
+#include <cstddef>
 #include <tuple>
 
 #include "engine/sequencer.h"
@@ -18,6 +24,23 @@ constexpr int SERIAL_BAUD_RATE = 115200;
 Adafruit_USBD_MIDI usbMidi;
 
 Sequencer mainSequencer;
+
+// Room for the base screen, global controls, and short-lived overlay contexts.
+constexpr std::size_t INPUT_CONTEXT_CAPACITY = 8;
+using InputRouter =
+    ContextInput::Router<SwingMetro::InputEvent, SwingMetro::AppEvent, INPUT_CONTEXT_CAPACITY>;
+
+InputRouter inputRouter;
+SwingMetro::MainDisplayContext mainDisplayContext;
+ContextInput::EncoderInputAdapter<SwingMetro::InputId> tempoInput{
+    SwingMetro::InputId::TempoEncoder,
+};
+ContextInput::EncoderInputAdapter<SwingMetro::InputId> swingInput{
+    SwingMetro::InputId::SwingEncoder,
+};
+ContextInput::EncoderInputAdapter<SwingMetro::InputId> volumeInput{
+    SwingMetro::InputId::VolumeEncoder,
+};
 
 struct PadButtonIds {
     static constexpr std::array<uint8_t, 16> values = {
@@ -77,32 +100,39 @@ Counter<uint8_t> volumeCounter({.step = 1,
                                 .maxValue = 100,
                                 .overflowBehavior = CounterOverflowBehavior::Clamp});
 
+SwingMetro::AppEventHandler appEventHandler{{
+    .tempo = tempoCounter,
+    .swing = swingCounter,
+    .volume = volumeCounter,
+    .sequencer = mainSequencer,
+}};
+
 constexpr const auto updatables = std::tie(tempoEncoder, swingEncoder, volumeEncoder);
 UiViewModel uiViewModel;
 
-void volumeEncoderHandler(EncoderDirection direction) {
-    if (direction == EncoderDirection::Right) {
-        volumeCounter.stepUp();
-    } else if (direction == EncoderDirection::Left) {
-        volumeCounter.stepDown();
+template <typename TAdapter>
+void handleEncoderDirection(const TAdapter& adapter, EncoderDirection direction) {
+    const auto input = adapter.translate(direction);
+    if (!input.has_value()) {
+        return;
     }
+
+    const auto result = inputRouter.dispatch(*input);
+    if (result.hasEvent()) {
+        appEventHandler.handle(result.event());
+    }
+}
+
+void volumeEncoderHandler(EncoderDirection direction) {
+    handleEncoderDirection(volumeInput, direction);
 }
 
 void swingEncoderHandler(EncoderDirection direction) {
-    if (direction == EncoderDirection::Right) {
-        swingCounter.stepUp();
-    } else if (direction == EncoderDirection::Left) {
-        swingCounter.stepDown();
-    }
+    handleEncoderDirection(swingInput, direction);
 }
 
 void tempoEncoderHandler(EncoderDirection direction) {
-    if (direction == EncoderDirection::Right) {
-        tempoCounter.stepUp();
-    } else if (direction == EncoderDirection::Left) {
-        tempoCounter.stepDown();
-    }
-    mainSequencer.setBpm(tempoCounter.getValue());
+    handleEncoderDirection(tempoInput, direction);
 }
 
 void tempoEncoderSwitchHandler() { Serial.println("[Tempo encoder] Pressed"); }
@@ -136,6 +166,11 @@ void midiSendNoteOff(uint8_t note) {
 void setup() {
 
     Serial.begin(SERIAL_BAUD_RATE);
+
+    const auto addContextResult = inputRouter.addContext(mainDisplayContext);
+    if (addContextResult != ContextInput::AddContextResult::Added) {
+        Serial.println("[ContextInput] Failed to add main display context");
+    }
 
     // USB setup
     if (!TinyUSBDevice.isInitialized()) {

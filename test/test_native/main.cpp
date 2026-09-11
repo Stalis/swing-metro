@@ -3,6 +3,9 @@
 #include "../test/test_native/context_input/test_encoder_input_adapter.h"
 #include "../test/test_native/context_input/test_input_event.h"
 #include "../test/test_native/context_input/test_router.h"
+#include "../test/test_native/input/test_app_event_handler.h"
+#include "../test/test_native/input/test_encoder_integration.h"
+#include "../test/test_native/input/test_main_display_context.h"
 #include "../test/test_native/utils/counter/test_counter.h"
 #include "../test/test_native/utils/round_buffer/test_round_buffer.h"
 #include <unity.h>
@@ -25,6 +28,9 @@ int main() {
     test_dispatch_result_main();
     test_router_main();
     test_encoder_input_adapter_main();
+    test_main_display_context_main();
+    test_app_event_handler_main();
+    test_encoder_integration_main();
 
     UNITY_END();
 }
