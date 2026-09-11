@@ -48,29 +48,15 @@ void MainDisplay::drawNoteState(uint8_t noteNumber, bool state, bool active) {
     const uint8_t x1 = xOffset + (column * (size + xGap));
     const uint8_t y1 = firstLineY + (line * (size + yGap));
 
-    _gfx.drawRect(
-        x1, y1,
-        size, size,
-        active ? RGB565_RED : RGB565_YELLOW
-    );
-    _gfx.fillRect(
-        x1 + 1, y1 + 1,
-        size - 2, size - 2,
-        state ? RGB565_DARKORANGE : RGB565_BLACK
-    );
+    _gfx.drawRect(x1, y1, size, size, active ? RGB565_RED : RGB565_YELLOW);
+    _gfx.fillRect(x1 + 1, y1 + 1, size - 2, size - 2, state ? RGB565_DARKORANGE : RGB565_BLACK);
 }
 
-void MainDisplay::updateTempo(uint8_t tempo) {
-    drawValue(tempo, 10, RGB565_RED);
-}
+void MainDisplay::updateTempo(uint8_t tempo) { drawValue(tempo, 10, RGB565_RED); }
 
-void MainDisplay::updateSwing(uint8_t swing) {
-    drawValue(swing, 30, RGB565_GREEN);
-}
+void MainDisplay::updateSwing(uint8_t swing) { drawValue(swing, 30, RGB565_GREEN); }
 
-void MainDisplay::updateVolume(uint8_t volume) {
-    drawValue(volume, 50, RGB565_BLUE);
-}
+void MainDisplay::updateVolume(uint8_t volume) { drawValue(volume, 50, RGB565_BLUE); }
 
 void MainDisplay::updateNotesStates(std::bitset<16> notesState, uint8_t activeNoteNumber) {
     for (int i = 0; i < notesState.size(); i++) {

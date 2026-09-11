@@ -5,7 +5,7 @@
 
 template <typename T>
 class RoundBuffer {
-public:
+  public:
     [[nodiscard]] RoundBuffer(uint8_t size);
     ~RoundBuffer();
 
@@ -16,7 +16,7 @@ public:
     [[nodiscard]] T& peek() const;
     [[nodiscard]] uint8_t count() const;
 
-private:
+  private:
     uint8_t _size;
     T* _buffer;
     uint8_t _head;

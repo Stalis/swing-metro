@@ -2,7 +2,7 @@
 Checks: 'bugprone-*,cert-*,modernize-*,performance-*,readability-*'
 WarningsAsErrors: ''
 
-HeaderFilterRegex: '(^|.*/)(src|include|test)/.*'
+HeaderFilterRegex: '(^|.*/)(src|include|lib|test)/.*'
 ExcludeHeaderFilterRegex: '(^|.*/)(\.pio|\.platformio)/.*'
 SystemHeaders: false
 

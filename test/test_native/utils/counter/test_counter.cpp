@@ -2,9 +2,12 @@
 
 #include "utils/counter.h"
 
-
 void test_counter_stepUp() {
-    Counter<int> counter({.step = 1, .value = 0, .minValue = 0, .maxValue = 5, .overflowBehavior = CounterOverflowBehavior::Clamp});
+    Counter<int> counter({.step = 1,
+                          .value = 0,
+                          .minValue = 0,
+                          .maxValue = 5,
+                          .overflowBehavior = CounterOverflowBehavior::Clamp});
 
     counter.stepUp();
     TEST_ASSERT_EQUAL(1, counter.getValue());
@@ -27,7 +30,11 @@ void test_counter_stepUp() {
 }
 
 void test_counter_stepDown() {
-    Counter<int> counter({.step = 1, .value = 5, .minValue = 0, .maxValue = 5, .overflowBehavior = CounterOverflowBehavior::Clamp});
+    Counter<int> counter({.step = 1,
+                          .value = 5,
+                          .minValue = 0,
+                          .maxValue = 5,
+                          .overflowBehavior = CounterOverflowBehavior::Clamp});
 
     counter.stepDown();
     TEST_ASSERT_EQUAL(4, counter.getValue());
@@ -50,7 +57,11 @@ void test_counter_stepDown() {
 }
 
 void test_counter_wrap_around() {
-    Counter<int> counter({.step = 1, .value = 5, .minValue = 0, .maxValue = 5, .overflowBehavior = CounterOverflowBehavior::WrapAround});
+    Counter<int> counter({.step = 1,
+                          .value = 5,
+                          .minValue = 0,
+                          .maxValue = 5,
+                          .overflowBehavior = CounterOverflowBehavior::WrapAround});
 
     counter.stepUp();
     TEST_ASSERT_EQUAL(0, counter.getValue());
@@ -63,7 +74,11 @@ void test_counter_wrap_around() {
 }
 
 void test_counter_step() {
-    Counter<int> counter({.step = 2, .value = 0, .minValue = 0, .maxValue = 5, .overflowBehavior = CounterOverflowBehavior::Clamp});
+    Counter<int> counter({.step = 2,
+                          .value = 0,
+                          .minValue = 0,
+                          .maxValue = 5,
+                          .overflowBehavior = CounterOverflowBehavior::Clamp});
 
     counter.stepUp();
     TEST_ASSERT_EQUAL(2, counter.getValue());

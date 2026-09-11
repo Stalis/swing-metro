@@ -3,9 +3,9 @@
 #include <Arduino.h>
 
 struct ShiftRegisterPins {
-  uint8_t data;
-  uint8_t clock;
-  uint8_t latch;
+    uint8_t data;
+    uint8_t clock;
+    uint8_t latch;
 };
 
 class SevenSegmentDisplay {

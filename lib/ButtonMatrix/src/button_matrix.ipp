@@ -3,8 +3,8 @@
 
 template <int INPUT_PINS, int OUTPUT_PINS, typename ButtonIds>
 ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::ButtonMatrix(const InputPins& inputPins,
-                                                                const OutputPins& outputPins,
-                                                                uint8_t debouncing) noexcept
+                                                               const OutputPins& outputPins,
+                                                               uint8_t debouncing) noexcept
     : _inputPins(inputPins), _outputPins(outputPins), _debouncing(debouncing), _buttonStates() {}
 
 template <int INPUT_PINS, int OUTPUT_PINS, typename ButtonIds>
@@ -58,7 +58,8 @@ void ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::getButtonStates(ButtonSta
 }
 
 template <int INPUT_PINS, int OUTPUT_PINS, typename ButtonIds>
-bool ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::isButtonPressed(int input, int output) const {
+bool ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::isButtonPressed(int input,
+                                                                       int output) const {
     return getButton(input, output).isJustPressed();
 }
 
@@ -68,13 +69,13 @@ bool ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::isButtonPressed(int numbe
 }
 
 template <int INPUT_PINS, int OUTPUT_PINS, typename ButtonIds>
-inline const ButtonState& ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::getButton(int input,
-                                                                                        int output) const {
+inline const ButtonState&
+ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::getButton(int input, int output) const {
     return _buttonStates[input][output];
 }
 
 template <int INPUT_PINS, int OUTPUT_PINS, typename ButtonIds>
 inline ButtonState& ButtonMatrix<INPUT_PINS, OUTPUT_PINS, ButtonIds>::getButton(int input,
-                                                                                   int output) {
+                                                                                int output) {
     return _buttonStates[input][output];
 }

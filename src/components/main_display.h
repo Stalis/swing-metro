@@ -1,10 +1,10 @@
 #pragma once
 #include <Arduino_GFX_Library.h>
-#include <cstdint>
 #include <bitset>
+#include <cstdint>
 
 class MainDisplay {
-public:
+  public:
     MainDisplay(Arduino_GFX& gfx);
 
     void init();
@@ -15,7 +15,7 @@ public:
 
     void updateNotesStates(std::bitset<16> notesStates, uint8_t activeNoteNumber);
 
-private:
+  private:
     void drawValue(uint8_t value, int16_t y, uint16_t color);
     void drawNoteState(uint8_t noteNumber, bool state, bool active);
 

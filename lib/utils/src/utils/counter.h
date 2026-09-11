@@ -23,7 +23,7 @@ struct CounterSettings {
 
 template <typename T>
 class Counter {
-public:
+  public:
     [[nodiscard]] Counter(const CounterSettings<T>& settings);
 
     void stepUp();
@@ -34,7 +34,7 @@ public:
     void setStep(T step);
     [[nodiscard]] auto getStep() const;
 
-private:
+  private:
     T _step;
     T _value;
     T _minValue;

@@ -16,14 +16,14 @@
 */
 constexpr const EncoderState ENCODER_STATE_IDLE = {true, true};
 
-constexpr const EncoderState ENCODER_STATE_RIGHT_STEP_1 = { true, false };
-constexpr const EncoderState ENCODER_STATE_RIGHT_STEP_2 = { false, false };
-constexpr const EncoderState ENCODER_STATE_RIGHT_STEP_3 = { false, true };
+constexpr const EncoderState ENCODER_STATE_RIGHT_STEP_1 = {true, false};
+constexpr const EncoderState ENCODER_STATE_RIGHT_STEP_2 = {false, false};
+constexpr const EncoderState ENCODER_STATE_RIGHT_STEP_3 = {false, true};
 constexpr const EncoderState ENCODER_STATE_RIGHT_STEP_4 = ENCODER_STATE_IDLE;
 
-constexpr const EncoderState ENCODER_STATE_LEFT_STEP_1 = { false, true };
-constexpr const EncoderState ENCODER_STATE_LEFT_STEP_2 = { false, false };
-constexpr const EncoderState ENCODER_STATE_LEFT_STEP_3 = { true, false };
+constexpr const EncoderState ENCODER_STATE_LEFT_STEP_1 = {false, true};
+constexpr const EncoderState ENCODER_STATE_LEFT_STEP_2 = {false, false};
+constexpr const EncoderState ENCODER_STATE_LEFT_STEP_3 = {true, false};
 constexpr const EncoderState ENCODER_STATE_LEFT_STEP_4 = ENCODER_STATE_IDLE;
 
 EncoderDirection getDirectionFromStates(const EncoderState& previous, const EncoderState& current) {
@@ -75,10 +75,10 @@ EncoderDirection getDirectionFromStates(const EncoderState& previous, const Enco
     return EncoderDirection::Undefined;
 }
 
-
 Encoder::Encoder(const EncoderSettings& settings) noexcept
-    : _pinA(settings.pinA), _pinB(settings.pinB), _pinSwitch(settings.pinSwitch), _handler(settings.handler), _switchHandler(settings.switchHandler), _switchDebouncing(settings.switchDebouncing & 0x0F)
-{}
+    : _pinA(settings.pinA), _pinB(settings.pinB), _pinSwitch(settings.pinSwitch),
+      _handler(settings.handler), _switchHandler(settings.switchHandler),
+      _switchDebouncing(settings.switchDebouncing & 0x0F) {}
 
 void Encoder::init() {
     pinMode(_pinA, INPUT_PULLUP);
@@ -132,7 +132,6 @@ void Encoder::update() {
         }
         _accumulatedSteps = 0;
     }
-
 }
 
 void Encoder::updateSwitch() {
@@ -159,13 +158,9 @@ void Encoder::updateSwitch() {
     _previousSwitchState = _currentSwitchState;
 }
 
-bool Encoder::getPinA() const {
-    return digitalRead(_pinA) > 0;
-}
+bool Encoder::getPinA() const { return digitalRead(_pinA) > 0; }
 
-bool Encoder::getPinB() const {
-    return digitalRead(_pinB) > 0;
-}
+bool Encoder::getPinB() const { return digitalRead(_pinB) > 0; }
 
 EncoderState Encoder::getState() const {
     return EncoderState{

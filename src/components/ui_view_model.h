@@ -1,8 +1,8 @@
 #pragma once
 
 #include <atomic>
-#include <cstdint>
 #include <bitset>
+#include <cstdint>
 
 struct UiSettings {
     uint8_t tempo;
@@ -14,7 +14,7 @@ struct UiSettings {
 };
 
 class UiViewModel {
-public:
+  public:
     // A single packed atomic keeps the GUI snapshot internally consistent.
     void publish(UiSettings settings) {
         const uint32_t packed = static_cast<uint32_t>(settings.tempo) |
@@ -40,7 +40,7 @@ public:
         };
     }
 
-private:
+  private:
     std::atomic<uint32_t> _packed{0};
     std::atomic<uint16_t> _notesPacked{0};
 };

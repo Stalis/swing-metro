@@ -1,0 +1,7 @@
+{
+  "name": "ContextInput",
+  "version": "0.1.0",
+  "description": "Fixed-capacity context routing for input events.",
+  "frameworks": "*",
+  "platforms": "*"
+}

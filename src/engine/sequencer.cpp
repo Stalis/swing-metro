@@ -15,21 +15,18 @@ constexpr uint8_t clampBpm(uint8_t bpm) {
 }
 
 Sequencer::Sequencer()
-    : _currentStepIndex(0), _bpm(DEFAULT_BPM), _stepPeriodUs(getStepPeriodUs()), _lastStepAt(0)
- {}
+    : _currentStepIndex(0), _bpm(DEFAULT_BPM), _stepPeriodUs(getStepPeriodUs()), _lastStepAt(0) {}
 
-uint8_t Sequencer::getBpm() const {
-    return _bpm;
-}
+uint8_t Sequencer::getBpm() const { return _bpm; }
 
-std::bitset<STEPS_COUNT> Sequencer::getStepsEnabled() const { 
+std::bitset<STEPS_COUNT> Sequencer::getStepsEnabled() const {
     std::bitset<STEPS_COUNT> res{};
 
     for (StepIndex index = 0; index < STEPS_COUNT; index++) {
         res[index] = _steps[index].isEnabled;
     }
 
-    return res; 
+    return res;
 }
 
 StepIndex Sequencer::getCurrentStepIndex() const { return _currentStepIndex; }
@@ -43,9 +40,7 @@ void Sequencer::setBpm(uint8_t bpm) {
     _stepPeriodUs = getStepPeriodUs();
 }
 
-void Sequencer::toggleStep(StepIndex index) {
-    _steps[index].toggle();
-}
+void Sequencer::toggleStep(StepIndex index) { _steps[index].toggle(); }
 
 uint32_t Sequencer::getStepPeriodUs() const {
     constexpr uint32_t MICROSECONDS_PER_MINUTE = 60'000'000;
@@ -70,14 +65,8 @@ bool Sequencer::update(uint32_t micros) {
     return false;
 }
 
-bool Sequencer::isCurrentStepEnabled() const {
-    return _steps[_currentStepIndex].isEnabled;
-}
+bool Sequencer::isCurrentStepEnabled() const { return _steps[_currentStepIndex].isEnabled; }
 
-uint8_t Sequencer::currentStepMidiNote() const {
-    return _steps[_currentStepIndex].note;
-}
+uint8_t Sequencer::currentStepMidiNote() const { return _steps[_currentStepIndex].note; }
 
-uint8_t Sequencer::currentStepVelocity() const {
-    return _steps[_currentStepIndex].velocity;
-}
+uint8_t Sequencer::currentStepVelocity() const { return _steps[_currentStepIndex].velocity; }

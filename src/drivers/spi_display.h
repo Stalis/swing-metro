@@ -3,12 +3,12 @@
 #include <Arduino.h>
 #include <SPI.h>
 
-constexpr uint8_t TFT_SCK  = 10;
+constexpr uint8_t TFT_SCK = 10;
 constexpr uint8_t TFT_MOSI = 11;
-constexpr uint8_t TFT_DC   = 12;
-constexpr uint8_t TFT_CS   = 13;
-constexpr uint8_t TFT_RST  = 14;
-constexpr uint8_t TFT_BL   = 15;
+constexpr uint8_t TFT_DC = 12;
+constexpr uint8_t TFT_CS = 13;
+constexpr uint8_t TFT_RST = 14;
+constexpr uint8_t TFT_BL = 15;
 
 enum class ST7735_Command : uint8_t {
     SoftwareReset = 0x01,
@@ -23,33 +23,33 @@ enum class ST7735_Command : uint8_t {
 };
 
 enum class RGB565_Color : uint16_t {
-    Black       = 0x0000,
-    White       = 0xFFFF,
+    Black = 0x0000,
+    White = 0xFFFF,
 
-    Red         = 0xF800,
-    Green       = 0x07E0,
-    Blue        = 0x001F,
+    Red = 0xF800,
+    Green = 0x07E0,
+    Blue = 0x001F,
 
-    Cyan        = 0x07FF,
-    Magenta     = 0xF81F,
-    Yellow      = 0xFFE0,
+    Cyan = 0x07FF,
+    Magenta = 0xF81F,
+    Yellow = 0xFFE0,
 
-    Orange      = 0xFD20,
-    Purple      = 0x780F,
-    Pink        = 0xF81F,
+    Orange = 0xFD20,
+    Purple = 0x780F,
+    Pink = 0xF81F,
 
-    Gray        = 0x8410,
-    DarkGray    = 0x4208,
-    LightGray   = 0xC618,
+    Gray = 0x8410,
+    DarkGray = 0x4208,
+    LightGray = 0xC618,
 
-    DarkRed     = 0x8000,
-    DarkGreen   = 0x0400,
-    DarkBlue    = 0x0010,
+    DarkRed = 0x8000,
+    DarkGreen = 0x0400,
+    DarkBlue = 0x0010,
 
-    Navy        = 0x000F,
-    Teal        = 0x0410,
-    Olive       = 0x8400,
-    Maroon      = 0x8000
+    Navy = 0x000F,
+    Teal = 0x0410,
+    Olive = 0x8400,
+    Maroon = 0x8000
 };
 
 struct ST7735S_DisplaySettings {
@@ -62,12 +62,10 @@ struct ST7735S_DisplaySettings {
 };
 
 class ST7735S_Display {
-public:
+  public:
     ST7735S_Display(const ST7735S_DisplaySettings& settings)
         : _spi(SPI1), _backlightPin(settings.pinBL), _resetPin(settings.pinRST),
-          _chipSelectPin(settings.pinCS), _dataCommandPin(settings.pinDC) {
-    }
-
+          _chipSelectPin(settings.pinCS), _dataCommandPin(settings.pinDC) {}
 
     void init() {
         pinMode(_dataCommandPin, OUTPUT);
@@ -85,13 +83,8 @@ public:
         _spi.setTX(TFT_MOSI);
         _spi.begin();
 
-        _spi.beginTransaction(
-            SPISettings(
-                16000000,   // специально медленно для диагностики
-                MSBFIRST,
-                SPI_MODE0
-            )
-        );
+        _spi.beginTransaction(SPISettings(16000000, // специально медленно для диагностики
+                                          MSBFIRST, SPI_MODE0));
 
         initDisplay();
 
@@ -100,7 +93,7 @@ public:
 
         for (int w = 0; w < 50; w++) {
             for (int h = 0; h < 30; h++) {
-                drawPixel(w + 20, h+20, RGB565_Color::Cyan);
+                drawPixel(w + 20, h + 20, RGB565_Color::Cyan);
             }
         }
     }
@@ -116,13 +109,7 @@ public:
         delay(150);
     }
 
-
-    void setWindow(
-        uint16_t x0,
-        uint16_t y0,
-        uint16_t x1,
-        uint16_t y1
-    ) {
+    void setWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
         cmd(ST7735_Command::SetColumnAddress);
         data16(x0);
         data16(x1);
@@ -134,8 +121,7 @@ public:
         cmd(ST7735_Command::WriteDisplayMemory);
     }
 
-    void update() {
-    }
+    void update() {}
 
     void drawPixel(uint16_t x, uint16_t y, RGB565_Color color) {
         drawPixel(x, y, static_cast<uint16_t>(color));
@@ -150,9 +136,7 @@ public:
         data16(color);
     }
 
-    void fillScreen(RGB565_Color color) {
-        fillScreen(static_cast<uint16_t>(color));
-    }
+    void fillScreen(RGB565_Color color) { fillScreen(static_cast<uint16_t>(color)); }
 
     void fillScreen(uint16_t color) {
         setWindow(0, 0, 127, 159);
@@ -212,7 +196,8 @@ public:
         cmd(ST7735_Command::DisplayOn);
         delay(100);
     }
-private:
+
+  private:
     SPIClassRP2040 _spi;
     uint8_t _backlightPin;
     uint8_t _resetPin;
@@ -220,18 +205,14 @@ private:
     uint8_t _dataCommandPin;
 };
 
-ST7735S_Display display({
-    .pinSCK = TFT_SCK,
-    .pinMOSI = TFT_MOSI,
-    .pinDC = TFT_DC,
-    .pinCS = TFT_CS,
-    .pinRST = TFT_RST,
-    .pinBL = TFT_BL
-});
+ST7735S_Display display({.pinSCK = TFT_SCK,
+                         .pinMOSI = TFT_MOSI,
+                         .pinDC = TFT_DC,
+                         .pinCS = TFT_CS,
+                         .pinRST = TFT_RST,
+                         .pinBL = TFT_BL});
 
-void display_setup() {
-    display.init();
-}
+void display_setup() { display.init(); }
 
 constexpr uint8_t COUNTER_STEP = 50;
 volatile static uint8_t skip_counter = COUNTER_STEP;

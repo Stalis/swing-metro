@@ -11,8 +11,8 @@ enum class EncoderDirection : uint8_t {
     Undefined = 0xFF,
 };
 
-using EncoderHandler = void(*)(EncoderDirection direction);
-using SwitchHandler = void(*)();
+using EncoderHandler = void (*)(EncoderDirection direction);
+using SwitchHandler = void (*)();
 
 struct EncoderSettings {
     uint8_t pinA;
@@ -28,17 +28,13 @@ struct EncoderState {
     bool a : 1;
     bool b : 1;
 
-    bool operator==(const EncoderState& right) const {
-        return a == right.a && b == right.b;
-    }
+    bool operator==(const EncoderState& right) const { return a == right.a && b == right.b; }
 
-    bool operator!=(const EncoderState& right) const {
-        return !operator==(right);
-    }
+    bool operator!=(const EncoderState& right) const { return !operator==(right); }
 };
 
 class Encoder {
-public:
+  public:
     Encoder(const EncoderSettings& settings) noexcept;
 
     void init();
@@ -50,7 +46,7 @@ public:
     [[nodiscard]] EncoderState getState() const;
     [[nodiscard]] bool getSwitch() const;
 
-private:
+  private:
     uint8_t _pinA;
     uint8_t _pinB;
     std::optional<uint8_t> _pinSwitch;
