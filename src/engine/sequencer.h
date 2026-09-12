@@ -3,6 +3,7 @@
 #include <array>
 #include <bitset>
 #include <cstdint>
+#include <optional>
 
 using StepIndex = uint8_t;
 constexpr const StepIndex STEPS_COUNT = 16;
@@ -55,6 +56,11 @@ class Sequencer {
     [[nodiscard]] StepIndex getCurrentStepIndex() const;
 
     void toggleStep(StepIndex index);
+    [[nodiscard]] std::optional<MIDI_Note> getStepMidiNote(StepIndex index) const;
+    bool adjustStepNote(StepIndex index, int8_t delta);
+
+    [[nodiscard]] bool isRunning() const;
+    void toggleRunning(uint32_t micros);
 
     void sync(uint32_t micros);
     bool update(uint32_t micros);
@@ -67,6 +73,7 @@ class Sequencer {
     std::array<SequencerStep, STEPS_COUNT> _steps{};
     StepIndex _currentStepIndex;
     uint8_t _bpm;
+    bool _running = true;
 
     uint32_t _stepPeriodUs;
     uint32_t _lastStepAt = 0;

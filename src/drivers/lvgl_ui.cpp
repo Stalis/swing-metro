@@ -53,18 +53,40 @@ void LVGL_Ui::setup() {
     lv_subject_init_int(&_sequencerStepsSubject, 0);
 
     initMainScreen();
+    initStepSettingsScreen();
     lv_screen_load(_mainScreen);
 }
 
 void LVGL_Ui::loop() { lv_timer_handler(); }
 
 void LVGL_Ui::readViewModel(const UiViewModel& viewModel) {
-    auto values = viewModel.read();
+    const auto values = viewModel.read();
     setTempo(values.tempo);
     setSwing(values.swing);
     setVolume(values.volume);
 
     setSteps(values.notesState, values.activeNote);
+
+    if (values.page == UiPage::StepSettings && values.selectedStep < SEQUENCER_STEPS_COUNT) {
+        static constexpr const char* noteNames[] = {"C",  "C#", "D",  "D#", "E",  "F",
+                                                    "F#", "G",  "G#", "A",  "A#", "B"};
+        if (values.selectedStep != _displayedStep) {
+            _displayedStep = values.selectedStep;
+            lv_label_set_text_fmt(_selectedStepLabel, "Step %u",
+                                  static_cast<unsigned>(values.selectedStep + 1));
+        }
+        if (values.selectedNote != _displayedNote && values.selectedNote >= 36) {
+            _displayedNote = values.selectedNote;
+            const auto relativeNote = static_cast<uint8_t>(values.selectedNote - 36);
+            lv_label_set_text_fmt(_selectedNoteLabel, "Note: %s%u", noteNames[relativeNote % 12],
+                                  static_cast<unsigned>(relativeNote / 12));
+        }
+    }
+
+    if (values.page != _currentPage) {
+        _currentPage = values.page;
+        lv_screen_load(_currentPage == UiPage::StepSettings ? _stepSettingsScreen : _mainScreen);
+    }
 }
 
 void LVGL_Ui::setTempo(uint8_t value) { lv_subject_set_int(&_tempoSubject, value); }
@@ -110,6 +132,22 @@ void LVGL_Ui::initMainScreen() {
 
     // lv_subject_add_observer_obj(&_sequencerStepsSubject, onStepsChanged, volumeLabel, this);
     lv_subject_add_observer(&_sequencerStepsSubject, onStepsChanged, this);
+}
+
+void LVGL_Ui::initStepSettingsScreen() {
+    _stepSettingsScreen = lv_obj_create(nullptr);
+    lv_obj_set_style_bg_color(_stepSettingsScreen, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(_stepSettingsScreen, LV_OPA_COVER, 0);
+
+    _selectedStepLabel = lv_label_create(_stepSettingsScreen);
+    lv_obj_set_pos(_selectedStepLabel, 10, 20);
+    lv_obj_set_style_text_color(_selectedStepLabel, lv_color_hex(0xF88C00), 0);
+    lv_label_set_text(_selectedStepLabel, "Step 1");
+
+    _selectedNoteLabel = lv_label_create(_stepSettingsScreen);
+    lv_obj_set_pos(_selectedNoteLabel, 10, 50);
+    lv_obj_set_style_text_color(_selectedNoteLabel, lv_color_white(), 0);
+    lv_label_set_text(_selectedNoteLabel, "Note: C0");
 }
 
 void LVGL_Ui::drawSequencerSteps() {

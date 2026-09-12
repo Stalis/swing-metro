@@ -22,6 +22,7 @@ struct EncoderSettings {
     EncoderHandler handler = nullptr;
     SwitchHandler switchHandler = nullptr;
     std::uint8_t switchDebouncing = 3;
+    SwitchHandler switchReleaseHandler = nullptr;
 };
 
 struct EncoderState {
@@ -62,6 +63,7 @@ class Encoder {
 
     EncoderHandler _handler;
     SwitchHandler _switchHandler;
+    SwitchHandler _switchReleaseHandler;
     std::uint8_t _switchDebouncing;
     std::uint8_t _currentSwitchDebouncing = 0;
     bool _switchCandidateState = false;

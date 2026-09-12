@@ -42,6 +42,36 @@ void Sequencer::setBpm(uint8_t bpm) {
 
 void Sequencer::toggleStep(StepIndex index) { _steps[index].toggle(); }
 
+std::optional<MIDI_Note> Sequencer::getStepMidiNote(StepIndex index) const {
+    if (index >= STEPS_COUNT) {
+        return std::nullopt;
+    }
+    return _steps[index].note;
+}
+
+bool Sequencer::adjustStepNote(StepIndex index, int8_t delta) {
+    if (index >= STEPS_COUNT) {
+        return false;
+    }
+
+    constexpr int minNote = MIDI_OFFSET;
+    constexpr int maxNote = 127;
+    const int next = static_cast<int>(_steps[index].note) + delta;
+    _steps[index].note = static_cast<MIDI_Note>(next < minNote   ? minNote
+                                                : next > maxNote ? maxNote
+                                                                 : next);
+    return true;
+}
+
+bool Sequencer::isRunning() const { return _running; }
+
+void Sequencer::toggleRunning(uint32_t micros) {
+    _running = !_running;
+    if (_running) {
+        sync(micros);
+    }
+}
+
 uint32_t Sequencer::getStepPeriodUs() const {
     constexpr uint32_t MICROSECONDS_PER_MINUTE = 60'000'000;
     constexpr uint8_t STEPS_PER_QUARTER = 4;
@@ -55,6 +85,9 @@ void Sequencer::sync(uint32_t micros) {
 }
 
 bool Sequencer::update(uint32_t micros) {
+    if (!_running) {
+        return false;
+    }
     if (micros - _lastStepAt >= _stepPeriodUs) {
         _lastStepAt += _stepPeriodUs;
         _currentStepIndex = (_currentStepIndex + 1) % STEPS_COUNT;

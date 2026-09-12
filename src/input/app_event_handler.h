@@ -4,7 +4,6 @@
 #include "engine/sequencer.h"
 
 #include <cstdint>
-#include <optional>
 #include <utils/counter.h>
 
 namespace SwingMetro {
@@ -22,20 +21,16 @@ class AppEventHandler {
 
     auto handle(const AppEvent& event) -> void;
 
-    [[nodiscard]] auto takeOpenStepSettingsRequest() noexcept -> std::optional<std::uint8_t>;
-
   private:
     auto handle(const AdjustTempo& event) -> void;
     auto handle(const AdjustSwing& event) -> void;
     auto handle(const AdjustVolume& event) -> void;
     auto handle(const ToggleStep& event) -> void;
-    auto handle(const OpenStepSettings& event) -> void;
 
     Counter<std::uint8_t>& tempo_;
     Counter<std::uint8_t>& swing_;
     Counter<std::uint8_t>& volume_;
     Sequencer& sequencer_;
-    std::optional<std::uint8_t> openStepSettingsRequest_;
 };
 
 } // namespace SwingMetro

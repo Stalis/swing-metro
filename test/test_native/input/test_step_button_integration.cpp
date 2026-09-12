@@ -2,7 +2,7 @@
 
 #include "input/app_event_handler.h"
 #include "input/app_input.h"
-#include "input/main_display_context.h"
+#include "input/app_input_coordinator.h"
 #include "input/pad_button_ids.h"
 #include "input/step_button_inputs.h"
 #include <array>
@@ -35,14 +35,13 @@ struct IntegrationState {
                                   .maxValue = 100,
                                   .overflowBehavior = CounterOverflowBehavior::Clamp}};
     Sequencer sequencer;
-    SwingMetro::MainDisplayContext context;
-    ContextInput::Router<SwingMetro::InputEvent, SwingMetro::AppEvent, 1> router;
     SwingMetro::AppEventHandler handler{{
         .tempo = tempo,
         .swing = swing,
         .volume = volume,
         .sequencer = sequencer,
     }};
+    SwingMetro::AppInputCoordinator<8> coordinator{handler, sequencer};
     SwingMetro::StepButtonInputs buttons;
 };
 
@@ -50,9 +49,8 @@ auto routeBatch(IntegrationState& state, const SwingMetro::StepButtonInputs::Bat
     -> std::size_t {
     std::size_t emitted = 0;
     for (std::size_t index = 0; index < batch.size(); ++index) {
-        const auto result = state.router.dispatch(batch[index]);
-        if (result.hasEvent()) {
-            state.handler.handle(result.event());
+        const auto result = state.coordinator.dispatch(batch[index], 0);
+        if (result.has_value()) {
             ++emitted;
         }
     }
@@ -60,9 +58,7 @@ auto routeBatch(IntegrationState& state, const SwingMetro::StepButtonInputs::Bat
 }
 
 void addMainContext(IntegrationState& state) {
-    const auto result = state.router.addContext(state.context);
-    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(ContextInput::AddContextResult::Added),
-                            static_cast<std::uint8_t>(result));
+    TEST_ASSERT_EQUAL_UINT32(2, state.coordinator.stackSize());
 }
 
 void test_physical_layout_is_the_expected_permutation() {
@@ -113,7 +109,7 @@ void test_each_step_click_toggles_exactly_once() {
                                  state.sequencer.getStepsEnabled().count());
     }
 
-    TEST_ASSERT_FALSE(state.handler.takeOpenStepSettingsRequest().has_value());
+    TEST_ASSERT_FALSE(state.coordinator.selectedStep().has_value());
 }
 
 void test_each_step_long_press_requests_settings_without_toggle() {
@@ -134,7 +130,7 @@ void test_each_step_long_press_requests_settings_without_toggle() {
         TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, released));
         TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().any());
 
-        const auto request = state.handler.takeOpenStepSettingsRequest();
+        const auto request = state.coordinator.selectedStep();
         TEST_ASSERT_TRUE(request.has_value());
         TEST_ASSERT_EQUAL_UINT8(step, *request);
     }
@@ -153,7 +149,7 @@ void test_two_held_steps_have_independent_timers() {
     TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.buttons.onReleased(8, 900)));
     TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().any());
 
-    const auto request = state.handler.takeOpenStepSettingsRequest();
+    const auto request = state.coordinator.selectedStep();
     TEST_ASSERT_TRUE(request.has_value());
     TEST_ASSERT_EQUAL_UINT8(8, *request);
 }
@@ -184,7 +180,7 @@ void test_late_release_without_update_does_not_toggle_step() {
     TEST_ASSERT_EQUAL_UINT32(1, routeBatch(state, released));
     TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().any());
 
-    const auto request = state.handler.takeOpenStepSettingsRequest();
+    const auto request = state.coordinator.selectedStep();
     TEST_ASSERT_TRUE(request.has_value());
     TEST_ASSERT_EQUAL_UINT8(5, *request);
 }

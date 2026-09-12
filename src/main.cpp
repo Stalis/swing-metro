@@ -1,4 +1,6 @@
+#include <adapters/button_input.h>
 #include <adapters/encoder_input.h>
+#include <adapters/trigger_input.h>
 #include <button_matrix.h>
 #include <context_input.h>
 #include <encoder.h>
@@ -9,7 +11,7 @@
 #include "drivers/lvgl_ui.h"
 #include "input/app_event_handler.h"
 #include "input/app_input.h"
-#include "input/main_display_context.h"
+#include "input/app_input_coordinator.h"
 #include "input/pad_button_ids.h"
 #include "input/step_button_inputs.h"
 #include <Arduino.h>
@@ -28,13 +30,8 @@ Adafruit_USBD_MIDI usbMidi;
 
 Sequencer mainSequencer;
 
-// Room for the base screen, global controls, and short-lived overlay contexts.
+// Room for global controls, the base screen, settings, and temporary overlays.
 constexpr std::size_t INPUT_CONTEXT_CAPACITY = 8;
-using InputRouter =
-    ContextInput::Router<SwingMetro::InputEvent, SwingMetro::AppEvent, INPUT_CONTEXT_CAPACITY>;
-
-InputRouter inputRouter;
-SwingMetro::MainDisplayContext mainDisplayContext;
 ContextInput::EncoderInputAdapter<SwingMetro::InputId> tempoInput{
     SwingMetro::InputId::TempoEncoder,
 };
@@ -52,12 +49,14 @@ SwingMetro::StepButtonInputs stepButtonInputs;
 
 void tempoEncoderHandler(EncoderDirection direction);
 void tempoEncoderSwitchHandler();
+void tempoEncoderSwitchReleaseHandler();
 constexpr EncoderSettings tempoEncoderSettings{
     .pinA = 16,
     .pinB = 17,
     .pinSwitch = 18,
     .handler = tempoEncoderHandler,
     .switchHandler = tempoEncoderSwitchHandler,
+    .switchReleaseHandler = tempoEncoderSwitchReleaseHandler,
 };
 Encoder tempoEncoder(tempoEncoderSettings);
 Counter<uint8_t> tempoCounter({.step = 1,
@@ -84,12 +83,14 @@ Counter<uint8_t> swingCounter({.step = 1,
 
 void volumeEncoderHandler(EncoderDirection direction);
 void volumeEncoderSwitchHandler();
+void volumeEncoderSwitchReleaseHandler();
 constexpr EncoderSettings volumeEncoderSettings{
     .pinA = 22,
     .pinB = 26,
     .pinSwitch = 27,
     .handler = volumeEncoderHandler,
     .switchHandler = volumeEncoderSwitchHandler,
+    .switchReleaseHandler = volumeEncoderSwitchReleaseHandler,
 };
 Encoder volumeEncoder(volumeEncoderSettings);
 Counter<uint8_t> volumeCounter({.step = 1,
@@ -104,6 +105,15 @@ SwingMetro::AppEventHandler appEventHandler{{
     .volume = volumeCounter,
     .sequencer = mainSequencer,
 }};
+SwingMetro::AppInputCoordinator<INPUT_CONTEXT_CAPACITY> appInputCoordinator{appEventHandler,
+                                                                            mainSequencer};
+ContextInput::ButtonInputAdapter<SwingMetro::InputId> tempoSwitchInput{{
+    SwingMetro::InputId::TempoSwitch,
+    500,
+}};
+ContextInput::TriggerInputAdapter<SwingMetro::InputId> shiftSwitchInput{
+    SwingMetro::InputId::ShiftSwitch,
+};
 
 constexpr const auto updatables = std::tie(tempoEncoder, swingEncoder, volumeEncoder);
 UiViewModel uiViewModel;
@@ -115,10 +125,7 @@ void handleEncoderDirection(const TAdapter& adapter, EncoderDirection direction)
         return;
     }
 
-    const auto result = inputRouter.dispatch(*input);
-    if (result.hasEvent()) {
-        appEventHandler.handle(result.event());
-    }
+    appInputCoordinator.dispatch(*input, micros());
 }
 
 void logStepButtonInput(const SwingMetro::InputEvent& input) {
@@ -153,10 +160,7 @@ void handleButtonBatch(const SwingMetro::StepButtonInputs::Batch& batch) {
     for (std::size_t index = 0; index < batch.size(); ++index) {
         const auto& input = batch[index];
         logStepButtonInput(input);
-        const auto result = inputRouter.dispatch(input);
-        if (result.hasEvent()) {
-            appEventHandler.handle(result.event());
-        }
+        appInputCoordinator.dispatch(input, micros());
     }
 }
 
@@ -172,11 +176,27 @@ void tempoEncoderHandler(EncoderDirection direction) {
     handleEncoderDirection(tempoInput, direction);
 }
 
-void tempoEncoderSwitchHandler() { Serial.println("[Tempo encoder] Pressed"); }
+void tempoEncoderSwitchHandler() { handleButtonBatch(tempoSwitchInput.onPressed(millis())); }
+
+void tempoEncoderSwitchReleaseHandler() {
+    handleButtonBatch(tempoSwitchInput.onReleased(millis()));
+}
 
 void swingEncoderSwitchHandler() { Serial.println("[Swing encoder] Pressed"); }
 
-void volumeEncoderSwitchHandler() { Serial.println("[Volume encoder] Pressed"); }
+void volumeEncoderSwitchHandler() {
+    const auto input = shiftSwitchInput.set(true);
+    if (input.has_value()) {
+        appInputCoordinator.dispatch(*input, micros());
+    }
+}
+
+void volumeEncoderSwitchReleaseHandler() {
+    const auto input = shiftSwitchInput.set(false);
+    if (input.has_value()) {
+        appInputCoordinator.dispatch(*input, micros());
+    }
+}
 
 constexpr uint8_t MIDI_CHANNEL_1 = 0;
 
@@ -204,11 +224,6 @@ void setup() {
 
     Serial.begin(SERIAL_BAUD_RATE);
 
-    const auto addContextResult = inputRouter.addContext(mainDisplayContext);
-    if (addContextResult != ContextInput::AddContextResult::Added) {
-        Serial.println("[ContextInput] Failed to add main display context");
-    }
-
     // USB setup
     if (!TinyUSBDevice.isInitialized()) {
         TinyUSBDevice.begin(0);
@@ -231,8 +246,8 @@ void setup() {
     tempoEncoder.init();
     swingEncoder.init();
     volumeEncoder.init();
-    uiViewModel.publish(
-        {tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue()});
+    uiViewModel.publish(appInputCoordinator.decorateUiSettings(
+        {tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue()}));
 
     mainSequencer.sync(micros());
     // display_setup();
@@ -244,6 +259,8 @@ uint8_t tempo_last_value = tempoCounter.getValue();
 
 bool note_sent = false;
 uint8_t last_note_sent = 0;
+bool last_transport_running = true;
+bool last_shift_active = false;
 
 void loop() {
     buttonMatrix.readButtons();
@@ -263,6 +280,21 @@ void loop() {
     buttonMatrix.update();
 
     std::apply([](auto&... objects) { (objects.update(), ...); }, updatables);
+    handleButtonBatch(tempoSwitchInput.update(millis()));
+
+    if (mainSequencer.isRunning() != last_transport_running) {
+        last_transport_running = mainSequencer.isRunning();
+        Serial.printf("[Transport] %s\n", last_transport_running ? "Start" : "Stop");
+        if (!last_transport_running && note_sent) {
+            midiSendNoteOff(last_note_sent);
+            note_sent = false;
+        }
+    }
+
+    if (appInputCoordinator.isShiftActive() != last_shift_active) {
+        last_shift_active = appInputCoordinator.isShiftActive();
+        Serial.printf("[Shift] %s\n", last_shift_active ? "Active" : "Inactive");
+    }
 
     if (volumeCounter.getValue() != volume_last_value) {
         Serial.print("[Volume encoder] Value changed: ");
@@ -283,7 +315,10 @@ void loop() {
     }
 
     if (mainSequencer.update(micros())) {
-        midiSendNoteOff(last_note_sent);
+        if (note_sent) {
+            midiSendNoteOff(last_note_sent);
+            note_sent = false;
+        }
         Serial.printf("step=%u enabled=%u t=%lu\n", mainSequencer.getCurrentStepIndex(),
                       static_cast<int>(mainSequencer.isCurrentStepEnabled()), micros());
 
@@ -296,13 +331,13 @@ void loop() {
         }
     }
 
-    uiViewModel.publish({
+    uiViewModel.publish(appInputCoordinator.decorateUiSettings({
         tempoCounter.getValue(),
         swingCounter.getValue(),
         volumeCounter.getValue(),
         mainSequencer.getCurrentStepIndex(),
         mainSequencer.getStepsEnabled(),
-    });
+    }));
 }
 
 /*

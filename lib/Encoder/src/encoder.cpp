@@ -80,6 +80,7 @@ EncoderDirection getDirectionFromStates(const EncoderState& previous, const Enco
 Encoder::Encoder(const EncoderSettings& settings) noexcept
     : _pinA(settings.pinA), _pinB(settings.pinB), _pinSwitch(settings.pinSwitch),
       _handler(settings.handler), _switchHandler(settings.switchHandler),
+      _switchReleaseHandler(settings.switchReleaseHandler),
       _switchDebouncing(settings.switchDebouncing & 0x0F) {}
 
 void Encoder::init() {
@@ -156,6 +157,9 @@ void Encoder::updateSwitch() {
 
     if (!_previousSwitchState && _currentSwitchState && _switchHandler != nullptr) {
         _switchHandler();
+    }
+    if (_previousSwitchState && !_currentSwitchState && _switchReleaseHandler != nullptr) {
+        _switchReleaseHandler();
     }
     _previousSwitchState = _currentSwitchState;
 }

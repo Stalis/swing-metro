@@ -1,3 +1,4 @@
+#include <thread>
 #include <unity.h>
 
 #include "components/ui_view_model.h"
@@ -68,9 +69,90 @@ void test_ui_view_model_preserves_all_note_bits() {
     TEST_ASSERT_EQUAL_HEX16(UINT16_MAX, static_cast<uint16_t>(settings.notesState.to_ulong()));
 }
 
+void test_ui_view_model_keeps_navigation_fields_together() {
+    UiViewModel viewModel;
+    viewModel.publish({.tempo = 120,
+                       .swing = 50,
+                       .volume = 100,
+                       .activeNote = 7,
+                       .notesState = {},
+                       .page = UiPage::StepSettings,
+                       .selectedStep = 7,
+                       .selectedNote = 49,
+                       .transportRunning = false,
+                       .shiftActive = true});
+
+    const UiSettings settings = viewModel.read();
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(UiPage::StepSettings),
+                            static_cast<uint8_t>(settings.page));
+    TEST_ASSERT_EQUAL_UINT8(7, settings.selectedStep);
+    TEST_ASSERT_EQUAL_UINT8(49, settings.selectedNote);
+    TEST_ASSERT_FALSE(settings.transportRunning);
+    TEST_ASSERT_TRUE(settings.shiftActive);
+}
+
+void test_ui_view_model_reads_complete_concurrent_snapshots() {
+    UiViewModel viewModel;
+    const UiSettings first{.tempo = 120,
+                           .swing = 50,
+                           .volume = 100,
+                           .activeNote = 1,
+                           .notesState = std::bitset<16>(0x0001),
+                           .page = UiPage::MainDisplay,
+                           .selectedStep = UINT8_MAX,
+                           .selectedNote = 36,
+                           .transportRunning = true,
+                           .shiftActive = false};
+    const UiSettings second{.tempo = 180,
+                            .swing = 75,
+                            .volume = 25,
+                            .activeNote = 12,
+                            .notesState = std::bitset<16>(0xF000),
+                            .page = UiPage::StepSettings,
+                            .selectedStep = 12,
+                            .selectedNote = 61,
+                            .transportRunning = false,
+                            .shiftActive = true};
+    viewModel.publish(first);
+
+    std::thread writer([&viewModel, &first, &second]() {
+        for (int index = 0; index < 20000; ++index) {
+            viewModel.publish(index % 2 == 0 ? second : first);
+        }
+    });
+
+    bool coherent = true;
+    for (int index = 0; index < 20000; ++index) {
+        const auto value = viewModel.read();
+        const bool matchesFirst =
+            value.tempo == first.tempo && value.swing == first.swing &&
+            value.volume == first.volume && value.activeNote == first.activeNote &&
+            value.notesState == first.notesState && value.page == first.page &&
+            value.selectedStep == first.selectedStep && value.selectedNote == first.selectedNote &&
+            value.transportRunning == first.transportRunning &&
+            value.shiftActive == first.shiftActive;
+        const bool matchesSecond =
+            value.tempo == second.tempo && value.swing == second.swing &&
+            value.volume == second.volume && value.activeNote == second.activeNote &&
+            value.notesState == second.notesState && value.page == second.page &&
+            value.selectedStep == second.selectedStep &&
+            value.selectedNote == second.selectedNote &&
+            value.transportRunning == second.transportRunning &&
+            value.shiftActive == second.shiftActive;
+        if (!matchesFirst && !matchesSecond) {
+            coherent = false;
+            break;
+        }
+    }
+    writer.join();
+    TEST_ASSERT_TRUE(coherent);
+}
+
 void test_ui_view_model_main() {
     RUN_TEST(test_ui_view_model_returns_published_snapshot);
     RUN_TEST(test_ui_view_model_replaces_the_whole_snapshot);
     RUN_TEST(test_ui_view_model_preserves_no_active_note);
     RUN_TEST(test_ui_view_model_preserves_all_note_bits);
+    RUN_TEST(test_ui_view_model_keeps_navigation_fields_together);
+    RUN_TEST(test_ui_view_model_reads_complete_concurrent_snapshots);
 }

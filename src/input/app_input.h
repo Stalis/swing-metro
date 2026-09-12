@@ -13,6 +13,8 @@ enum class InputId : std::uint8_t {
     TempoEncoder,
     SwingEncoder,
     VolumeEncoder,
+    TempoSwitch,
+    ShiftSwitch,
     Step0 = 16,
     Step1,
     Step2,
@@ -71,7 +73,19 @@ struct OpenStepSettings {
     std::uint8_t step;
 };
 
+struct CloseStepSettings {};
+
+struct AdjustNote {
+    std::int8_t delta;
+};
+
+struct ToggleTransport {};
+struct ActivateShift {};
+struct DeactivateShift {};
+
 using InputEvent = ContextInput::InputEvent<InputId>;
-using AppEvent = std::variant<AdjustTempo, AdjustSwing, AdjustVolume, ToggleStep, OpenStepSettings>;
+using AppEvent =
+    std::variant<AdjustTempo, AdjustSwing, AdjustVolume, ToggleStep, OpenStepSettings,
+                 CloseStepSettings, AdjustNote, ToggleTransport, ActivateShift, DeactivateShift>;
 
 } // namespace SwingMetro
