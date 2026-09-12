@@ -17,6 +17,7 @@
 #include "../test/test_native/input/test_step_button_integration.h"
 #include "../test/test_native/program/test_program.h"
 #include "../test/test_native/program/test_program_codec.h"
+#include "../test/test_native/program/test_program_slot_store.h"
 #include "../test/test_native/utils/counter/test_counter.h"
 #include "../test/test_native/utils/round_buffer/test_round_buffer.h"
 #include <unity.h>
@@ -53,6 +54,7 @@ int main() {
     test_step_button_integration_main();
     test_program_main();
     test_program_codec_main();
+    test_program_slot_store_main();
 
     UNITY_END();
 }
