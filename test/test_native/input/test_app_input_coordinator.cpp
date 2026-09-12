@@ -170,6 +170,49 @@ void test_click_in_settings_selects_step_without_toggling_it() {
     TEST_ASSERT_TRUE(state.sequencer.getStepsEnabled().test(2));
 }
 
+void test_settings_reselects_on_press_without_adding_context_and_releases_on_close() {
+    State state;
+    UiViewModel viewModel;
+
+    longPress(state, 0, 100);
+    TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+
+    TEST_ASSERT_EQUAL_UINT32(1, routeBatch(state, state.buttons.onPressed(3, 1000)));
+    TEST_ASSERT_EQUAL_UINT8(3, *state.coordinator.selectedStep());
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+    TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    TEST_ASSERT_EQUAL_UINT8(3, viewModel.read().selectedStep);
+    TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.buttons.update(3, 1500)));
+    TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.buttons.onReleased(3, 1600)));
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+
+    TEST_ASSERT_EQUAL_UINT32(1, routeBatch(state, state.buttons.onPressed(7, 2000)));
+    TEST_ASSERT_EQUAL_UINT8(7, *state.coordinator.selectedStep());
+    TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.buttons.onReleased(7, 2100)));
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+    TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().test(7));
+
+    TEST_ASSERT_EQUAL_UINT32(1, routeBatch(state, state.buttons.onPressed(0, 3000)));
+    TEST_ASSERT_EQUAL_UINT8(0, *state.coordinator.selectedStep());
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+    TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.buttons.update(0, 3500)));
+    TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.buttons.onReleased(0, 3600)));
+    TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
+
+    TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.buttons.onPressed(0, 4000)));
+    TEST_ASSERT_EQUAL_UINT32(1, routeBatch(state, state.buttons.update(0, 4500)));
+    TEST_ASSERT_EQUAL_UINT32(2, state.coordinator.stackSize());
+    TEST_ASSERT_FALSE(state.coordinator.hasStepSettingsContext());
+    TEST_ASSERT_FALSE(state.coordinator.selectedStep().has_value());
+    TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.buttons.onReleased(0, 4600)));
+    TEST_ASSERT_EQUAL_UINT32(2, state.coordinator.stackSize());
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(UiPage::MainDisplay),
+                            static_cast<std::uint8_t>(viewModel.read().page));
+}
+
 void test_navigation_failure_preserves_main_page() {
     State<2> state;
     longPress(state, 5, 100);
@@ -319,6 +362,7 @@ void test_app_input_coordinator_main() {
     RUN_TEST(test_open_switch_close_and_publish_ui);
     RUN_TEST(test_encoder_changes_note_in_settings_and_tempo_after_close);
     RUN_TEST(test_click_in_settings_selects_step_without_toggling_it);
+    RUN_TEST(test_settings_reselects_on_press_without_adding_context_and_releases_on_close);
     RUN_TEST(test_navigation_failure_preserves_main_page);
     RUN_TEST(test_gesture_capture_suppresses_remaining_phases_only_for_source);
     RUN_TEST(test_shift_lifecycle_is_independent_of_navigation);

@@ -112,7 +112,7 @@ void test_each_step_click_toggles_exactly_once() {
     TEST_ASSERT_FALSE(state.coordinator.selectedStep().has_value());
 }
 
-void test_each_step_long_press_requests_settings_without_toggle() {
+void test_each_step_long_press_opens_or_reselects_settings_without_toggle() {
     IntegrationState state;
     addMainContext(state);
 
@@ -123,12 +123,14 @@ void test_each_step_long_press_requests_settings_without_toggle() {
         const auto repeated = state.buttons.update(step, 700);
         const auto released = state.buttons.onReleased(step, 800);
 
-        TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, pressed));
+        TEST_ASSERT_EQUAL_UINT32(step == 0 ? 0 : 1, routeBatch(state, pressed));
         TEST_ASSERT_TRUE(waiting.empty());
-        TEST_ASSERT_EQUAL_UINT32(1, routeBatch(state, longPressed));
+        TEST_ASSERT_EQUAL_UINT32(step == 0 ? 1 : 0, routeBatch(state, longPressed));
         TEST_ASSERT_TRUE(repeated.empty());
         TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, released));
         TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().any());
+        TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+        TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
 
         const auto request = state.coordinator.selectedStep();
         TEST_ASSERT_TRUE(request.has_value());
@@ -198,7 +200,7 @@ void test_invalid_step_is_ignored_before_array_access() {
 void test_step_button_integration_main() {
     RUN_TEST(test_physical_layout_is_the_expected_permutation);
     RUN_TEST(test_each_step_click_toggles_exactly_once);
-    RUN_TEST(test_each_step_long_press_requests_settings_without_toggle);
+    RUN_TEST(test_each_step_long_press_opens_or_reselects_settings_without_toggle);
     RUN_TEST(test_two_held_steps_have_independent_timers);
     RUN_TEST(test_simultaneous_clicks_create_two_step_actions);
     RUN_TEST(test_late_release_without_update_does_not_toggle_step);

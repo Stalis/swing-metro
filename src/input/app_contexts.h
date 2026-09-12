@@ -56,7 +56,8 @@ class StepSettingsContext {
             return Result::pass();
         }
 
-        if (button->phase == ContextInput::ButtonPhase::Clicked) {
+        if (button->phase == ContextInput::ButtonPhase::Pressed ||
+            button->phase == ContextInput::ButtonPhase::Clicked) {
             if (*step == selectedStep_) {
                 return Result::consume();
             }
