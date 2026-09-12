@@ -10,6 +10,8 @@
 #include "input/app_event_handler.h"
 #include "input/app_input.h"
 #include "input/main_display_context.h"
+#include "input/pad_button_ids.h"
+#include "input/step_button_inputs.h"
 #include <Arduino.h>
 #include <array>
 #include <cstddef>
@@ -42,15 +44,10 @@ ContextInput::EncoderInputAdapter<SwingMetro::InputId> volumeInput{
     SwingMetro::InputId::VolumeEncoder,
 };
 
-struct PadButtonIds {
-    static constexpr std::array<uint8_t, 16> values = {
-        0, 1, 8, 9, 2, 3, 10, 11, 4, 5, 12, 13, 6, 7, 14, 15,
-    };
-};
-
 constexpr std::array<uint8_t, 4> INPUT_PINS = {D0, D1, D2, D3};
 constexpr std::array<uint8_t, 4> OUTPUT_PINS = {D4, D5, D6, D7};
-ButtonMatrix<4, 4, PadButtonIds> buttonMatrix(INPUT_PINS, OUTPUT_PINS, 3);
+ButtonMatrix<4, 4, SwingMetro::PadButtonIds> buttonMatrix(INPUT_PINS, OUTPUT_PINS, 3);
+SwingMetro::StepButtonInputs stepButtonInputs;
 
 void tempoEncoderHandler(EncoderDirection direction);
 void tempoEncoderSwitchHandler();
@@ -120,6 +117,15 @@ void handleEncoderDirection(const TAdapter& adapter, EncoderDirection direction)
     const auto result = inputRouter.dispatch(*input);
     if (result.hasEvent()) {
         appEventHandler.handle(result.event());
+    }
+}
+
+void handleButtonBatch(const SwingMetro::StepButtonInputs::Batch& batch) {
+    for (std::size_t index = 0; index < batch.size(); ++index) {
+        const auto result = inputRouter.dispatch(batch[index]);
+        if (result.hasEvent()) {
+            appEventHandler.handle(result.event());
+        }
     }
 }
 
@@ -210,22 +216,16 @@ uint8_t last_note_sent = 0;
 
 void loop() {
     buttonMatrix.readButtons();
+    const auto now = millis();
 
-    for (size_t input = 0; input < buttonMatrix.getInputCount(); input++) {
-        for (size_t output = 0; output < buttonMatrix.getOutputCount(); output++) {
-            if (buttonMatrix.isButtonPressed(input, output)) {
-                auto buttonId = buttonMatrix.getButtonId(input, output);
-
-                mainSequencer.toggleStep(buttonId);
-
-                //   Serial.print("Pressed button #");
-                //   Serial.print(buttonId);
-                //   Serial.print("\t [");
-                //   Serial.print(input);
-                //   Serial.print("; ");
-                //   Serial.print(output);
-                //   Serial.println(" ]");
-            }
+    for (int physicalIndex = 0; physicalIndex < STEPS_COUNT; ++physicalIndex) {
+        const auto step = buttonMatrix.getButtonId(physicalIndex);
+        if (buttonMatrix.isButtonJustPressed(physicalIndex)) {
+            handleButtonBatch(stepButtonInputs.onPressed(step, now));
+        } else if (buttonMatrix.isButtonJustReleased(physicalIndex)) {
+            handleButtonBatch(stepButtonInputs.onReleased(step, now));
+        } else if (buttonMatrix.isButtonHolding(physicalIndex)) {
+            handleButtonBatch(stepButtonInputs.update(step, now));
         }
     }
 

@@ -1,6 +1,6 @@
 # Этап 8. Интеграция матрицы кнопок
 
-Статус: запланировано.
+Статус: выполнено 2026-09-12; аппаратная проверка ожидается.
 
 ## Задача для агента
 
@@ -132,6 +132,47 @@ just pressed. Оно выполняется только после `Clicked`, �
 
 ## Передача результата
 
-Зафиксировать добавленные запросы ButtonMatrix, long-press threshold, расположение
-16 адаптеров, расширения InputId/AppEvent и результаты автоматических/аппаратных
-проверок. Этап 9 использует точное событие `OpenStepSettings`.
+### Реализованный путь события
+
+`ButtonMatrix` сохранил прежние сканирование, debounce и нумерацию кнопок. К его
+публичному API добавлены координатные и линейные запросы `isButtonJustPressed`,
+`isButtonHolding`, `isButtonJustReleased`, `isButtonReleased`. Старый
+`isButtonPressed` остался совместимым именем для `isButtonJustPressed`.
+Физическая раскладка `0, 1, 8, 9, 2, 3, 10, 11, 4, 5, 12, 13, 6, 7, 14, 15`
+вынесена без изменений в `src/input/pad_button_ids.h`.
+
+`StepButtonInputs` в `src/input/step_button_inputs.h` заранее хранит 16 отдельных
+`ButtonInputAdapter<InputId>` в `std::array`; порог каждого — 500 мс. Методы
+`onPressed(step, now)`, `update(step, now)` и `onReleased(step, now)` возвращают
+фиксированный batch и игнорируют номера вне диапазона. В `main.cpp` обход
+матрицы берёт `millis()` один раз за цикл, преобразует физический индекс в
+логический шаг, передаёт его соответствующему адаптеру и маршрутизирует каждое
+событие batch через `inputRouter`. `buttonMatrix.update()` вызывается после
+обхода. Прямого переключения шага по `just pressed` больше нет.
+
+`InputId::Step0`…`Step15` и события `ToggleStep{step}` / `OpenStepSettings{step}`
+добавлены только в app-level модель. `MainDisplayContext` выдаёт `ToggleStep`
+на `Clicked` и `OpenStepSettings` на `LongPressed`; `Pressed` и `Released` пока
+пропускает. `AppEventHandler` переключает допустимый шаг в секвенсоре, а запрос
+на открытие настроек сохраняет в одном `std::optional<uint8_t>`.
+`takeOpenStepSettingsRequest()` возвращает и очищает последний запрос. Пока его
+никто не читает: экран и новый контекст **не открываются** в этом этапе.
+Если до чтения придут несколько запросов, останется последний; этап 9 должен
+определить, когда потреблять запрос при переходе.
+
+### Проверки и границы
+
+- `make format` и `make verify` прошли: проверка стиля, `clang-tidy`, все 102
+  native-теста и сборка прошивки `rpipico2`.
+- Native-тесты проверяют раскладку и все 16 ID, короткое и длинное нажатия
+  каждого шага, независимые таймеры двух кнопок, одновременные клики, поздний
+  release без промежуточного `update()` и невалидный номер шага.
+- На физическом устройстве одиночные, быстрые, длительные и одновременные
+  нажатия ещё не проверялись; прошивка была собрана, но не загружена.
+- Изоляция последующих фаз жеста после добавления нового контекста остаётся
+  задачей этапа 9 (`09-application-ui-coordination.md`).
+
+Изменены `lib/ButtonMatrix/src/button_matrix.h/.ipp`, `src/input/app_input.h`,
+`src/input/main_display_context.cpp`, `src/input/app_event_handler.h/.cpp`,
+`src/main.cpp`; добавлены `src/input/pad_button_ids.h`,
+`src/input/step_button_inputs.h` и native-тесты в `test/test_native/input/`.

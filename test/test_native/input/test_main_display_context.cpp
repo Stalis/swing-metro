@@ -18,6 +18,11 @@ auto makeEncoderInput(SwingMetro::InputId source, std::int8_t delta) -> SwingMet
     return SwingMetro::InputEvent{source, ContextInput::EncoderInput{delta}};
 }
 
+auto makeButtonInput(SwingMetro::InputId source, ContextInput::ButtonPhase phase)
+    -> SwingMetro::InputEvent {
+    return SwingMetro::InputEvent{source, ContextInput::ButtonInput{phase}};
+}
+
 void test_main_context_maps_tempo_encoder_with_signed_delta() {
     const SwingMetro::MainDisplayContext context;
 
@@ -86,6 +91,50 @@ void test_main_context_works_through_router() {
     TEST_ASSERT_EQUAL_INT8(-4, std::get<SwingMetro::AdjustVolume>(result.event()).delta);
 }
 
+void test_main_context_maps_all_step_clicks() {
+    const SwingMetro::MainDisplayContext context;
+
+    for (std::uint8_t step = 0; step < STEPS_COUNT; ++step) {
+        const auto result = context.handle(
+            makeButtonInput(SwingMetro::inputIdForStep(step), ContextInput::ButtonPhase::Clicked));
+
+        TEST_ASSERT_TRUE(result.hasEvent());
+        TEST_ASSERT_TRUE(std::holds_alternative<SwingMetro::ToggleStep>(result.event()));
+        TEST_ASSERT_EQUAL_UINT8(step, std::get<SwingMetro::ToggleStep>(result.event()).step);
+    }
+}
+
+void test_main_context_maps_all_step_long_presses() {
+    const SwingMetro::MainDisplayContext context;
+
+    for (std::uint8_t step = 0; step < STEPS_COUNT; ++step) {
+        const auto result = context.handle(makeButtonInput(SwingMetro::inputIdForStep(step),
+                                                           ContextInput::ButtonPhase::LongPressed));
+
+        TEST_ASSERT_TRUE(result.hasEvent());
+        TEST_ASSERT_TRUE(std::holds_alternative<SwingMetro::OpenStepSettings>(result.event()));
+        TEST_ASSERT_EQUAL_UINT8(step, std::get<SwingMetro::OpenStepSettings>(result.event()).step);
+    }
+}
+
+void test_main_context_passes_step_edges_and_unknown_button_sources() {
+    const SwingMetro::MainDisplayContext context;
+    const auto step = SwingMetro::InputId::Step5;
+    const auto unknown = static_cast<SwingMetro::InputId>(0xFF);
+
+    TEST_ASSERT_FALSE(
+        context.handle(makeButtonInput(step, ContextInput::ButtonPhase::Pressed)).hasEvent());
+    TEST_ASSERT_FALSE(
+        context.handle(makeButtonInput(step, ContextInput::ButtonPhase::Released)).hasEvent());
+    TEST_ASSERT_FALSE(context
+                          .handle(makeButtonInput(SwingMetro::InputId::TempoEncoder,
+                                                  ContextInput::ButtonPhase::Clicked))
+                          .hasEvent());
+    TEST_ASSERT_FALSE(
+        context.handle(makeButtonInput(unknown, ContextInput::ButtonPhase::Clicked)).hasEvent());
+    TEST_ASSERT_FALSE(context.handle(makeEncoderInput(step, 1)).hasEvent());
+}
+
 } // namespace
 
 void test_main_display_context_main() {
@@ -95,4 +144,7 @@ void test_main_display_context_main() {
     RUN_TEST(test_main_context_passes_non_encoder_payload);
     RUN_TEST(test_main_context_passes_unknown_source);
     RUN_TEST(test_main_context_works_through_router);
+    RUN_TEST(test_main_context_maps_all_step_clicks);
+    RUN_TEST(test_main_context_maps_all_step_long_presses);
+    RUN_TEST(test_main_context_passes_step_edges_and_unknown_button_sources);
 }

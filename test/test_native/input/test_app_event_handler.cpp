@@ -108,6 +108,32 @@ void test_app_handler_preserves_counter_clamps() {
     TEST_ASSERT_EQUAL_UINT8(40, state.sequencer.getBpm());
 }
 
+void test_app_handler_toggles_valid_step_only() {
+    TestState state;
+
+    state.handler.handle(SwingMetro::AppEvent{SwingMetro::ToggleStep{5}});
+    TEST_ASSERT_TRUE(state.sequencer.getStepsEnabled().test(5));
+
+    state.handler.handle(SwingMetro::AppEvent{SwingMetro::ToggleStep{5}});
+    TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().test(5));
+
+    state.handler.handle(SwingMetro::AppEvent{SwingMetro::ToggleStep{STEPS_COUNT}});
+    TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().any());
+}
+
+void test_app_handler_records_only_valid_open_step_request() {
+    TestState state;
+
+    state.handler.handle(SwingMetro::AppEvent{SwingMetro::OpenStepSettings{8}});
+    state.handler.handle(SwingMetro::AppEvent{SwingMetro::OpenStepSettings{STEPS_COUNT}});
+
+    const auto request = state.handler.takeOpenStepSettingsRequest();
+    TEST_ASSERT_TRUE(request.has_value());
+    TEST_ASSERT_EQUAL_UINT8(8, *request);
+    TEST_ASSERT_FALSE(state.handler.takeOpenStepSettingsRequest().has_value());
+    TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().any());
+}
+
 } // namespace
 
 void test_app_event_handler_main() {
@@ -116,4 +142,6 @@ void test_app_event_handler_main() {
     RUN_TEST(test_app_handler_changes_only_volume);
     RUN_TEST(test_app_handler_ignores_zero_delta);
     RUN_TEST(test_app_handler_preserves_counter_clamps);
+    RUN_TEST(test_app_handler_toggles_valid_step_only);
+    RUN_TEST(test_app_handler_records_only_valid_open_step_request);
 }

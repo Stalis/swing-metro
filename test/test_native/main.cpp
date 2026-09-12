@@ -9,6 +9,7 @@
 #include "../test/test_native/input/test_app_event_handler.h"
 #include "../test/test_native/input/test_encoder_integration.h"
 #include "../test/test_native/input/test_main_display_context.h"
+#include "../test/test_native/input/test_step_button_integration.h"
 #include "../test/test_native/utils/counter/test_counter.h"
 #include "../test/test_native/utils/round_buffer/test_round_buffer.h"
 #include <unity.h>
@@ -37,6 +38,7 @@ int main() {
     test_main_display_context_main();
     test_app_event_handler_main();
     test_encoder_integration_main();
+    test_step_button_integration_main();
 
     UNITY_END();
 }

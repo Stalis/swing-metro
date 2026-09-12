@@ -16,7 +16,7 @@ struct DefaultButtonIds {
 };
 
 template <int INPUT_PINS, int OUTPUT_PINS,
-          typename ButtonIds = DefaultButtonIds<INPUT_PINS, OUTPUT_PINS>>
+          typename TButtonIds = DefaultButtonIds<INPUT_PINS, OUTPUT_PINS>>
 class ButtonMatrix {
   public:
     using InputPins = std::array<uint8_t, INPUT_PINS>;
@@ -31,14 +31,23 @@ class ButtonMatrix {
     // Call readButtons(), consume events, then update() from the same context.
     void readButtons();
     void getButtonStates(ButtonStates& states) const;
+    [[nodiscard]] bool isButtonJustPressed(int input, int output) const;
+    [[nodiscard]] bool isButtonJustPressed(int number) const;
+    [[nodiscard]] bool isButtonHolding(int input, int output) const;
+    [[nodiscard]] bool isButtonHolding(int number) const;
+    [[nodiscard]] bool isButtonJustReleased(int input, int output) const;
+    [[nodiscard]] bool isButtonJustReleased(int number) const;
+    [[nodiscard]] bool isButtonReleased(int input, int output) const;
+    [[nodiscard]] bool isButtonReleased(int number) const;
+    // Compatibility alias for isButtonJustPressed().
     [[nodiscard]] bool isButtonPressed(int input, int output) const;
     [[nodiscard]] bool isButtonPressed(int number) const;
-    // ButtonIds::values maps physical indices to application IDs.
+    // TButtonIds::values maps physical indices to application IDs.
     [[nodiscard]] constexpr uint8_t getButtonId(int input, int output) const {
-        return ButtonIds::values[input * OUTPUT_PINS + output];
+        return TButtonIds::values[input * OUTPUT_PINS + output];
     }
     [[nodiscard]] constexpr uint8_t getButtonId(int number) const {
-        return ButtonIds::values[number];
+        return TButtonIds::values[number];
     }
 
     [[nodiscard]] constexpr size_t getInputCount() const { return INPUT_PINS; }
