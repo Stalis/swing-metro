@@ -16,6 +16,7 @@
 #include <array>
 #include <cstddef>
 #include <tuple>
+#include <variant>
 
 #include "engine/sequencer.h"
 #include <Adafruit_TinyUSB.h>
@@ -120,9 +121,39 @@ void handleEncoderDirection(const TAdapter& adapter, EncoderDirection direction)
     }
 }
 
+void logStepButtonInput(const SwingMetro::InputEvent& input) {
+    const auto step = SwingMetro::stepIndexFromInputId(input.source);
+    const auto* button = std::get_if<ContextInput::ButtonInput>(&input.payload);
+    if (!step.has_value() || button == nullptr) {
+        return;
+    }
+
+    const char* phase = nullptr;
+    switch (button->phase) {
+    case ContextInput::ButtonPhase::Pressed:
+        phase = "Pressed";
+        break;
+    case ContextInput::ButtonPhase::Clicked:
+        phase = "Clicked";
+        break;
+    case ContextInput::ButtonPhase::LongPressed:
+        phase = "LongPressed";
+        break;
+    case ContextInput::ButtonPhase::Released:
+        phase = "Released";
+        break;
+    }
+
+    if (phase != nullptr) {
+        Serial.printf("[Step button] step=%u phase=%s\n", static_cast<unsigned>(*step), phase);
+    }
+}
+
 void handleButtonBatch(const SwingMetro::StepButtonInputs::Batch& batch) {
     for (std::size_t index = 0; index < batch.size(); ++index) {
-        const auto result = inputRouter.dispatch(batch[index]);
+        const auto& input = batch[index];
+        logStepButtonInput(input);
+        const auto result = inputRouter.dispatch(input);
         if (result.hasEvent()) {
             appEventHandler.handle(result.event());
         }

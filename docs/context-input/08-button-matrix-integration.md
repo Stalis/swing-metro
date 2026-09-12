@@ -172,6 +172,16 @@ just pressed. Оно выполняется только после `Clicked`, �
 - Изоляция последующих фаз жеста после добавления нового контекста остаётся
   задачей этапа 9 (`09-application-ui-coordination.md`).
 
+### Диагностика на устройстве
+
+После загрузки прошивки откройте последовательный порт на 115200 бод. Каждое
+событие кнопки матрицы выводится перед маршрутизацией в виде
+`[Step button] step=5 phase=LongPressed`. Номер `step` — логический индекс
+0–15, а не физическая позиция в матрице. Для короткого нажатия ожидается
+`Pressed -> Clicked -> Released`, для удержания от 500 мс —
+`Pressed -> LongPressed -> Released`. `LongPressed` выводится один раз.
+Этот вывод не открывает экран настроек и не меняет смысловую обработку события.
+
 Изменены `lib/ButtonMatrix/src/button_matrix.h/.ipp`, `src/input/app_input.h`,
 `src/input/main_display_context.cpp`, `src/input/app_event_handler.h/.cpp`,
 `src/main.cpp`; добавлены `src/input/pad_button_ids.h`,
