@@ -9,6 +9,9 @@
 #include "components/main_display.h"
 #include "components/ui_view_model.h"
 #include "drivers/lvgl_ui.h"
+#include "drivers/usb_midi_adapter.h"
+#include "engine/midi_clock_transmitter.h"
+#include "engine/midi_step_boundary.h"
 #include "input/app_event_handler.h"
 #include "input/app_input.h"
 #include "input/app_input_coordinator.h"
@@ -18,17 +21,20 @@
 #include <array>
 #include <cstddef>
 #include <tuple>
-#include <variant>
 
 #include "engine/sequencer.h"
 #include <Adafruit_TinyUSB.h>
 #include <utils/counter.h>
 
-constexpr int SERIAL_BAUD_RATE = 115200;
-
 Adafruit_USBD_MIDI usbMidi;
+SwingMetro::UsbMidiRealTimeSink midiClockSink{usbMidi};
+SwingMetro::UsbMidiRealtimeReceiver midiClockReceiver{usbMidi};
 
 Sequencer mainSequencer;
+SwingMetro::MidiClockSettings midiClockSettings;
+SwingMetro::MidiClockTransmitter midiClockTransmitter;
+SwingMetro::ExternalMidiClock externalMidiClock;
+SwingMetro::MidiClockMode previousMidiClockMode = SwingMetro::MidiClockMode::Off;
 
 // Room for global controls, the base screen, settings, and temporary overlays.
 constexpr std::size_t INPUT_CONTEXT_CAPACITY = 8;
@@ -66,13 +72,11 @@ Counter<uint8_t> tempoCounter({.step = 1,
                                .overflowBehavior = CounterOverflowBehavior::Clamp});
 
 void swingEncoderHandler(EncoderDirection direction);
-void swingEncoderSwitchHandler();
 constexpr EncoderSettings swingEncoderSettings{
     .pinA = 19,
     .pinB = 20,
     .pinSwitch = 21,
     .handler = swingEncoderHandler,
-    .switchHandler = swingEncoderSwitchHandler,
 };
 Encoder swingEncoder(swingEncoderSettings);
 Counter<uint8_t> swingCounter({.step = 1,
@@ -105,8 +109,8 @@ SwingMetro::AppEventHandler appEventHandler{{
     .volume = volumeCounter,
     .sequencer = mainSequencer,
 }};
-SwingMetro::AppInputCoordinator<INPUT_CONTEXT_CAPACITY> appInputCoordinator{appEventHandler,
-                                                                            mainSequencer};
+SwingMetro::AppInputCoordinator<INPUT_CONTEXT_CAPACITY> appInputCoordinator{
+    appEventHandler, mainSequencer, midiClockSettings};
 ContextInput::ButtonInputAdapter<SwingMetro::InputId> tempoSwitchInput{{
     SwingMetro::InputId::TempoSwitch,
     500,
@@ -128,38 +132,9 @@ void handleEncoderDirection(const TAdapter& adapter, EncoderDirection direction)
     appInputCoordinator.dispatch(*input, micros());
 }
 
-void logStepButtonInput(const SwingMetro::InputEvent& input) {
-    const auto step = SwingMetro::stepIndexFromInputId(input.source);
-    const auto* button = std::get_if<ContextInput::ButtonInput>(&input.payload);
-    if (!step.has_value() || button == nullptr) {
-        return;
-    }
-
-    const char* phase = nullptr;
-    switch (button->phase) {
-    case ContextInput::ButtonPhase::Pressed:
-        phase = "Pressed";
-        break;
-    case ContextInput::ButtonPhase::Clicked:
-        phase = "Clicked";
-        break;
-    case ContextInput::ButtonPhase::LongPressed:
-        phase = "LongPressed";
-        break;
-    case ContextInput::ButtonPhase::Released:
-        phase = "Released";
-        break;
-    }
-
-    if (phase != nullptr) {
-        Serial.printf("[Step button] step=%u phase=%s\n", static_cast<unsigned>(*step), phase);
-    }
-}
-
 void handleButtonBatch(const SwingMetro::StepButtonInputs::Batch& batch) {
     for (std::size_t index = 0; index < batch.size(); ++index) {
         const auto& input = batch[index];
-        logStepButtonInput(input);
         appInputCoordinator.dispatch(input, micros());
     }
 }
@@ -181,8 +156,6 @@ void tempoEncoderSwitchHandler() { handleButtonBatch(tempoSwitchInput.onPressed(
 void tempoEncoderSwitchReleaseHandler() {
     handleButtonBatch(tempoSwitchInput.onReleased(millis()));
 }
-
-void swingEncoderSwitchHandler() { Serial.println("[Swing encoder] Pressed"); }
 
 void volumeEncoderSwitchHandler() {
     const auto input = shiftSwitchInput.set(true);
@@ -212,7 +185,7 @@ void midiSendNoteOn(uint8_t note, uint8_t velocity) {
 
 void midiSendNoteOff(uint8_t note) {
     const uint8_t packet[4] = {
-        0x08, // MIDI command: Note on
+        0x08, // MIDI command: Note off
         static_cast<uint8_t>(MIDI_CHANNEL_1 | 0x80),
         note,
         0,
@@ -221,8 +194,6 @@ void midiSendNoteOff(uint8_t note) {
 }
 
 void setup() {
-
-    Serial.begin(SERIAL_BAUD_RATE);
 
     // USB setup
     if (!TinyUSBDevice.isInitialized()) {
@@ -253,14 +224,8 @@ void setup() {
     // display_setup();
 }
 
-uint8_t volume_last_value = volumeCounter.getValue();
-uint8_t swing_last_value = swingCounter.getValue();
-uint8_t tempo_last_value = tempoCounter.getValue();
-
 bool note_sent = false;
 uint8_t last_note_sent = 0;
-bool last_transport_running = true;
-bool last_shift_active = false;
 
 void loop() {
     buttonMatrix.readButtons();
@@ -282,62 +247,35 @@ void loop() {
     std::apply([](auto&... objects) { (objects.update(), ...); }, updatables);
     handleButtonBatch(tempoSwitchInput.update(millis()));
 
-    if (mainSequencer.isRunning() != last_transport_running) {
-        last_transport_running = mainSequencer.isRunning();
-        Serial.printf("[Transport] %s\n", last_transport_running ? "Start" : "Stop");
-        if (!last_transport_running && note_sent) {
-            midiSendNoteOff(last_note_sent);
-            note_sent = false;
-        }
+    const auto nowUs = micros();
+    const auto midiClockMode = midiClockSettings.mode();
+    if (midiClockMode != previousMidiClockMode) {
+        externalMidiClock.reset();
+        previousMidiClockMode = midiClockMode;
+    }
+    if (midiClockMode == SwingMetro::MidiClockMode::External) {
+        const auto processExternal = [&](const SwingMetro::ExternalMidiClockResult& result) {
+            SwingMetro::processExternalMidiClock(mainSequencer, result, note_sent, last_note_sent,
+                                                 midiSendNoteOff, midiSendNoteOn);
+        };
+        midiClockReceiver.poll([&](const SwingMetro::MidiRealtimeEvent& event) {
+            processExternal(externalMidiClock.handle(event));
+        });
+        processExternal(externalMidiClock.update(nowUs));
+        (void)midiClockTransmitter.transition(nowUs, mainSequencer.getBpm(), midiClockMode,
+                                              mainSequencer.isRunning(), midiClockSink);
+    } else {
+        (void)SwingMetro::processMidiStepBoundary(mainSequencer, nowUs, midiClockMode,
+                                                  midiClockTransmitter, midiClockSink, note_sent,
+                                                  last_note_sent, midiSendNoteOff, midiSendNoteOn);
     }
 
-    if (appInputCoordinator.isShiftActive() != last_shift_active) {
-        last_shift_active = appInputCoordinator.isShiftActive();
-        Serial.printf("[Shift] %s\n", last_shift_active ? "Active" : "Inactive");
-    }
-
-    if (volumeCounter.getValue() != volume_last_value) {
-        Serial.print("[Volume encoder] Value changed: ");
-        Serial.println(volumeCounter.getValue());
-        volume_last_value = volumeCounter.getValue();
-    }
-
-    if (swingCounter.getValue() != swing_last_value) {
-        Serial.print("[Swing encoder] Value changed: ");
-        Serial.println(swingCounter.getValue());
-        swing_last_value = swingCounter.getValue();
-    }
-
-    if (tempoCounter.getValue() != tempo_last_value) {
-        Serial.print("[Tempo encoder] Value changed: ");
-        Serial.println(tempoCounter.getValue());
-        tempo_last_value = tempoCounter.getValue();
-    }
-
-    if (mainSequencer.update(micros())) {
-        if (note_sent) {
-            midiSendNoteOff(last_note_sent);
-            note_sent = false;
-        }
-        Serial.printf("step=%u enabled=%u t=%lu\n", mainSequencer.getCurrentStepIndex(),
-                      static_cast<int>(mainSequencer.isCurrentStepEnabled()), micros());
-
-        if (mainSequencer.isCurrentStepEnabled()) {
-            auto note = mainSequencer.currentStepMidiNote();
-
-            last_note_sent = note;
-            note_sent = true;
-            midiSendNoteOn(note, mainSequencer.currentStepVelocity());
-        }
-    }
-
-    uiViewModel.publish(appInputCoordinator.decorateUiSettings({
-        tempoCounter.getValue(),
-        swingCounter.getValue(),
-        volumeCounter.getValue(),
-        mainSequencer.getDisplayStepIndex().value_or(UINT8_MAX),
-        mainSequencer.getStepsEnabled(),
-    }));
+    UiSettings settings{tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue(),
+                        mainSequencer.getDisplayStepIndex().value_or(UINT8_MAX),
+                        mainSequencer.getStepsEnabled()};
+    settings.externalClockStatus = externalMidiClock.status();
+    settings.externalTempo = externalMidiClock.bpm();
+    uiViewModel.publish(appInputCoordinator.decorateUiSettings(settings));
 }
 
 /*

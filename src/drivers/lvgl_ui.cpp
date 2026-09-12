@@ -54,6 +54,7 @@ void LVGL_Ui::setup() {
 
     initMainScreen();
     initStepSettingsScreen();
+    initMidiClockModal();
     lv_screen_load(_mainScreen);
 }
 
@@ -92,6 +93,9 @@ void LVGL_Ui::readViewModel(const UiViewModel& viewModel) {
         _currentPage = values.page;
         lv_screen_load(_currentPage == UiPage::StepSettings ? _stepSettingsScreen : _mainScreen);
     }
+
+    setMidiClockModal(values.midiClockModalOpen, values.midiClockActive, values.midiClockPreview);
+    setExternalClock(values.externalClockStatus, values.externalTempo);
 }
 
 void LVGL_Ui::setTempo(uint8_t value) { lv_subject_set_int(&_tempoSubject, value); }
@@ -133,10 +137,31 @@ void LVGL_Ui::initMainScreen() {
     lv_obj_set_style_text_color(volumeLabel, lv_color_hex(0x0000FF), 0);
     lv_label_bind_text(volumeLabel, &_volumeSubject, "Volume: %d");
 
+    _externalClockLabel = lv_label_create(_mainScreen);
+    lv_obj_set_pos(_externalClockLabel, 10, 70);
+    lv_obj_set_style_text_color(_externalClockLabel, lv_color_hex(0x00FFFF), 0);
+    lv_label_set_text(_externalClockLabel, "Clock: Waiting");
+
     lv_obj_add_event_cb(_mainScreen, onMainScreenLoaded, LV_EVENT_SCREEN_LOADED, this);
 
     // lv_subject_add_observer_obj(&_sequencerStepsSubject, onStepsChanged, volumeLabel, this);
     lv_subject_add_observer(&_sequencerStepsSubject, onStepsChanged, this);
+}
+
+void LVGL_Ui::setExternalClock(SwingMetro::ExternalMidiClockStatus status, uint8_t tempo) {
+    if (status == _displayedExternalClockStatus && tempo == _displayedExternalTempo) {
+        return;
+    }
+    _displayedExternalClockStatus = status;
+    _displayedExternalTempo = tempo;
+    static constexpr const char* names[] = {"Waiting", "Locked", "Lost"};
+    if (tempo == 0) {
+        lv_label_set_text_fmt(_externalClockLabel, "Clock: %s",
+                              names[static_cast<uint8_t>(status)]);
+    } else {
+        lv_label_set_text_fmt(_externalClockLabel, "Clock: %s %u BPM",
+                              names[static_cast<uint8_t>(status)], static_cast<unsigned>(tempo));
+    }
 }
 
 void LVGL_Ui::initStepSettingsScreen() {
@@ -159,6 +184,69 @@ void LVGL_Ui::initStepSettingsScreen() {
     lv_obj_set_pos(_selectedVelocityLabel, 10, velocityLabelY);
     lv_obj_set_style_text_color(_selectedVelocityLabel, lv_color_white(), 0);
     lv_label_set_text(_selectedVelocityLabel, "Velocity: 127");
+}
+
+void LVGL_Ui::initMidiClockModal() {
+    _midiClockModal = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(_midiClockModal, 112, 132);
+    lv_obj_align(_midiClockModal, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(_midiClockModal, lv_color_hex(0x101010), 0);
+    lv_obj_set_style_bg_opa(_midiClockModal, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(_midiClockModal, lv_color_hex(0xF88C00), 0);
+    lv_obj_set_style_border_width(_midiClockModal, 2, 0);
+    lv_obj_set_style_pad_all(_midiClockModal, 6, 0);
+    lv_obj_remove_flag(_midiClockModal, LV_OBJ_FLAG_SCROLLABLE);
+
+    auto* title = lv_label_create(_midiClockModal);
+    lv_label_set_text(title, "MIDI Clock");
+    lv_obj_set_style_text_color(title, lv_color_hex(0xF88C00), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
+
+    _midiClockActiveLabel = lv_label_create(_midiClockModal);
+    lv_obj_align(_midiClockActiveLabel, LV_ALIGN_TOP_MID, 0, 20);
+
+    static constexpr const char* modeNames[] = {"Off", "Internal", "External"};
+    for (uint8_t index = 0; index < _midiClockModeLabels.size(); ++index) {
+        auto* label = lv_label_create(_midiClockModal);
+        _midiClockModeLabels[index] = label;
+        lv_label_set_text(label, modeNames[index]);
+        lv_obj_set_width(label, 92);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(label, LV_ALIGN_TOP_MID, 0, static_cast<int16_t>(42 + index * 24));
+    }
+    lv_obj_add_flag(_midiClockModal, LV_OBJ_FLAG_HIDDEN);
+}
+
+void LVGL_Ui::setMidiClockModal(bool open, SwingMetro::MidiClockMode active,
+                                SwingMetro::MidiClockMode preview) {
+    const bool visibilityChanged = open != _midiClockModalVisible;
+    if (visibilityChanged) {
+        _midiClockModalVisible = open;
+        if (open) {
+            lv_obj_remove_flag(_midiClockModal, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(_midiClockModal, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    if (!open || (!visibilityChanged && active == _displayedMidiClockActive &&
+                  preview == _displayedMidiClockPreview)) {
+        return;
+    }
+
+    static constexpr const char* modeNames[] = {"Off", "Internal", "External"};
+    _displayedMidiClockActive = active;
+    _displayedMidiClockPreview = preview;
+    lv_label_set_text_fmt(_midiClockActiveLabel, "Active: %s",
+                          modeNames[static_cast<uint8_t>(active)]);
+    for (uint8_t index = 0; index < _midiClockModeLabels.size(); ++index) {
+        const bool selected = index == static_cast<uint8_t>(preview);
+        lv_obj_set_style_text_color(_midiClockModeLabels[index],
+                                    selected ? lv_color_hex(0xFFFF00) : lv_color_white(), 0);
+        lv_obj_set_style_bg_color(_midiClockModeLabels[index],
+                                  selected ? lv_color_hex(0x404000) : lv_color_black(), 0);
+        lv_obj_set_style_bg_opa(_midiClockModeLabels[index],
+                                selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    }
 }
 
 void LVGL_Ui::drawSequencerSteps() {

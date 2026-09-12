@@ -56,12 +56,26 @@ class LVGL_Ui {
     uint8_t _displayedStep = UINT8_MAX;
     uint8_t _displayedNote = UINT8_MAX;
     uint8_t _displayedVelocity = UINT8_MAX;
+    lv_obj_t* _midiClockModal;
+    lv_obj_t* _midiClockActiveLabel;
+    std::array<lv_obj_t*, 3> _midiClockModeLabels{};
+    bool _midiClockModalVisible = false;
+    SwingMetro::MidiClockMode _displayedMidiClockActive = SwingMetro::MidiClockMode::Off;
+    SwingMetro::MidiClockMode _displayedMidiClockPreview = SwingMetro::MidiClockMode::Off;
+    lv_obj_t* _externalClockLabel;
+    SwingMetro::ExternalMidiClockStatus _displayedExternalClockStatus =
+        SwingMetro::ExternalMidiClockStatus::Waiting;
+    uint8_t _displayedExternalTempo = UINT8_MAX;
 
     // Main screen
     std::array<lv_obj_t*, SEQUENCER_STEPS_COUNT> _stepSquares{};
 
     void initMainScreen();
     void initStepSettingsScreen();
+    void initMidiClockModal();
+    void setMidiClockModal(bool open, SwingMetro::MidiClockMode active,
+                           SwingMetro::MidiClockMode preview);
+    void setExternalClock(SwingMetro::ExternalMidiClockStatus status, uint8_t tempo);
     void drawSequencerSteps();
     void drawSequencerSteps(uint32_t rawValue);
 

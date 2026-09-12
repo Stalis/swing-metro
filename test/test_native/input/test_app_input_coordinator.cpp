@@ -1,6 +1,7 @@
 #include "test_app_input_coordinator.h"
 
 #include "components/ui_view_model.h"
+#include "engine/midi_clock_mode.h"
 #include "input/app_input_coordinator.h"
 #include "input/step_button_inputs.h"
 
@@ -32,8 +33,9 @@ struct State {
                                   .maxValue = 100,
                                   .overflowBehavior = CounterOverflowBehavior::Clamp}};
     Sequencer sequencer;
+    SwingMetro::MidiClockSettings midiClock;
     SwingMetro::AppEventHandler handler{{tempo, swing, volume, sequencer}};
-    SwingMetro::AppInputCoordinator<Capacity> coordinator{handler, sequencer};
+    SwingMetro::AppInputCoordinator<Capacity> coordinator{handler, sequencer, midiClock};
     SwingMetro::StepButtonInputs buttons;
     ContextInput::ButtonInputAdapter<SwingMetro::InputId> tempoSwitch{{
         SwingMetro::InputId::TempoSwitch,
@@ -80,6 +82,19 @@ auto setShift(State<Capacity>& state, bool active) -> void {
     const auto input = state.shift.set(active);
     TEST_ASSERT_TRUE(input.has_value());
     state.coordinator.dispatch(*input, 1000);
+}
+
+template <std::size_t Capacity>
+auto longPressTempo(State<Capacity>& state, std::uint32_t pressedAt) -> void {
+    routeBatch(state, state.tempoSwitch.onPressed(pressedAt));
+    routeBatch(state, state.tempoSwitch.update(pressedAt + 500));
+    routeBatch(state, state.tempoSwitch.onReleased(pressedAt + 600));
+}
+
+template <std::size_t Capacity>
+auto clickTempo(State<Capacity>& state, std::uint32_t pressedAt) -> void {
+    routeBatch(state, state.tempoSwitch.onPressed(pressedAt));
+    routeBatch(state, state.tempoSwitch.onReleased(pressedAt + 100));
 }
 
 void test_open_switch_close_and_publish_ui() {
@@ -372,41 +387,106 @@ void test_shift_lifecycle_is_independent_of_navigation() {
     TEST_ASSERT_EQUAL_UINT32(2, state.coordinator.stackSize());
 }
 
-void test_tempo_switch_toggles_transport_on_press_in_all_contexts() {
+void test_tempo_switch_click_toggles_transport_once_and_long_press_does_not() {
     State state;
     state.sequencer.sync(0);
     TEST_ASSERT_TRUE(state.sequencer.isRunning());
 
-    routeBatch(state, state.tempoSwitch.onPressed(100));
+    TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.tempoSwitch.onPressed(100)));
+    TEST_ASSERT_TRUE(state.sequencer.isRunning());
+    TEST_ASSERT_EQUAL_UINT32(1, routeBatch(state, state.tempoSwitch.onReleased(200)));
     TEST_ASSERT_FALSE(state.sequencer.isRunning());
     TEST_ASSERT_FALSE(state.sequencer.update(1000000));
-    routeBatch(state, state.tempoSwitch.update(600));
-    routeBatch(state, state.tempoSwitch.onReleased(700));
-    TEST_ASSERT_FALSE(state.sequencer.isRunning());
 
-    longPress(state, 1, 1000);
-    setShift(state, true);
-    routeBatch(state, state.tempoSwitch.onPressed(2000));
-    TEST_ASSERT_TRUE(state.sequencer.isRunning());
-    TEST_ASSERT_FALSE(state.sequencer.update(1000));
-    TEST_ASSERT_TRUE(state.sequencer.update(126000));
-    TEST_ASSERT_EQUAL_UINT8(0, state.sequencer.getCurrentStepIndex());
-    routeBatch(state, state.tempoSwitch.onReleased(2100));
-    TEST_ASSERT_TRUE(state.sequencer.isRunning());
+    TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.tempoSwitch.onPressed(1000)));
+    TEST_ASSERT_EQUAL_UINT32(1, routeBatch(state, state.tempoSwitch.update(1500)));
+    TEST_ASSERT_TRUE(state.coordinator.isMidiClockModalOpen());
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+    TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.tempoSwitch.onReleased(1600)));
+    TEST_ASSERT_FALSE(state.sequencer.isRunning());
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::Off),
+                            static_cast<std::uint8_t>(state.midiClock.mode()));
 }
 
-void test_display_has_no_active_step_until_first_tick_after_restart() {
+void test_midi_clock_modal_clamps_confirms_and_publishes_snapshot() {
+    State state;
+    UiViewModel viewModel;
+    longPressTempo(state, 100);
+    TEST_ASSERT_TRUE(state.coordinator.isMidiClockModalOpen());
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::Off),
+                            static_cast<std::uint8_t>(state.coordinator.midiClockPreviewMode()));
+
+    turn(state, SwingMetro::InputId::TempoEncoder, -1);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::Off),
+                            static_cast<std::uint8_t>(state.coordinator.midiClockPreviewMode()));
+    turn(state, SwingMetro::InputId::TempoEncoder, 2);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
+                            static_cast<std::uint8_t>(state.coordinator.midiClockPreviewMode()));
+    turn(state, SwingMetro::InputId::TempoEncoder, 1);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
+                            static_cast<std::uint8_t>(state.coordinator.midiClockPreviewMode()));
+    TEST_ASSERT_EQUAL_UINT8(120, state.tempo.getValue());
+    TEST_ASSERT_FALSE(turn(state, SwingMetro::InputId::SwingEncoder, 1).has_value());
+    TEST_ASSERT_EQUAL_UINT8(50, state.swing.getValue());
+
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    const auto openUi = viewModel.read();
+    TEST_ASSERT_TRUE(openUi.midiClockModalOpen);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::Off),
+                            static_cast<std::uint8_t>(openUi.midiClockActive));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
+                            static_cast<std::uint8_t>(openUi.midiClockPreview));
+
+    clickTempo(state, 1000);
+    TEST_ASSERT_FALSE(state.coordinator.isMidiClockModalOpen());
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
+                            static_cast<std::uint8_t>(state.midiClock.mode()));
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    const auto closedUi = viewModel.read();
+    TEST_ASSERT_FALSE(closedUi.midiClockModalOpen);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
+                            static_cast<std::uint8_t>(closedUi.midiClockActive));
+}
+
+void test_midi_clock_modal_preserves_step_settings_and_restores_shift() {
+    State state;
+    longPress(state, 2, 100);
+    setShift(state, true);
+    TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
+    TEST_ASSERT_TRUE(state.coordinator.isShiftActive());
+    TEST_ASSERT_EQUAL_UINT32(4, state.coordinator.stackSize());
+
+    longPressTempo(state, 1000);
+    TEST_ASSERT_TRUE(state.coordinator.isMidiClockModalOpen());
+    TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
+    TEST_ASSERT_FALSE(state.coordinator.isShiftActive());
+    TEST_ASSERT_EQUAL_UINT32(4, state.coordinator.stackSize());
+    TEST_ASSERT_FALSE(turn(state, SwingMetro::InputId::SwingEncoder, -1).has_value());
+    TEST_ASSERT_EQUAL_UINT8(127, *state.sequencer.getStepVelocity(2));
+
+    clickTempo(state, 2000);
+    TEST_ASSERT_FALSE(state.coordinator.isMidiClockModalOpen());
+    TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
+    TEST_ASSERT_TRUE(state.sequencer.isRunning());
+    TEST_ASSERT_TRUE(state.coordinator.isShiftActive());
+    TEST_ASSERT_EQUAL_UINT32(4, state.coordinator.stackSize());
+}
+
+void test_restart_runs_first_step_immediately_and_keeps_sixteenth_grid() {
     State state;
     UiViewModel viewModel;
     state.sequencer.sync(0);
     TEST_ASSERT_FALSE(state.sequencer.getDisplayStepIndex().has_value());
-    TEST_ASSERT_TRUE(state.sequencer.update(125000));
+    TEST_ASSERT_TRUE(state.sequencer.update(0));
     TEST_ASSERT_EQUAL_UINT8(0, *state.sequencer.getDisplayStepIndex());
+    TEST_ASSERT_FALSE(state.sequencer.update(124999));
+    TEST_ASSERT_TRUE(state.sequencer.update(125000));
+    TEST_ASSERT_EQUAL_UINT8(1, *state.sequencer.getDisplayStepIndex());
 
     state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::ToggleTransport{}}, nullptr,
                                      200000);
     TEST_ASSERT_FALSE(state.sequencer.isRunning());
-    TEST_ASSERT_EQUAL_UINT8(0, *state.sequencer.getDisplayStepIndex());
+    TEST_ASSERT_EQUAL_UINT8(1, *state.sequencer.getDisplayStepIndex());
 
     state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::ToggleTransport{}}, nullptr,
                                      300000);
@@ -421,10 +501,11 @@ void test_display_has_no_active_step_until_first_tick_after_restart() {
          .activeNote = state.sequencer.getDisplayStepIndex().value_or(UINT8_MAX)}));
     TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, viewModel.read().activeNote);
 
-    TEST_ASSERT_FALSE(state.sequencer.update(424999));
-    TEST_ASSERT_FALSE(state.sequencer.getDisplayStepIndex().has_value());
-    TEST_ASSERT_TRUE(state.sequencer.update(425000));
+    TEST_ASSERT_TRUE(state.sequencer.update(300000));
     TEST_ASSERT_EQUAL_UINT8(0, *state.sequencer.getDisplayStepIndex());
+    TEST_ASSERT_FALSE(state.sequencer.update(424999));
+    TEST_ASSERT_TRUE(state.sequencer.update(425000));
+    TEST_ASSERT_EQUAL_UINT8(1, *state.sequencer.getDisplayStepIndex());
 }
 
 void test_note_clamps_and_invalid_index() {
@@ -510,6 +591,47 @@ void test_inactive_navigation_and_note_events_are_no_ops() {
     TEST_ASSERT_EQUAL_UINT8(127, *state.sequencer.getStepVelocity(0));
 }
 
+void test_apply_midi_clock_mode_changes_only_settings() {
+    State state;
+    const auto bpm = state.sequencer.getBpm();
+    const auto running = state.sequencer.isRunning();
+
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::Off),
+                            static_cast<std::uint8_t>(state.coordinator.midiClockMode()));
+
+    state.coordinator.handleAppEvent(
+        SwingMetro::AppEvent{SwingMetro::ApplyMidiClockMode{SwingMetro::MidiClockMode::Internal}},
+        nullptr, 1000);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::Internal),
+                            static_cast<std::uint8_t>(state.midiClock.mode()));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::Internal),
+                            static_cast<std::uint8_t>(state.coordinator.midiClockMode()));
+    TEST_ASSERT_EQUAL_UINT8(bpm, state.sequencer.getBpm());
+    TEST_ASSERT_EQUAL(running, state.sequencer.isRunning());
+
+    state.coordinator.handleAppEvent(
+        SwingMetro::AppEvent{SwingMetro::ApplyMidiClockMode{SwingMetro::MidiClockMode::External}},
+        nullptr, 1000);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
+                            static_cast<std::uint8_t>(state.midiClock.mode()));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
+                            static_cast<std::uint8_t>(state.coordinator.midiClockMode()));
+}
+
+void test_external_mode_ignores_local_tempo_and_transport() {
+    State state;
+    state.coordinator.handleAppEvent(
+        SwingMetro::AppEvent{SwingMetro::ApplyMidiClockMode{SwingMetro::MidiClockMode::External}},
+        nullptr, 1000);
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::AdjustTempo{5}}, nullptr,
+                                     1000);
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::ToggleTransport{}}, nullptr,
+                                     1000);
+    TEST_ASSERT_EQUAL_UINT8(120, state.tempo.getValue());
+    TEST_ASSERT_EQUAL_UINT8(120, state.sequencer.getBpm());
+    TEST_ASSERT_TRUE(state.sequencer.isRunning());
+}
+
 void test_repeated_fast_navigation_keeps_only_one_settings_context() {
     State state;
     for (std::uint8_t step = 0; step < STEPS_COUNT; ++step) {
@@ -545,11 +667,15 @@ void test_app_input_coordinator_main() {
     RUN_TEST(test_navigation_failure_preserves_main_page);
     RUN_TEST(test_gesture_capture_suppresses_remaining_phases_only_for_source);
     RUN_TEST(test_shift_lifecycle_is_independent_of_navigation);
-    RUN_TEST(test_tempo_switch_toggles_transport_on_press_in_all_contexts);
-    RUN_TEST(test_display_has_no_active_step_until_first_tick_after_restart);
+    RUN_TEST(test_tempo_switch_click_toggles_transport_once_and_long_press_does_not);
+    RUN_TEST(test_midi_clock_modal_clamps_confirms_and_publishes_snapshot);
+    RUN_TEST(test_midi_clock_modal_preserves_step_settings_and_restores_shift);
+    RUN_TEST(test_restart_runs_first_step_immediately_and_keeps_sixteenth_grid);
     RUN_TEST(test_note_clamps_and_invalid_index);
     RUN_TEST(test_velocity_clamps_and_current_step_uses_edited_value);
     RUN_TEST(test_unknown_input_and_mismatched_payload_do_not_change_app_state);
     RUN_TEST(test_inactive_navigation_and_note_events_are_no_ops);
+    RUN_TEST(test_apply_midi_clock_mode_changes_only_settings);
+    RUN_TEST(test_external_mode_ignores_local_tempo_and_transport);
     RUN_TEST(test_repeated_fast_navigation_keeps_only_one_settings_context);
 }

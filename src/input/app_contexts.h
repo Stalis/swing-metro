@@ -16,8 +16,14 @@ class GlobalContext {
 
         if (input.source == InputId::TempoSwitch) {
             const auto* button = std::get_if<ContextInput::ButtonInput>(&input.payload);
-            if (button != nullptr && button->phase == ContextInput::ButtonPhase::Pressed) {
-                return Result::emit(AppEvent{ToggleTransport{}});
+            if (button != nullptr) {
+                if (button->phase == ContextInput::ButtonPhase::LongPressed) {
+                    return Result::emit(AppEvent{OpenMidiClockSettings{}});
+                }
+                if (button->phase == ContextInput::ButtonPhase::Clicked) {
+                    return Result::emit(AppEvent{ToggleTransport{}});
+                }
+                return Result::consume();
             }
         }
 
@@ -30,6 +36,28 @@ class GlobalContext {
         }
 
         return Result::pass();
+    }
+};
+
+class MidiClockSettingsContext {
+  public:
+    [[nodiscard]] auto handle(const InputEvent& input) const
+        -> ContextInput::DispatchResult<AppEvent> {
+        using Result = ContextInput::DispatchResult<AppEvent>;
+
+        if (input.source == InputId::TempoEncoder) {
+            if (const auto* encoder = std::get_if<ContextInput::EncoderInput>(&input.payload)) {
+                return Result::emit(AppEvent{AdjustMidiClockPreview{encoder->delta}});
+            }
+        }
+        if (input.source == InputId::TempoSwitch) {
+            if (const auto* button = std::get_if<ContextInput::ButtonInput>(&input.payload)) {
+                if (button->phase == ContextInput::ButtonPhase::Clicked) {
+                    return Result::emit(AppEvent{ConfirmMidiClockSettings{}});
+                }
+            }
+        }
+        return Result::consume();
     }
 };
 

@@ -67,6 +67,10 @@ class Sequencer {
 
     void sync(uint32_t micros);
     bool update(uint32_t micros);
+    void externalStart();
+    void externalContinue();
+    void externalStop();
+    bool advanceExternal();
 
     bool isCurrentStepEnabled() const;
     uint8_t currentStepMidiNote() const;

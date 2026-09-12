@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/midi_clock_mode.h"
 #include "engine/sequencer.h"
 
 #include <context_input.h>
@@ -86,10 +87,19 @@ struct AdjustVelocity {
 struct ToggleTransport {};
 struct ActivateShift {};
 struct DeactivateShift {};
+struct OpenMidiClockSettings {};
+struct AdjustMidiClockPreview {
+    std::int8_t delta;
+};
+struct ConfirmMidiClockSettings {};
+struct ApplyMidiClockMode {
+    MidiClockMode mode;
+};
 
 using InputEvent = ContextInput::InputEvent<InputId>;
 using AppEvent = std::variant<AdjustTempo, AdjustSwing, AdjustVolume, ToggleStep, OpenStepSettings,
                               CloseStepSettings, AdjustNote, AdjustVelocity, ToggleTransport,
-                              ActivateShift, DeactivateShift>;
+                              ActivateShift, DeactivateShift, OpenMidiClockSettings,
+                              AdjustMidiClockPreview, ConfirmMidiClockSettings, ApplyMidiClockMode>;
 
 } // namespace SwingMetro

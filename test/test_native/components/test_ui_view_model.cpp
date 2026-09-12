@@ -170,6 +170,36 @@ void test_ui_view_model_publishes_velocity_only_change() {
     TEST_ASSERT_EQUAL_UINT8(126, viewModel.read().selectedVelocity);
 }
 
+void test_ui_view_model_publishes_midi_clock_modal_snapshot() {
+    UiViewModel viewModel;
+    UiSettings settings{.tempo = 120, .swing = 50, .volume = 100, .activeNote = UINT8_MAX};
+    viewModel.publish(settings);
+    settings.midiClockModalOpen = true;
+    settings.midiClockActive = SwingMetro::MidiClockMode::Internal;
+    settings.midiClockPreview = SwingMetro::MidiClockMode::External;
+    viewModel.publish(settings);
+
+    const auto snapshot = viewModel.read();
+    TEST_ASSERT_TRUE(snapshot.midiClockModalOpen);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::MidiClockMode::Internal),
+                            static_cast<uint8_t>(snapshot.midiClockActive));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::MidiClockMode::External),
+                            static_cast<uint8_t>(snapshot.midiClockPreview));
+}
+
+void test_ui_view_model_publishes_external_clock_snapshot() {
+    UiViewModel viewModel;
+    UiSettings settings{.tempo = 120, .swing = 50, .volume = 100, .activeNote = UINT8_MAX};
+    settings.externalClockStatus = SwingMetro::ExternalMidiClockStatus::Locked;
+    settings.externalTempo = 123;
+    viewModel.publish(settings);
+
+    const auto snapshot = viewModel.read();
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ExternalMidiClockStatus::Locked),
+                            static_cast<uint8_t>(snapshot.externalClockStatus));
+    TEST_ASSERT_EQUAL_UINT8(123, snapshot.externalTempo);
+}
+
 void test_ui_view_model_main() {
     RUN_TEST(test_ui_view_model_returns_published_snapshot);
     RUN_TEST(test_ui_view_model_replaces_the_whole_snapshot);
@@ -178,4 +208,6 @@ void test_ui_view_model_main() {
     RUN_TEST(test_ui_view_model_keeps_navigation_fields_together);
     RUN_TEST(test_ui_view_model_reads_complete_concurrent_snapshots);
     RUN_TEST(test_ui_view_model_publishes_velocity_only_change);
+    RUN_TEST(test_ui_view_model_publishes_midi_clock_modal_snapshot);
+    RUN_TEST(test_ui_view_model_publishes_external_clock_snapshot);
 }

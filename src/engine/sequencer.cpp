@@ -106,7 +106,7 @@ uint32_t Sequencer::getStepPeriodUs() const {
 }
 
 void Sequencer::sync(uint32_t micros) {
-    _lastStepAt = micros;
+    _lastStepAt = micros - _stepPeriodUs;
     _currentStepIndex = STEPS_COUNT - 1;
     _hasCurrentStep = false;
 }
@@ -124,6 +124,25 @@ bool Sequencer::update(uint32_t micros) {
     }
 
     return false;
+}
+
+void Sequencer::externalStart() {
+    _running = true;
+    _currentStepIndex = STEPS_COUNT - 1;
+    _hasCurrentStep = false;
+}
+
+void Sequencer::externalContinue() { _running = true; }
+
+void Sequencer::externalStop() { _running = false; }
+
+bool Sequencer::advanceExternal() {
+    if (!_running) {
+        return false;
+    }
+    _currentStepIndex = (_currentStepIndex + 1) % STEPS_COUNT;
+    _hasCurrentStep = true;
+    return true;
 }
 
 bool Sequencer::isCurrentStepEnabled() const { return _steps[_currentStepIndex].isEnabled; }

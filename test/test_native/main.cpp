@@ -6,10 +6,14 @@
 #include "../test/test_native/context_input/test_input_event.h"
 #include "../test/test_native/context_input/test_router.h"
 #include "../test/test_native/context_input/test_trigger_input_adapter.h"
+#include "../test/test_native/engine/test_external_midi_clock.h"
+#include "../test/test_native/engine/test_midi_clock_mode.h"
+#include "../test/test_native/engine/test_midi_clock_transmitter.h"
 #include "../test/test_native/input/test_app_event_handler.h"
 #include "../test/test_native/input/test_app_input_coordinator.h"
 #include "../test/test_native/input/test_encoder_integration.h"
 #include "../test/test_native/input/test_main_display_context.h"
+#include "../test/test_native/input/test_midi_clock_settings_context.h"
 #include "../test/test_native/input/test_step_button_integration.h"
 #include "../test/test_native/utils/counter/test_counter.h"
 #include "../test/test_native/utils/round_buffer/test_round_buffer.h"
@@ -29,6 +33,9 @@ int main() {
     test_counter_main();
     test_round_buffer_main();
     test_ui_view_model_main();
+    test_midi_clock_mode_main();
+    test_external_midi_clock_main();
+    test_midi_clock_transmitter_main();
     test_input_event_main();
     test_dispatch_result_main();
     test_router_main();
@@ -37,6 +44,7 @@ int main() {
     test_button_input_adapter_main();
     test_trigger_input_adapter_main();
     test_main_display_context_main();
+    test_midi_clock_settings_context_main();
     test_app_event_handler_main();
     test_app_input_coordinator_main();
     test_encoder_integration_main();

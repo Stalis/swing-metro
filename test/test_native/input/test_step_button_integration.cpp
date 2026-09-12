@@ -35,13 +35,14 @@ struct IntegrationState {
                                   .maxValue = 100,
                                   .overflowBehavior = CounterOverflowBehavior::Clamp}};
     Sequencer sequencer;
+    SwingMetro::MidiClockSettings midiClock;
     SwingMetro::AppEventHandler handler{{
         .tempo = tempo,
         .swing = swing,
         .volume = volume,
         .sequencer = sequencer,
     }};
-    SwingMetro::AppInputCoordinator<8> coordinator{handler, sequencer};
+    SwingMetro::AppInputCoordinator<8> coordinator{handler, sequencer, midiClock};
     SwingMetro::StepButtonInputs buttons;
 };
 
