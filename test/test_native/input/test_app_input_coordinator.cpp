@@ -234,6 +234,38 @@ void test_tempo_switch_toggles_transport_on_press_in_all_contexts() {
     TEST_ASSERT_TRUE(state.sequencer.isRunning());
 }
 
+void test_display_has_no_active_step_until_first_tick_after_restart() {
+    State state;
+    UiViewModel viewModel;
+    state.sequencer.sync(0);
+    TEST_ASSERT_FALSE(state.sequencer.getDisplayStepIndex().has_value());
+    TEST_ASSERT_TRUE(state.sequencer.update(125000));
+    TEST_ASSERT_EQUAL_UINT8(0, *state.sequencer.getDisplayStepIndex());
+
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::ToggleTransport{}}, nullptr,
+                                     200000);
+    TEST_ASSERT_FALSE(state.sequencer.isRunning());
+    TEST_ASSERT_EQUAL_UINT8(0, *state.sequencer.getDisplayStepIndex());
+
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::ToggleTransport{}}, nullptr,
+                                     300000);
+    TEST_ASSERT_TRUE(state.sequencer.isRunning());
+    TEST_ASSERT_EQUAL_UINT8(STEPS_COUNT - 1, state.sequencer.getCurrentStepIndex());
+    TEST_ASSERT_FALSE(state.sequencer.getDisplayStepIndex().has_value());
+
+    viewModel.publish(state.coordinator.decorateUiSettings(
+        {.tempo = 120,
+         .swing = 50,
+         .volume = 100,
+         .activeNote = state.sequencer.getDisplayStepIndex().value_or(UINT8_MAX)}));
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, viewModel.read().activeNote);
+
+    TEST_ASSERT_FALSE(state.sequencer.update(424999));
+    TEST_ASSERT_FALSE(state.sequencer.getDisplayStepIndex().has_value());
+    TEST_ASSERT_TRUE(state.sequencer.update(425000));
+    TEST_ASSERT_EQUAL_UINT8(0, *state.sequencer.getDisplayStepIndex());
+}
+
 void test_note_clamps_and_invalid_index() {
     State state;
     TEST_ASSERT_FALSE(state.sequencer.getStepMidiNote(STEPS_COUNT).has_value());
@@ -255,5 +287,6 @@ void test_app_input_coordinator_main() {
     RUN_TEST(test_gesture_capture_suppresses_remaining_phases_only_for_source);
     RUN_TEST(test_shift_lifecycle_is_independent_of_navigation);
     RUN_TEST(test_tempo_switch_toggles_transport_on_press_in_all_contexts);
+    RUN_TEST(test_display_has_no_active_step_until_first_tick_after_restart);
     RUN_TEST(test_note_clamps_and_invalid_index);
 }

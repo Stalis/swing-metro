@@ -335,7 +335,7 @@ void loop() {
         tempoCounter.getValue(),
         swingCounter.getValue(),
         volumeCounter.getValue(),
-        mainSequencer.getCurrentStepIndex(),
+        mainSequencer.getDisplayStepIndex().value_or(UINT8_MAX),
         mainSequencer.getStepsEnabled(),
     }));
 }

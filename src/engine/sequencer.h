@@ -54,6 +54,7 @@ class Sequencer {
     [[nodiscard]] uint8_t getBpm() const;
     [[nodiscard]] std::bitset<STEPS_COUNT> getStepsEnabled() const;
     [[nodiscard]] StepIndex getCurrentStepIndex() const;
+    [[nodiscard]] std::optional<StepIndex> getDisplayStepIndex() const;
 
     void toggleStep(StepIndex index);
     [[nodiscard]] std::optional<MIDI_Note> getStepMidiNote(StepIndex index) const;
@@ -72,6 +73,7 @@ class Sequencer {
   private:
     std::array<SequencerStep, STEPS_COUNT> _steps{};
     StepIndex _currentStepIndex;
+    bool _hasCurrentStep = false;
     uint8_t _bpm;
     bool _running = true;
 

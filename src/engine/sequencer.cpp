@@ -31,6 +31,13 @@ std::bitset<STEPS_COUNT> Sequencer::getStepsEnabled() const {
 
 StepIndex Sequencer::getCurrentStepIndex() const { return _currentStepIndex; }
 
+std::optional<StepIndex> Sequencer::getDisplayStepIndex() const {
+    if (!_hasCurrentStep) {
+        return std::nullopt;
+    }
+    return _currentStepIndex;
+}
+
 void Sequencer::setBpm(uint8_t bpm) {
     if (bpm == _bpm) {
         return;
@@ -82,6 +89,7 @@ uint32_t Sequencer::getStepPeriodUs() const {
 void Sequencer::sync(uint32_t micros) {
     _lastStepAt = micros;
     _currentStepIndex = STEPS_COUNT - 1;
+    _hasCurrentStep = false;
 }
 
 bool Sequencer::update(uint32_t micros) {
@@ -91,6 +99,7 @@ bool Sequencer::update(uint32_t micros) {
     if (micros - _lastStepAt >= _stepPeriodUs) {
         _lastStepAt += _stepPeriodUs;
         _currentStepIndex = (_currentStepIndex + 1) % STEPS_COUNT;
+        _hasCurrentStep = true;
 
         return true;
     }
