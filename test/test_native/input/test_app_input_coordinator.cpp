@@ -98,6 +98,7 @@ void test_open_switch_close_and_publish_ui() {
                             static_cast<std::uint8_t>(openUi.page));
     TEST_ASSERT_EQUAL_UINT8(5, openUi.selectedStep);
     TEST_ASSERT_EQUAL_UINT8(36, openUi.selectedNote);
+    TEST_ASSERT_EQUAL_UINT8(127, openUi.selectedVelocity);
 
     longPress(state, 8, 1000);
     TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
@@ -125,10 +126,13 @@ void test_encoder_changes_note_in_settings_and_tempo_after_close() {
     TEST_ASSERT_EQUAL_UINT8(37, *state.sequencer.getStepMidiNote(3));
     TEST_ASSERT_EQUAL_UINT8(121, state.tempo.getValue());
 
-    TEST_ASSERT_FALSE(turn(state, SwingMetro::InputId::SwingEncoder, 1).has_value());
+    const auto velocityEvent = turn(state, SwingMetro::InputId::SwingEncoder, -1);
+    TEST_ASSERT_TRUE(velocityEvent.has_value());
+    TEST_ASSERT_TRUE(std::holds_alternative<SwingMetro::AdjustVelocity>(*velocityEvent));
     TEST_ASSERT_FALSE(turn(state, SwingMetro::InputId::VolumeEncoder, -1).has_value());
     TEST_ASSERT_EQUAL_UINT8(50, state.swing.getValue());
     TEST_ASSERT_EQUAL_UINT8(100, state.volume.getValue());
+    TEST_ASSERT_EQUAL_UINT8(126, *state.sequencer.getStepVelocity(3));
 
     click(state, 3, 1000);
     TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().test(3));
@@ -136,6 +140,85 @@ void test_encoder_changes_note_in_settings_and_tempo_after_close() {
     longPress(state, 3, 2000);
     turn(state, SwingMetro::InputId::TempoEncoder, 1);
     TEST_ASSERT_EQUAL_UINT8(122, state.tempo.getValue());
+}
+
+void test_shift_changes_note_by_octaves_only_while_editing_step() {
+    State state;
+    setShift(state, true);
+    turn(state, SwingMetro::InputId::TempoEncoder, 1);
+    TEST_ASSERT_EQUAL_UINT8(121, state.tempo.getValue());
+    turn(state, SwingMetro::InputId::SwingEncoder, 1);
+    TEST_ASSERT_EQUAL_UINT8(51, state.swing.getValue());
+
+    longPress(state, 0, 100);
+    TEST_ASSERT_EQUAL_UINT32(4, state.coordinator.stackSize());
+    const auto octaveEvent = turn(state, SwingMetro::InputId::TempoEncoder, 1);
+    TEST_ASSERT_TRUE(octaveEvent.has_value());
+    TEST_ASSERT_TRUE(std::holds_alternative<SwingMetro::AdjustNote>(*octaveEvent));
+    TEST_ASSERT_EQUAL_INT16(12, std::get<SwingMetro::AdjustNote>(*octaveEvent).delta);
+    TEST_ASSERT_EQUAL_UINT8(48, *state.sequencer.getStepMidiNote(0));
+
+    turn(state, SwingMetro::InputId::TempoEncoder, -1);
+    TEST_ASSERT_EQUAL_UINT8(36, *state.sequencer.getStepMidiNote(0));
+    turn(state, SwingMetro::InputId::SwingEncoder, -1);
+    TEST_ASSERT_EQUAL_UINT8(126, *state.sequencer.getStepVelocity(0));
+    TEST_ASSERT_EQUAL_UINT8(51, state.swing.getValue());
+
+    setShift(state, false);
+    const auto semitoneEvent = turn(state, SwingMetro::InputId::TempoEncoder, 1);
+    TEST_ASSERT_TRUE(semitoneEvent.has_value());
+    TEST_ASSERT_EQUAL_INT16(1, std::get<SwingMetro::AdjustNote>(*semitoneEvent).delta);
+    TEST_ASSERT_EQUAL_UINT8(37, *state.sequencer.getStepMidiNote(0));
+    longPress(state, 0, 1000);
+    TEST_ASSERT_EQUAL_UINT32(2, state.coordinator.stackSize());
+    turn(state, SwingMetro::InputId::TempoEncoder, 1);
+    TEST_ASSERT_EQUAL_UINT8(122, state.tempo.getValue());
+}
+
+void test_shift_note_clamps_and_survives_step_navigation() {
+    State state;
+    longPress(state, 0, 100);
+    setShift(state, true);
+    turn(state, SwingMetro::InputId::TempoEncoder, 127);
+    TEST_ASSERT_EQUAL_UINT8(127, *state.sequencer.getStepMidiNote(0));
+    turn(state, SwingMetro::InputId::TempoEncoder, -128);
+    TEST_ASSERT_EQUAL_UINT8(36, *state.sequencer.getStepMidiNote(0));
+
+    click(state, 3, 1000);
+    TEST_ASSERT_EQUAL_UINT8(3, *state.coordinator.selectedStep());
+    TEST_ASSERT_EQUAL_UINT32(4, state.coordinator.stackSize());
+    turn(state, SwingMetro::InputId::TempoEncoder, 1);
+    TEST_ASSERT_EQUAL_UINT8(48, *state.sequencer.getStepMidiNote(3));
+    TEST_ASSERT_EQUAL_UINT8(36, *state.sequencer.getStepMidiNote(0));
+
+    longPress(state, 3, 2000);
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+    TEST_ASSERT_TRUE(state.coordinator.isShiftActive());
+    turn(state, SwingMetro::InputId::TempoEncoder, 1);
+    TEST_ASSERT_EQUAL_UINT8(121, state.tempo.getValue());
+    setShift(state, false);
+    TEST_ASSERT_EQUAL_UINT32(2, state.coordinator.stackSize());
+}
+
+void test_velocity_changes_only_selected_step_and_ui_snapshot() {
+    State state;
+    UiViewModel viewModel;
+    longPress(state, 0, 100);
+    turn(state, SwingMetro::InputId::SwingEncoder, -2);
+    TEST_ASSERT_EQUAL_UINT8(125, *state.sequencer.getStepVelocity(0));
+    TEST_ASSERT_EQUAL_UINT8(127, *state.sequencer.getStepVelocity(3));
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    TEST_ASSERT_EQUAL_UINT8(125, viewModel.read().selectedVelocity);
+
+    click(state, 3, 1000);
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    TEST_ASSERT_EQUAL_UINT8(3, viewModel.read().selectedStep);
+    TEST_ASSERT_EQUAL_UINT8(127, viewModel.read().selectedVelocity);
+    turn(state, SwingMetro::InputId::SwingEncoder, -1);
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    TEST_ASSERT_EQUAL_UINT8(126, viewModel.read().selectedVelocity);
+    TEST_ASSERT_EQUAL_UINT8(125, *state.sequencer.getStepVelocity(0));
+    TEST_ASSERT_EQUAL_UINT8(50, state.swing.getValue());
 }
 
 void test_click_in_settings_selects_step_without_toggling_it() {
@@ -356,6 +439,26 @@ void test_note_clamps_and_invalid_index() {
     TEST_ASSERT_EQUAL_UINT8(127, *state.sequencer.getStepMidiNote(0));
 }
 
+void test_velocity_clamps_and_current_step_uses_edited_value() {
+    State state;
+    TEST_ASSERT_FALSE(state.sequencer.getStepVelocity(STEPS_COUNT).has_value());
+    TEST_ASSERT_FALSE(state.sequencer.adjustStepVelocity(STEPS_COUNT, -1));
+    TEST_ASSERT_EQUAL_UINT8(127, *state.sequencer.getStepVelocity(0));
+
+    TEST_ASSERT_TRUE(state.sequencer.adjustStepVelocity(0, -128));
+    TEST_ASSERT_EQUAL_UINT8(1, *state.sequencer.getStepVelocity(0));
+    TEST_ASSERT_TRUE(state.sequencer.adjustStepVelocity(0, -1));
+    TEST_ASSERT_EQUAL_UINT8(1, *state.sequencer.getStepVelocity(0));
+    TEST_ASSERT_EQUAL_UINT8(127, *state.sequencer.getStepVelocity(1));
+    TEST_ASSERT_TRUE(state.sequencer.adjustStepVelocity(0, 127));
+    TEST_ASSERT_EQUAL_UINT8(127, *state.sequencer.getStepVelocity(0));
+    TEST_ASSERT_TRUE(state.sequencer.adjustStepVelocity(0, -7));
+    state.sequencer.sync(0);
+    TEST_ASSERT_TRUE(state.sequencer.update(125000));
+    TEST_ASSERT_EQUAL_UINT8(0, state.sequencer.getCurrentStepIndex());
+    TEST_ASSERT_EQUAL_UINT8(120, state.sequencer.currentStepVelocity());
+}
+
 void test_unknown_input_and_mismatched_payload_do_not_change_app_state() {
     State state;
     constexpr auto unknown = static_cast<SwingMetro::InputId>(0xFF);
@@ -396,12 +499,15 @@ void test_inactive_navigation_and_note_events_are_no_ops() {
                                      1000);
     state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::AdjustNote{1}}, nullptr,
                                      1000);
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::AdjustVelocity{-1}}, nullptr,
+                                     1000);
     state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::DeactivateShift{}}, nullptr,
                                      1000);
     TEST_ASSERT_EQUAL_UINT32(2, state.coordinator.stackSize());
     TEST_ASSERT_FALSE(state.coordinator.selectedStep().has_value());
     TEST_ASSERT_FALSE(state.coordinator.isShiftActive());
     TEST_ASSERT_EQUAL_UINT8(36, *state.sequencer.getStepMidiNote(0));
+    TEST_ASSERT_EQUAL_UINT8(127, *state.sequencer.getStepVelocity(0));
 }
 
 void test_repeated_fast_navigation_keeps_only_one_settings_context() {
@@ -431,6 +537,9 @@ void test_repeated_fast_navigation_keeps_only_one_settings_context() {
 void test_app_input_coordinator_main() {
     RUN_TEST(test_open_switch_close_and_publish_ui);
     RUN_TEST(test_encoder_changes_note_in_settings_and_tempo_after_close);
+    RUN_TEST(test_shift_changes_note_by_octaves_only_while_editing_step);
+    RUN_TEST(test_shift_note_clamps_and_survives_step_navigation);
+    RUN_TEST(test_velocity_changes_only_selected_step_and_ui_snapshot);
     RUN_TEST(test_click_in_settings_selects_step_without_toggling_it);
     RUN_TEST(test_settings_reselects_on_press_without_adding_context_and_releases_on_close);
     RUN_TEST(test_navigation_failure_preserves_main_page);
@@ -439,6 +548,7 @@ void test_app_input_coordinator_main() {
     RUN_TEST(test_tempo_switch_toggles_transport_on_press_in_all_contexts);
     RUN_TEST(test_display_has_no_active_step_until_first_tick_after_restart);
     RUN_TEST(test_note_clamps_and_invalid_index);
+    RUN_TEST(test_velocity_clamps_and_current_step_uses_edited_value);
     RUN_TEST(test_unknown_input_and_mismatched_payload_do_not_change_app_state);
     RUN_TEST(test_inactive_navigation_and_note_events_are_no_ops);
     RUN_TEST(test_repeated_fast_navigation_keeps_only_one_settings_context);

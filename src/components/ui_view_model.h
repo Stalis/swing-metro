@@ -20,6 +20,7 @@ struct UiSettings {
     UiPage page = UiPage::MainDisplay;
     uint8_t selectedStep = UINT8_MAX;
     uint8_t selectedNote = 36;
+    uint8_t selectedVelocity = 127;
     bool transportRunning = true;
     bool shiftActive = false;
 };
@@ -41,7 +42,8 @@ class UiViewModel {
                                           static_cast<uint32_t>(settings.selectedNote) << 8 |
                                           static_cast<uint32_t>(settings.page) << 16 |
                                           static_cast<uint32_t>(settings.transportRunning) << 17 |
-                                          static_cast<uint32_t>(settings.shiftActive) << 18;
+                                          static_cast<uint32_t>(settings.shiftActive) << 18 |
+                                          static_cast<uint32_t>(settings.selectedVelocity) << 19;
 
         _generation.fetch_add(1, std::memory_order_seq_cst);
         _packed.store(packed, std::memory_order_seq_cst);
@@ -75,6 +77,7 @@ class UiViewModel {
                 .page = static_cast<UiPage>((navigationPacked >> 16) & 1U),
                 .selectedStep = static_cast<uint8_t>(navigationPacked),
                 .selectedNote = static_cast<uint8_t>(navigationPacked >> 8),
+                .selectedVelocity = static_cast<uint8_t>(navigationPacked >> 19),
                 .transportRunning = ((navigationPacked >> 17) & 1U) != 0,
                 .shiftActive = ((navigationPacked >> 18) & 1U) != 0,
             };
@@ -87,6 +90,7 @@ class UiViewModel {
                left.volume == right.volume && left.activeNote == right.activeNote &&
                left.notesState == right.notesState && left.page == right.page &&
                left.selectedStep == right.selectedStep && left.selectedNote == right.selectedNote &&
+               left.selectedVelocity == right.selectedVelocity &&
                left.transportRunning == right.transportRunning &&
                left.shiftActive == right.shiftActive;
     }

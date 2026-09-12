@@ -3,6 +3,7 @@
 #include "app_input.h"
 
 #include <cstdint>
+#include <optional>
 #include <variant>
 
 namespace SwingMetro {
@@ -44,7 +45,10 @@ class StepSettingsContext {
             if (input.source == InputId::TempoEncoder) {
                 return Result::emit(AppEvent{AdjustNote{encoder->delta}});
             }
-            if (input.source == InputId::SwingEncoder || input.source == InputId::VolumeEncoder) {
+            if (input.source == InputId::SwingEncoder) {
+                return Result::emit(AppEvent{AdjustVelocity{encoder->delta}});
+            }
+            if (input.source == InputId::VolumeEncoder) {
                 return Result::consume();
             }
             return Result::pass();
@@ -80,9 +84,24 @@ class StepSettingsContext {
 
 class ShiftContext {
   public:
-    [[nodiscard]] auto handle(const InputEvent&) const -> ContextInput::DispatchResult<AppEvent> {
-        return ContextInput::DispatchResult<AppEvent>::pass();
+    explicit ShiftContext(const std::optional<std::uint8_t>& selectedStep) noexcept
+        : selectedStep_{selectedStep} {}
+
+    [[nodiscard]] auto handle(const InputEvent& input) const
+        -> ContextInput::DispatchResult<AppEvent> {
+        using Result = ContextInput::DispatchResult<AppEvent>;
+        if (selectedStep_.has_value() && input.source == InputId::TempoEncoder) {
+            if (const auto* encoder = std::get_if<ContextInput::EncoderInput>(&input.payload)) {
+                const auto semitones = static_cast<std::int16_t>(
+                    static_cast<std::int16_t>(encoder->delta) * NOTES_IN_OCTAVE);
+                return Result::emit(AppEvent{AdjustNote{semitones}});
+            }
+        }
+        return Result::pass();
     }
+
+  private:
+    const std::optional<std::uint8_t>& selectedStep_;
 };
 
 } // namespace SwingMetro

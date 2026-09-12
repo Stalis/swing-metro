@@ -58,7 +58,9 @@ class Sequencer {
 
     void toggleStep(StepIndex index);
     [[nodiscard]] std::optional<MIDI_Note> getStepMidiNote(StepIndex index) const;
-    bool adjustStepNote(StepIndex index, int8_t delta);
+    bool adjustStepNote(StepIndex index, int16_t delta);
+    [[nodiscard]] std::optional<uint8_t> getStepVelocity(StepIndex index) const;
+    bool adjustStepVelocity(StepIndex index, int8_t delta);
 
     [[nodiscard]] bool isRunning() const;
     void toggleRunning(uint32_t micros);

@@ -1,5 +1,7 @@
 #include "sequencer.h"
 
+#include <algorithm>
+
 constexpr uint8_t DEFAULT_BPM = 120;
 constexpr uint8_t MIN_BPM = 40;
 constexpr uint8_t MAX_BPM = 240;
@@ -56,7 +58,7 @@ std::optional<MIDI_Note> Sequencer::getStepMidiNote(StepIndex index) const {
     return _steps[index].note;
 }
 
-bool Sequencer::adjustStepNote(StepIndex index, int8_t delta) {
+bool Sequencer::adjustStepNote(StepIndex index, int16_t delta) {
     if (index >= STEPS_COUNT) {
         return false;
     }
@@ -64,9 +66,26 @@ bool Sequencer::adjustStepNote(StepIndex index, int8_t delta) {
     constexpr int minNote = MIDI_OFFSET;
     constexpr int maxNote = 127;
     const int next = static_cast<int>(_steps[index].note) + delta;
-    _steps[index].note = static_cast<MIDI_Note>(next < minNote   ? minNote
-                                                : next > maxNote ? maxNote
-                                                                 : next);
+    _steps[index].note = static_cast<MIDI_Note>(std::clamp(next, minNote, maxNote));
+    return true;
+}
+
+std::optional<uint8_t> Sequencer::getStepVelocity(StepIndex index) const {
+    if (index >= STEPS_COUNT) {
+        return std::nullopt;
+    }
+    return _steps[index].velocity;
+}
+
+bool Sequencer::adjustStepVelocity(StepIndex index, int8_t delta) {
+    if (index >= STEPS_COUNT) {
+        return false;
+    }
+
+    constexpr int minVelocity = 1;
+    constexpr int maxVelocity = 127;
+    const int next = static_cast<int>(_steps[index].velocity) + delta;
+    _steps[index].velocity = static_cast<uint8_t>(std::clamp(next, minVelocity, maxVelocity));
     return true;
 }
 

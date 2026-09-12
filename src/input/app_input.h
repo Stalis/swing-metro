@@ -76,6 +76,10 @@ struct OpenStepSettings {
 struct CloseStepSettings {};
 
 struct AdjustNote {
+    std::int16_t delta;
+};
+
+struct AdjustVelocity {
     std::int8_t delta;
 };
 
@@ -84,8 +88,8 @@ struct ActivateShift {};
 struct DeactivateShift {};
 
 using InputEvent = ContextInput::InputEvent<InputId>;
-using AppEvent =
-    std::variant<AdjustTempo, AdjustSwing, AdjustVolume, ToggleStep, OpenStepSettings,
-                 CloseStepSettings, AdjustNote, ToggleTransport, ActivateShift, DeactivateShift>;
+using AppEvent = std::variant<AdjustTempo, AdjustSwing, AdjustVolume, ToggleStep, OpenStepSettings,
+                              CloseStepSettings, AdjustNote, AdjustVelocity, ToggleTransport,
+                              ActivateShift, DeactivateShift>;
 
 } // namespace SwingMetro

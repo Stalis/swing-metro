@@ -81,6 +81,11 @@ void LVGL_Ui::readViewModel(const UiViewModel& viewModel) {
             lv_label_set_text_fmt(_selectedNoteLabel, "Note: %s%u", noteNames[relativeNote % 12],
                                   static_cast<unsigned>(relativeNote / 12));
         }
+        if (values.selectedVelocity != _displayedVelocity) {
+            _displayedVelocity = values.selectedVelocity;
+            lv_label_set_text_fmt(_selectedVelocityLabel, "Velocity: %u",
+                                  static_cast<unsigned>(values.selectedVelocity));
+        }
     }
 
     if (values.page != _currentPage) {
@@ -135,6 +140,7 @@ void LVGL_Ui::initMainScreen() {
 }
 
 void LVGL_Ui::initStepSettingsScreen() {
+    constexpr int16_t velocityLabelY = 80;
     _stepSettingsScreen = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(_stepSettingsScreen, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(_stepSettingsScreen, LV_OPA_COVER, 0);
@@ -148,6 +154,11 @@ void LVGL_Ui::initStepSettingsScreen() {
     lv_obj_set_pos(_selectedNoteLabel, 10, 50);
     lv_obj_set_style_text_color(_selectedNoteLabel, lv_color_white(), 0);
     lv_label_set_text(_selectedNoteLabel, "Note: C0");
+
+    _selectedVelocityLabel = lv_label_create(_stepSettingsScreen);
+    lv_obj_set_pos(_selectedVelocityLabel, 10, velocityLabelY);
+    lv_obj_set_style_text_color(_selectedVelocityLabel, lv_color_white(), 0);
+    lv_label_set_text(_selectedVelocityLabel, "Velocity: 127");
 }
 
 void LVGL_Ui::drawSequencerSteps() {

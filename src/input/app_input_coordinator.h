@@ -19,7 +19,7 @@ class AppInputCoordinator {
 
   public:
     AppInputCoordinator(AppEventHandler& handler, Sequencer& sequencer)
-        : handler_{handler}, sequencer_{sequencer} {
+        : handler_{handler}, sequencer_{sequencer}, shiftContext_{selectedStep_} {
         (void)router_.addContext(globalContext_);
         (void)router_.addContext(mainContext_);
     }
@@ -54,6 +54,10 @@ class AppInputCoordinator {
         } else if (const auto* adjust = std::get_if<AdjustNote>(&event)) {
             if (selectedStep_.has_value()) {
                 (void)sequencer_.adjustStepNote(*selectedStep_, adjust->delta);
+            }
+        } else if (const auto* adjust = std::get_if<AdjustVelocity>(&event)) {
+            if (selectedStep_.has_value()) {
+                (void)sequencer_.adjustStepVelocity(*selectedStep_, adjust->delta);
             }
         } else if (std::holds_alternative<ToggleTransport>(event)) {
             sequencer_.toggleRunning(nowUs);
@@ -90,6 +94,9 @@ class AppInputCoordinator {
         settings.selectedNote = selectedStep_.has_value()
                                     ? sequencer_.getStepMidiNote(*selectedStep_).value_or(36)
                                     : 36;
+        settings.selectedVelocity = selectedStep_.has_value()
+                                        ? sequencer_.getStepVelocity(*selectedStep_).value_or(127)
+                                        : 127;
         settings.transportRunning = sequencer_.isRunning();
         settings.shiftActive = isShiftActive();
         return settings;
@@ -146,12 +153,12 @@ class AppInputCoordinator {
 
     AppEventHandler& handler_;
     Sequencer& sequencer_;
+    std::optional<std::uint8_t> selectedStep_;
     GlobalContext globalContext_;
     MainDisplayContext mainContext_;
     StepSettingsContext stepContext_;
     ShiftContext shiftContext_;
     ContextInput::Router<InputEvent, AppEvent, Capacity> router_;
-    std::optional<std::uint8_t> selectedStep_;
     std::bitset<256> capturedButtons_;
 };
 
