@@ -5,6 +5,7 @@
 #include "../test/test_native/context_input/test_event_batch.h"
 #include "../test/test_native/context_input/test_input_event.h"
 #include "../test/test_native/context_input/test_router.h"
+#include "../test/test_native/context_input/test_trigger_input_adapter.h"
 #include "../test/test_native/input/test_app_event_handler.h"
 #include "../test/test_native/input/test_encoder_integration.h"
 #include "../test/test_native/input/test_main_display_context.h"
@@ -32,6 +33,7 @@ int main() {
     test_encoder_input_adapter_main();
     test_event_batch_main();
     test_button_input_adapter_main();
+    test_trigger_input_adapter_main();
     test_main_display_context_main();
     test_app_event_handler_main();
     test_encoder_integration_main();
