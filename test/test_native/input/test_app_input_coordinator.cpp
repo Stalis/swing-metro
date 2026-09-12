@@ -356,6 +356,76 @@ void test_note_clamps_and_invalid_index() {
     TEST_ASSERT_EQUAL_UINT8(127, *state.sequencer.getStepMidiNote(0));
 }
 
+void test_unknown_input_and_mismatched_payload_do_not_change_app_state() {
+    State state;
+    constexpr auto unknown = static_cast<SwingMetro::InputId>(0xFF);
+
+    TEST_ASSERT_FALSE(
+        state.coordinator.dispatch({unknown, ContextInput::EncoderInput{1}}, 1000).has_value());
+    TEST_ASSERT_FALSE(state.coordinator
+                          .dispatch({SwingMetro::InputId::TempoEncoder,
+                                     ContextInput::ButtonInput{ContextInput::ButtonPhase::Clicked}},
+                                    1000)
+                          .has_value());
+    TEST_ASSERT_FALSE(
+        state.coordinator
+            .dispatch({SwingMetro::inputIdForStep(3), ContextInput::EncoderInput{1}}, 1000)
+            .has_value());
+    TEST_ASSERT_EQUAL_UINT8(120, state.tempo.getValue());
+    TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().any());
+    TEST_ASSERT_EQUAL_UINT32(2, state.coordinator.stackSize());
+
+    longPress(state, 3, 2000);
+    TEST_ASSERT_FALSE(
+        state.coordinator
+            .dispatch({unknown, ContextInput::ButtonInput{ContextInput::ButtonPhase::LongPressed}},
+                      3000)
+            .has_value());
+    TEST_ASSERT_FALSE(state.coordinator
+                          .dispatch({SwingMetro::InputId::TempoEncoder,
+                                     ContextInput::ButtonInput{ContextInput::ButtonPhase::Pressed}},
+                                    3000)
+                          .has_value());
+    TEST_ASSERT_EQUAL_UINT8(3, *state.coordinator.selectedStep());
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+}
+
+void test_inactive_navigation_and_note_events_are_no_ops() {
+    State state;
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::CloseStepSettings{}}, nullptr,
+                                     1000);
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::AdjustNote{1}}, nullptr,
+                                     1000);
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::DeactivateShift{}}, nullptr,
+                                     1000);
+    TEST_ASSERT_EQUAL_UINT32(2, state.coordinator.stackSize());
+    TEST_ASSERT_FALSE(state.coordinator.selectedStep().has_value());
+    TEST_ASSERT_FALSE(state.coordinator.isShiftActive());
+    TEST_ASSERT_EQUAL_UINT8(36, *state.sequencer.getStepMidiNote(0));
+}
+
+void test_repeated_fast_navigation_keeps_only_one_settings_context() {
+    State state;
+    for (std::uint8_t step = 0; step < STEPS_COUNT; ++step) {
+        const auto next = static_cast<std::uint8_t>((step + 1) % STEPS_COUNT);
+        const auto startedAt = static_cast<std::uint32_t>(step) * 3000 + 100;
+
+        longPress(state, step, startedAt);
+        TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+        TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
+
+        click(state, next, startedAt + 1000);
+        TEST_ASSERT_EQUAL_UINT8(next, *state.coordinator.selectedStep());
+        TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+
+        longPress(state, next, startedAt + 2000);
+        TEST_ASSERT_FALSE(state.coordinator.hasStepSettingsContext());
+        TEST_ASSERT_FALSE(state.coordinator.selectedStep().has_value());
+        TEST_ASSERT_EQUAL_UINT32(2, state.coordinator.stackSize());
+    }
+    TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().any());
+}
+
 } // namespace
 
 void test_app_input_coordinator_main() {
@@ -369,4 +439,7 @@ void test_app_input_coordinator_main() {
     RUN_TEST(test_tempo_switch_toggles_transport_on_press_in_all_contexts);
     RUN_TEST(test_display_has_no_active_step_until_first_tick_after_restart);
     RUN_TEST(test_note_clamps_and_invalid_index);
+    RUN_TEST(test_unknown_input_and_mismatched_payload_do_not_change_app_state);
+    RUN_TEST(test_inactive_navigation_and_note_events_are_no_ops);
+    RUN_TEST(test_repeated_fast_navigation_keeps_only_one_settings_context);
 }
