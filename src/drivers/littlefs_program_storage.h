@@ -18,9 +18,9 @@ class LittleFsProgramStorage final : public ProgramStorageBackend {
     [[nodiscard]] static auto pathFor(std::uint8_t slot, ProgramStorageCopy copy, char* path,
                                       std::size_t pathSize) -> bool;
 
-    LittleFSConfig config_{false};
-    bool configured_ = false;
-    bool mounted_ = false;
+    LittleFSConfig _config{false};
+    bool _configured = false;
+    bool _mounted = false;
 };
 
 } // namespace SwingMetro

@@ -52,9 +52,9 @@ int main() {
     test_app_input_coordinator_main();
     test_encoder_integration_main();
     test_step_button_integration_main();
-    test_program_main();
-    test_program_codec_main();
-    test_program_slot_store_main();
+    testProgramMain();
+    testProgramCodecMain();
+    testProgramSlotStoreMain();
 
     UNITY_END();
 }

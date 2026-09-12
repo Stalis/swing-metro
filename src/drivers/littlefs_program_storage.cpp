@@ -5,22 +5,22 @@
 namespace SwingMetro {
 
 auto LittleFsProgramStorage::mount() -> bool {
-    if (mounted_) {
+    if (_mounted) {
         return true;
     }
-    if (!configured_) {
-        if (!LittleFS.setConfig(config_)) {
+    if (!_configured) {
+        if (!LittleFS.setConfig(_config)) {
             return false;
         }
-        configured_ = true;
+        _configured = true;
     }
-    mounted_ = LittleFS.begin();
-    return mounted_;
+    _mounted = LittleFS.begin();
+    return _mounted;
 }
 
 auto LittleFsProgramStorage::read(std::uint8_t slot, ProgramStorageCopy copy,
                                   ProgramStorageImage& image) -> ProgramStorageReadResult {
-    if (!mounted_) {
+    if (!_mounted) {
         return ProgramStorageReadResult::Failed;
     }
     char path[24]{};
@@ -51,7 +51,7 @@ auto LittleFsProgramStorage::read(std::uint8_t slot, ProgramStorageCopy copy,
 
 auto LittleFsProgramStorage::write(std::uint8_t slot, ProgramStorageCopy copy,
                                    const ProgramStorageImage& image) -> bool {
-    if (!mounted_ || image.size > image.bytes.size()) {
+    if (!_mounted || image.size > image.bytes.size()) {
         return false;
     }
     char path[24]{};

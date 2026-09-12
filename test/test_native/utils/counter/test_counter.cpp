@@ -91,7 +91,7 @@ void test_counter_step() {
     TEST_ASSERT_EQUAL(5, counter.getValue());
 }
 
-void test_counter_set_value_clamps_to_range() {
+void testCounterSetValueClampsToRange() {
     Counter<int> counter({.step = 1,
                           .value = 2,
                           .minValue = 0,
@@ -113,7 +113,7 @@ void test_counter_main() {
     RUN_TEST(test_counter_stepDown);
     RUN_TEST(test_counter_wrap_around);
     RUN_TEST(test_counter_step);
-    RUN_TEST(test_counter_set_value_clamps_to_range);
+    RUN_TEST(testCounterSetValueClampsToRange);
 
     // return UNITY_END();
 }

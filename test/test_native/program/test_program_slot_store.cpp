@@ -84,7 +84,7 @@ auto revisionOf(const ProgramStorageImage& image) -> std::uint32_t {
     return revision;
 }
 
-void test_mount_and_slot_validation() {
+void testMountAndSlotValidation() {
     FakeStorage storage;
     SwingMetro::ProgramSlotStore store(storage);
     SwingMetro::Program program;
@@ -102,7 +102,7 @@ void test_mount_and_slot_validation() {
         static_cast<std::uint8_t>(store.load(SwingMetro::PROGRAM_SLOT_COUNT, program)));
 }
 
-void test_save_and_load_all_user_slots_and_current_program() {
+void testSaveAndLoadAllUserSlotsAndCurrentProgram() {
     FakeStorage storage;
     SwingMetro::ProgramSlotStore store(storage);
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(ProgramStoreStatus::Ok),
@@ -123,7 +123,7 @@ void test_save_and_load_all_user_slots_and_current_program() {
     }
 }
 
-void test_save_alternates_copies_and_revisions_without_touching_other_slots() {
+void testSaveAlternatesCopiesAndRevisionsWithoutTouchingOtherSlots() {
     FakeStorage storage;
     SwingMetro::ProgramSlotStore store(storage);
     (void)store.mount();
@@ -143,7 +143,7 @@ void test_save_alternates_copies_and_revisions_without_touching_other_slots() {
     TEST_ASSERT_FALSE(storage.present[1][copyIndex(ProgramStorageCopy::B)]);
 }
 
-void test_load_chooses_newer_copy_and_falls_back_from_corrupt_newer_copy() {
+void testLoadChoosesNewerCopyAndFallsBackFromCorruptNewerCopy() {
     FakeStorage storage;
     seed(storage, 0, ProgramStorageCopy::A, programWithVolume(11), 1);
     seed(storage, 0, ProgramStorageCopy::B, programWithVolume(22), 2);
@@ -160,7 +160,7 @@ void test_load_chooses_newer_copy_and_falls_back_from_corrupt_newer_copy() {
     TEST_ASSERT_EQUAL_UINT8(11, loaded.volume);
 }
 
-void test_interrupted_or_failed_write_preserves_previous_copy() {
+void testInterruptedOrFailedWritePreservesPreviousCopy() {
     FakeStorage storage;
     SwingMetro::ProgramSlotStore store(storage);
     (void)store.mount();
@@ -182,7 +182,7 @@ void test_interrupted_or_failed_write_preserves_previous_copy() {
     TEST_ASSERT_EQUAL_UINT8(10, loaded.volume);
 }
 
-void test_empty_corrupt_read_failure_and_equal_revision_conflict() {
+void testEmptyCorruptReadFailureAndEqualRevisionConflict() {
     FakeStorage storage;
     SwingMetro::ProgramSlotStore store(storage);
     (void)store.mount();
@@ -217,7 +217,7 @@ void test_empty_corrupt_read_failure_and_equal_revision_conflict() {
     TEST_ASSERT_EQUAL_UINT32(3, revisionOf(storage.images[0][copyIndex(ProgramStorageCopy::B)]));
 }
 
-void test_save_rejects_read_failure_invalid_program_and_exhausted_revision() {
+void testSaveRejectsReadFailureInvalidProgramAndExhaustedRevision() {
     FakeStorage storage;
     SwingMetro::ProgramSlotStore store(storage);
     (void)store.mount();
@@ -237,12 +237,12 @@ void test_save_rejects_read_failure_invalid_program_and_exhausted_revision() {
 
 } // namespace
 
-void test_program_slot_store_main() {
-    RUN_TEST(test_mount_and_slot_validation);
-    RUN_TEST(test_save_and_load_all_user_slots_and_current_program);
-    RUN_TEST(test_save_alternates_copies_and_revisions_without_touching_other_slots);
-    RUN_TEST(test_load_chooses_newer_copy_and_falls_back_from_corrupt_newer_copy);
-    RUN_TEST(test_interrupted_or_failed_write_preserves_previous_copy);
-    RUN_TEST(test_empty_corrupt_read_failure_and_equal_revision_conflict);
-    RUN_TEST(test_save_rejects_read_failure_invalid_program_and_exhausted_revision);
+void testProgramSlotStoreMain() {
+    RUN_TEST(testMountAndSlotValidation);
+    RUN_TEST(testSaveAndLoadAllUserSlotsAndCurrentProgram);
+    RUN_TEST(testSaveAlternatesCopiesAndRevisionsWithoutTouchingOtherSlots);
+    RUN_TEST(testLoadChoosesNewerCopyAndFallsBackFromCorruptNewerCopy);
+    RUN_TEST(testInterruptedOrFailedWritePreservesPreviousCopy);
+    RUN_TEST(testEmptyCorruptReadFailureAndEqualRevisionConflict);
+    RUN_TEST(testSaveRejectsReadFailureInvalidProgramAndExhaustedRevision);
 }

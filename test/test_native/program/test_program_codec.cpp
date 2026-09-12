@@ -36,7 +36,7 @@ auto updateCrc(SwingMetro::EncodedProgram& encoded) -> void {
     }
 }
 
-void test_codec_round_trip_preserves_program_and_revision() {
+void testCodecRoundTripPreservesProgramAndRevision() {
     const auto source = sampleProgram();
     SwingMetro::EncodedProgram encoded;
 
@@ -63,7 +63,7 @@ void test_codec_round_trip_preserves_program_and_revision() {
         SwingMetro::PROGRAM_HEADER_SIZE + SwingMetro::PROGRAM_CURRENT_PAYLOAD_SIZE, encoded.size);
 }
 
-void test_codec_is_deterministic_and_has_bounded_size() {
+void testCodecIsDeterministicAndHasBoundedSize() {
     const auto source = sampleProgram();
     SwingMetro::EncodedProgram first;
     SwingMetro::EncodedProgram second;
@@ -77,7 +77,7 @@ void test_codec_is_deterministic_and_has_bounded_size() {
     TEST_ASSERT_EQUAL_MEMORY(first.bytes.data(), second.bytes.data(), first.size);
 }
 
-void test_codec_rejects_invalid_program() {
+void testCodecRejectsInvalidProgram() {
     auto invalid = sampleProgram();
     invalid.tempo = 39;
     SwingMetro::EncodedProgram encoded;
@@ -87,16 +87,16 @@ void test_codec_rejects_invalid_program() {
         static_cast<std::uint8_t>(SwingMetro::encodeProgram(invalid, 1, encoded)));
 }
 
-void test_codec_defaults_missing_fields_and_rewrites_current_format() {
+void testCodecDefaultsMissingFieldsAndRewritesCurrentFormat() {
     SwingMetro::EncodedProgram encoded;
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<std::uint8_t>(SwingMetro::ProgramCodecStatus::Ok),
         static_cast<std::uint8_t>(SwingMetro::encodeProgram(sampleProgram(), 3, encoded)));
-    const std::size_t swingTlvSize = 3;
+    constexpr std::size_t SWING_TLV_SIZE = 3;
     std::memmove(encoded.bytes.data() + SWING_TLV_OFFSET,
-                 encoded.bytes.data() + SWING_TLV_OFFSET + swingTlvSize,
-                 encoded.size - SWING_TLV_OFFSET - swingTlvSize);
-    encoded.size -= swingTlvSize;
+                 encoded.bytes.data() + SWING_TLV_OFFSET + SWING_TLV_SIZE,
+                 encoded.size - SWING_TLV_OFFSET - SWING_TLV_SIZE);
+    encoded.size -= SWING_TLV_SIZE;
     encoded.bytes[10] = static_cast<std::uint8_t>(encoded.size - PAYLOAD_OFFSET);
     encoded.bytes[11] = 0;
     updateCrc(encoded);
@@ -115,7 +115,7 @@ void test_codec_defaults_missing_fields_and_rewrites_current_format() {
         SwingMetro::PROGRAM_HEADER_SIZE + SwingMetro::PROGRAM_CURRENT_PAYLOAD_SIZE, rewritten.size);
 }
 
-void test_codec_skips_unknown_tlv() {
+void testCodecSkipsUnknownTlv() {
     SwingMetro::EncodedProgram encoded;
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<std::uint8_t>(SwingMetro::ProgramCodecStatus::Ok),
@@ -135,7 +135,7 @@ void test_codec_skips_unknown_tlv() {
     TEST_ASSERT_TRUE(decoded.steps[15].enabled);
 }
 
-void test_codec_rejects_invalid_magic_version_length_and_crc() {
+void testCodecRejectsInvalidMagicVersionLengthAndCrc() {
     SwingMetro::EncodedProgram encoded;
     (void)SwingMetro::encodeProgram(sampleProgram(), 1, encoded);
     SwingMetro::Program decoded;
@@ -165,7 +165,7 @@ void test_codec_rejects_invalid_magic_version_length_and_crc() {
                                 broken.bytes.data(), broken.size, decoded, revision)));
 }
 
-void test_codec_rejects_malformed_or_invalid_known_tlvs() {
+void testCodecRejectsMalformedOrInvalidKnownTlvs() {
     SwingMetro::EncodedProgram encoded;
     (void)SwingMetro::encodeProgram(sampleProgram(), 1, encoded);
     SwingMetro::Program decoded;
@@ -197,7 +197,7 @@ void test_codec_rejects_malformed_or_invalid_known_tlvs() {
                                 broken.bytes.data(), broken.size, decoded, revision)));
 }
 
-void test_codec_rejects_duplicate_known_tlv_and_trailing_bytes() {
+void testCodecRejectsDuplicateKnownTlvAndTrailingBytes() {
     SwingMetro::EncodedProgram encoded;
     (void)SwingMetro::encodeProgram(sampleProgram(), 1, encoded);
     SwingMetro::Program decoded;
@@ -221,7 +221,7 @@ void test_codec_rejects_duplicate_known_tlv_and_trailing_bytes() {
             SwingMetro::decodeProgram(broken.bytes.data(), broken.size, decoded, revision)));
 }
 
-void test_crc32_matches_standard_vector() {
+void testCrc32MatchesStandardVector() {
     constexpr char VALUE[] = "123456789";
     TEST_ASSERT_EQUAL_HEX32(
         0xCBF43926U, SwingMetro::programCrc32(reinterpret_cast<const std::uint8_t*>(VALUE), 9));
@@ -229,14 +229,14 @@ void test_crc32_matches_standard_vector() {
 
 } // namespace
 
-void test_program_codec_main() {
-    RUN_TEST(test_codec_round_trip_preserves_program_and_revision);
-    RUN_TEST(test_codec_is_deterministic_and_has_bounded_size);
-    RUN_TEST(test_codec_rejects_invalid_program);
-    RUN_TEST(test_codec_defaults_missing_fields_and_rewrites_current_format);
-    RUN_TEST(test_codec_skips_unknown_tlv);
-    RUN_TEST(test_codec_rejects_invalid_magic_version_length_and_crc);
-    RUN_TEST(test_codec_rejects_malformed_or_invalid_known_tlvs);
-    RUN_TEST(test_codec_rejects_duplicate_known_tlv_and_trailing_bytes);
-    RUN_TEST(test_crc32_matches_standard_vector);
+void testProgramCodecMain() {
+    RUN_TEST(testCodecRoundTripPreservesProgramAndRevision);
+    RUN_TEST(testCodecIsDeterministicAndHasBoundedSize);
+    RUN_TEST(testCodecRejectsInvalidProgram);
+    RUN_TEST(testCodecDefaultsMissingFieldsAndRewritesCurrentFormat);
+    RUN_TEST(testCodecSkipsUnknownTlv);
+    RUN_TEST(testCodecRejectsInvalidMagicVersionLengthAndCrc);
+    RUN_TEST(testCodecRejectsMalformedOrInvalidKnownTlvs);
+    RUN_TEST(testCodecRejectsDuplicateKnownTlvAndTrailingBytes);
+    RUN_TEST(testCrc32MatchesStandardVector);
 }

@@ -16,7 +16,7 @@ auto makeCounter(std::uint8_t value, std::uint8_t min, std::uint8_t max) -> Coun
     });
 }
 
-void test_program_defaults_are_valid() {
+void testProgramDefaultsAreValid() {
     const SwingMetro::Program program;
 
     TEST_ASSERT_TRUE(SwingMetro::isValid(program));
@@ -32,7 +32,7 @@ void test_program_defaults_are_valid() {
     }
 }
 
-void test_capture_program_reads_all_runtime_owners() {
+void testCaptureProgramReadsAllRuntimeOwners() {
     auto tempo = makeCounter(180, 40, 240);
     auto swing = makeCounter(75, 50, 100);
     auto volume = makeCounter(25, 0, 100);
@@ -59,7 +59,7 @@ void test_capture_program_reads_all_runtime_owners() {
     TEST_ASSERT_EQUAL_UINT8(1, program.steps[15].velocity);
 }
 
-void test_apply_program_replaces_all_persisted_runtime_state() {
+void testApplyProgramReplacesAllPersistedRuntimeState() {
     auto tempo = makeCounter(120, 40, 240);
     auto swing = makeCounter(50, 50, 100);
     auto volume = makeCounter(100, 0, 100);
@@ -91,7 +91,7 @@ void test_apply_program_replaces_all_persisted_runtime_state() {
     TEST_ASSERT_EQUAL_UINT8(1, steps[15].velocity);
 }
 
-void test_apply_program_rejects_invalid_program_without_changes() {
+void testApplyProgramRejectsInvalidProgramWithoutChanges() {
     auto tempo = makeCounter(120, 40, 240);
     auto swing = makeCounter(50, 50, 100);
     auto volume = makeCounter(100, 0, 100);
@@ -112,9 +112,9 @@ void test_apply_program_rejects_invalid_program_without_changes() {
 
 } // namespace
 
-void test_program_main() {
-    RUN_TEST(test_program_defaults_are_valid);
-    RUN_TEST(test_capture_program_reads_all_runtime_owners);
-    RUN_TEST(test_apply_program_replaces_all_persisted_runtime_state);
-    RUN_TEST(test_apply_program_rejects_invalid_program_without_changes);
+void testProgramMain() {
+    RUN_TEST(testProgramDefaultsAreValid);
+    RUN_TEST(testCaptureProgramReadsAllRuntimeOwners);
+    RUN_TEST(testApplyProgramReplacesAllPersistedRuntimeState);
+    RUN_TEST(testApplyProgramRejectsInvalidProgramWithoutChanges);
 }

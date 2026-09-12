@@ -96,22 +96,22 @@ auto readCopy(SwingMetro::ProgramStorageBackend& storage, std::uint8_t slot,
 
 namespace SwingMetro {
 
-ProgramSlotStore::ProgramSlotStore(ProgramStorageBackend& storage) noexcept : storage_(storage) {}
+ProgramSlotStore::ProgramSlotStore(ProgramStorageBackend& storage) noexcept : _storage(storage) {}
 
 auto ProgramSlotStore::mount() -> ProgramStoreStatus {
-    mounted_ = storage_.mount();
-    return mounted_ ? ProgramStoreStatus::Ok : ProgramStoreStatus::MountFailed;
+    _mounted = _storage.mount();
+    return _mounted ? ProgramStoreStatus::Ok : ProgramStoreStatus::MountFailed;
 }
 
 auto ProgramSlotStore::load(std::uint8_t slot, Program& program) -> ProgramStoreStatus {
-    if (!mounted_) {
+    if (!_mounted) {
         return ProgramStoreStatus::NotMounted;
     }
     if (!isValidProgramSlot(slot)) {
         return ProgramStoreStatus::InvalidSlot;
     }
-    const auto first = readCopy(storage_, slot, ProgramStorageCopy::A);
-    const auto second = readCopy(storage_, slot, ProgramStorageCopy::B);
+    const auto first = readCopy(_storage, slot, ProgramStorageCopy::A);
+    const auto second = readCopy(_storage, slot, ProgramStorageCopy::B);
     const auto selection = selectCopy(first, second);
     if (selection.result != SelectionResult::Ok) {
         return toStoreStatus(selection.result);
@@ -121,7 +121,7 @@ auto ProgramSlotStore::load(std::uint8_t slot, Program& program) -> ProgramStore
 }
 
 auto ProgramSlotStore::save(std::uint8_t slot, const Program& program) -> ProgramStoreStatus {
-    if (!mounted_) {
+    if (!_mounted) {
         return ProgramStoreStatus::NotMounted;
     }
     if (!isValidProgramSlot(slot)) {
@@ -131,8 +131,8 @@ auto ProgramSlotStore::save(std::uint8_t slot, const Program& program) -> Progra
         return ProgramStoreStatus::InvalidProgram;
     }
 
-    const auto first = readCopy(storage_, slot, ProgramStorageCopy::A);
-    const auto second = readCopy(storage_, slot, ProgramStorageCopy::B);
+    const auto first = readCopy(_storage, slot, ProgramStorageCopy::A);
+    const auto second = readCopy(_storage, slot, ProgramStorageCopy::B);
     if (first.readResult == ProgramStorageReadResult::Failed ||
         second.readResult == ProgramStorageReadResult::Failed) {
         return ProgramStoreStatus::ReadFailed;
@@ -157,12 +157,12 @@ auto ProgramSlotStore::save(std::uint8_t slot, const Program& program) -> Progra
     if (encodeProgram(program, revision, encoded) != ProgramCodecStatus::Ok) {
         return ProgramStoreStatus::InvalidProgram;
     }
-    if (!storage_.write(slot, target, encoded)) {
+    if (!_storage.write(slot, target, encoded)) {
         return ProgramStoreStatus::WriteFailed;
     }
 
     ProgramStorageImage verified;
-    if (storage_.read(slot, target, verified) != ProgramStorageReadResult::Ok ||
+    if (_storage.read(slot, target, verified) != ProgramStorageReadResult::Ok ||
         !imagesMatch(encoded, verified)) {
         return ProgramStoreStatus::VerificationFailed;
     }

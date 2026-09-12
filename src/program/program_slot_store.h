@@ -26,8 +26,8 @@ class ProgramSlotStore {
     [[nodiscard]] auto save(std::uint8_t slot, const Program& program) -> ProgramStoreStatus;
 
   private:
-    ProgramStorageBackend& storage_;
-    bool mounted_ = false;
+    ProgramStorageBackend& _storage;
+    bool _mounted = false;
 };
 
 } // namespace SwingMetro
