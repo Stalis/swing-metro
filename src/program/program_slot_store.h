@@ -16,6 +16,7 @@ enum class ProgramStoreStatus : std::uint8_t {
     WriteFailed,
     VerificationFailed,
     RevisionExhausted,
+    TransportRunning,
 };
 
 class ProgramSlotStore {

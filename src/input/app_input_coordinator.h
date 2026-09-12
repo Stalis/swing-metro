@@ -4,7 +4,9 @@
 #include "app_event_handler.h"
 #include "components/ui_view_model.h"
 #include "main_display_context.h"
+#include "program/program_storage_controller.h"
 
+#include <algorithm>
 #include <bitset>
 #include <cstddef>
 #include <cstdint>
@@ -19,9 +21,10 @@ class AppInputCoordinator {
 
   public:
     AppInputCoordinator(AppEventHandler& handler, Sequencer& sequencer,
-                        MidiClockSettings& midiClock)
+                        MidiClockSettings& midiClock,
+                        ProgramStorageController* programStorage = nullptr)
         : handler_{handler}, sequencer_{sequencer}, midiClock_{midiClock},
-          shiftContext_{selectedStep_} {
+          programStorage_{programStorage}, shiftContext_{selectedStep_} {
         (void)router_.addContext(globalContext_);
         (void)router_.addContext(mainContext_);
     }
@@ -80,6 +83,25 @@ class AppInputCoordinator {
             }
         } else if (const auto* apply = std::get_if<ApplyMidiClockMode>(&event)) {
             midiClock_.apply(apply->mode);
+        } else if (std::holds_alternative<OpenProgramStorage>(event)) {
+            contextChanged = openProgramStorage();
+        } else if (const auto* select = std::get_if<SelectProgramStorageAction>(&event)) {
+            selectProgramStorageAction(select->delta);
+        } else if (std::holds_alternative<ConfirmProgramStorageAction>(event)) {
+            if (_programStorageState == ProgramStorageModalState::Action) {
+                _programStorageState = ProgramStorageModalState::Slot;
+                programStorageContext_.setState(_programStorageState);
+            }
+        } else if (const auto* select = std::get_if<SelectProgramStorageSlot>(&event)) {
+            selectProgramStorageSlot(select->delta);
+        } else if (std::holds_alternative<ConfirmProgramStorageSlot>(event)) {
+            if (_programStorageState == ProgramStorageModalState::Slot) {
+                _programStorageState = ProgramStorageModalState::Busy;
+                programStorageContext_.setState(_programStorageState);
+                _programStoragePending = true;
+            }
+        } else if (std::holds_alternative<CloseProgramStorage>(event)) {
+            contextChanged = closeProgramStorage();
         } else if (!std::holds_alternative<AdjustTempo>(event) ||
                    midiClock_.mode() != MidiClockMode::External) {
             handler_.handle(event);
@@ -108,6 +130,24 @@ class AppInputCoordinator {
     [[nodiscard]] auto midiClockPreviewMode() const noexcept -> MidiClockMode {
         return midiClockPreview_;
     }
+    [[nodiscard]] auto isProgramStorageModalOpen() const noexcept -> bool {
+        return _programStorageState != ProgramStorageModalState::Closed;
+    }
+
+    auto processProgramStorage() -> void {
+        if (!_programStoragePending) {
+            return;
+        }
+        _programStoragePending = false;
+        _programStorageStatus =
+            programStorage_ == nullptr
+                ? ProgramStoreStatus::NotMounted
+                : programStorage_->perform(_programStorageAction, _programStorageSlot);
+        _programStorageState = _programStorageStatus == ProgramStoreStatus::Ok
+                                   ? ProgramStorageModalState::Success
+                                   : ProgramStorageModalState::Error;
+        programStorageContext_.setState(_programStorageState);
+    }
 
     [[nodiscard]] auto decorateUiSettings(UiSettings settings) const -> UiSettings {
         settings.page = selectedStep_.has_value() ? UiPage::StepSettings : UiPage::MainDisplay;
@@ -123,6 +163,10 @@ class AppInputCoordinator {
         settings.midiClockModalOpen = midiClockModalOpen_;
         settings.midiClockActive = midiClock_.mode();
         settings.midiClockPreview = midiClockPreview_;
+        settings.programStorageState = _programStorageState;
+        settings.programStorageAction = _programStorageAction;
+        settings.programStorageSlot = _programStorageSlot;
+        settings.programStorageStatus = _programStorageStatus;
         return settings;
     }
 
@@ -229,20 +273,71 @@ class AppInputCoordinator {
         }
     }
 
+    [[nodiscard]] auto openProgramStorage() -> bool {
+        if (isProgramStorageModalOpen() || router_.size() == router_.capacity()) {
+            return false;
+        }
+        (void)router_.releaseContext(shiftContext_);
+        if (router_.addContext(programStorageContext_) != ContextInput::AddContextResult::Added) {
+            return false;
+        }
+        _programStorageState = ProgramStorageModalState::Action;
+        _programStorageAction = ProgramStorageAction::Save;
+        _programStorageSlot = 0;
+        _programStorageStatus = ProgramStoreStatus::Ok;
+        programStorageContext_.setState(_programStorageState);
+        return true;
+    }
+
+    auto closeProgramStorage() -> bool {
+        if (!isProgramStorageModalOpen() ||
+            _programStorageState == ProgramStorageModalState::Busy ||
+            router_.releaseContext(programStorageContext_) !=
+                ContextInput::ReleaseContextResult::Released) {
+            return false;
+        }
+        _programStorageState = ProgramStorageModalState::Closed;
+        return true;
+    }
+
+    auto selectProgramStorageAction(std::int8_t delta) noexcept -> void {
+        if (_programStorageState == ProgramStorageModalState::Action && delta != 0) {
+            _programStorageAction = _programStorageAction == ProgramStorageAction::Save
+                                        ? ProgramStorageAction::Load
+                                        : ProgramStorageAction::Save;
+        }
+    }
+
+    auto selectProgramStorageSlot(std::int8_t delta) noexcept -> void {
+        if (_programStorageState != ProgramStorageModalState::Slot || delta == 0) {
+            return;
+        }
+        const auto slot = static_cast<int>(_programStorageSlot) + delta;
+        _programStorageSlot = static_cast<std::uint8_t>(
+            std::clamp(slot, 0, static_cast<int>(PROGRAM_USER_SLOT_COUNT - 1)));
+    }
+
     AppEventHandler& handler_;
     Sequencer& sequencer_;
     MidiClockSettings& midiClock_;
+    ProgramStorageController* programStorage_;
     std::optional<std::uint8_t> selectedStep_;
     GlobalContext globalContext_;
     MainDisplayContext mainContext_;
     StepSettingsContext stepContext_;
     ShiftContext shiftContext_;
     MidiClockSettingsContext midiClockContext_;
+    ProgramStorageContext programStorageContext_;
     ContextInput::Router<InputEvent, AppEvent, Capacity> router_;
     std::bitset<256> capturedButtons_;
     MidiClockMode midiClockPreview_ = MidiClockMode::Off;
     bool midiClockModalOpen_ = false;
     bool restoreShiftAfterMidiClockModal_ = false;
+    ProgramStorageModalState _programStorageState = ProgramStorageModalState::Closed;
+    ProgramStorageAction _programStorageAction = ProgramStorageAction::Save;
+    std::uint8_t _programStorageSlot = 0;
+    ProgramStoreStatus _programStorageStatus = ProgramStoreStatus::Ok;
+    bool _programStoragePending = false;
 };
 
 } // namespace SwingMetro

@@ -35,6 +35,22 @@ class GlobalContext {
             }
         }
 
+        if (input.source == InputId::VolumeEncoder) {
+            if (const auto* button = std::get_if<ContextInput::ButtonInput>(&input.payload)) {
+                if (button->phase == ContextInput::ButtonPhase::LongPressed) {
+                    return Result::emit(AppEvent{OpenProgramStorage{}});
+                }
+                if (button->phase == ContextInput::ButtonPhase::Pressed) {
+                    return Result::emit(AppEvent{ActivateShift{}});
+                }
+                if (button->phase == ContextInput::ButtonPhase::Clicked ||
+                    button->phase == ContextInput::ButtonPhase::Released) {
+                    return Result::emit(AppEvent{DeactivateShift{}});
+                }
+                return Result::consume();
+            }
+        }
+
         return Result::pass();
     }
 };
@@ -130,6 +146,44 @@ class ShiftContext {
 
   private:
     const std::optional<std::uint8_t>& selectedStep_;
+};
+
+class ProgramStorageContext {
+  public:
+    auto setState(ProgramStorageModalState state) noexcept -> void { _state = state; }
+
+    [[nodiscard]] auto handle(const InputEvent& input) const
+        -> ContextInput::DispatchResult<AppEvent> {
+        using Result = ContextInput::DispatchResult<AppEvent>;
+        if (input.source == InputId::VolumeEncoder) {
+            if (const auto* encoder = std::get_if<ContextInput::EncoderInput>(&input.payload)) {
+                if (_state == ProgramStorageModalState::Action) {
+                    return Result::emit(AppEvent{SelectProgramStorageAction{encoder->delta}});
+                }
+                if (_state == ProgramStorageModalState::Slot) {
+                    return Result::emit(AppEvent{SelectProgramStorageSlot{encoder->delta}});
+                }
+            }
+            if (const auto* button = std::get_if<ContextInput::ButtonInput>(&input.payload)) {
+                if (button->phase == ContextInput::ButtonPhase::Clicked) {
+                    if (_state == ProgramStorageModalState::Action) {
+                        return Result::emit(AppEvent{ConfirmProgramStorageAction{}});
+                    }
+                    if (_state == ProgramStorageModalState::Slot) {
+                        return Result::emit(AppEvent{ConfirmProgramStorageSlot{}});
+                    }
+                    if (_state == ProgramStorageModalState::Success ||
+                        _state == ProgramStorageModalState::Error) {
+                        return Result::emit(AppEvent{CloseProgramStorage{}});
+                    }
+                }
+            }
+        }
+        return Result::consume();
+    }
+
+  private:
+    ProgramStorageModalState _state = ProgramStorageModalState::Closed;
 };
 
 } // namespace SwingMetro

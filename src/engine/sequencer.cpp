@@ -95,6 +95,8 @@ bool Sequencer::adjustStepVelocity(StepIndex index, int8_t delta) {
 
 bool Sequencer::isRunning() const { return _running; }
 
+void Sequencer::stop() { _running = false; }
+
 void Sequencer::toggleRunning(uint32_t micros) {
     _running = !_running;
     if (_running) {

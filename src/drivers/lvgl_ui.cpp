@@ -55,6 +55,7 @@ void LVGL_Ui::setup() {
     initMainScreen();
     initStepSettingsScreen();
     initMidiClockModal();
+    initProgramStorageModal();
     lv_screen_load(_mainScreen);
 }
 
@@ -96,6 +97,8 @@ void LVGL_Ui::readViewModel(const UiViewModel& viewModel) {
 
     setMidiClockModal(values.midiClockModalOpen, values.midiClockActive, values.midiClockPreview);
     setExternalClock(values.externalClockStatus, values.externalTempo);
+    setProgramStorageModal(values.programStorageState, values.programStorageAction,
+                           values.programStorageSlot, values.programStorageStatus);
 }
 
 void LVGL_Ui::setTempo(uint8_t value) { lv_subject_set_int(&_tempoSubject, value); }
@@ -246,6 +249,61 @@ void LVGL_Ui::setMidiClockModal(bool open, SwingMetro::MidiClockMode active,
                                   selected ? lv_color_hex(0x404000) : lv_color_black(), 0);
         lv_obj_set_style_bg_opa(_midiClockModeLabels[index],
                                 selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    }
+}
+
+void LVGL_Ui::initProgramStorageModal() {
+    _programStorageModal = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(_programStorageModal, 112, 84);
+    lv_obj_align(_programStorageModal, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(_programStorageModal, lv_color_hex(0x101010), 0);
+    lv_obj_set_style_bg_opa(_programStorageModal, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(_programStorageModal, lv_color_hex(0x00FFFF), 0);
+    lv_obj_set_style_border_width(_programStorageModal, 2, 0);
+    lv_obj_remove_flag(_programStorageModal, LV_OBJ_FLAG_SCROLLABLE);
+    _programStorageTitleLabel = lv_label_create(_programStorageModal);
+    lv_obj_align(_programStorageTitleLabel, LV_ALIGN_TOP_MID, 0, 8);
+    _programStorageValueLabel = lv_label_create(_programStorageModal);
+    lv_obj_align(_programStorageValueLabel, LV_ALIGN_CENTER, 0, 12);
+    lv_obj_add_flag(_programStorageModal, LV_OBJ_FLAG_HIDDEN);
+}
+
+void LVGL_Ui::setProgramStorageModal(SwingMetro::ProgramStorageModalState state,
+                                     SwingMetro::ProgramStorageAction action, uint8_t slot,
+                                     SwingMetro::ProgramStoreStatus status) {
+    if (state == _displayedProgramStorageState && action == _displayedProgramStorageAction &&
+        slot == _displayedProgramStorageSlot && status == _displayedProgramStorageStatus) {
+        return;
+    }
+    _displayedProgramStorageState = state;
+    _displayedProgramStorageAction = action;
+    _displayedProgramStorageSlot = slot;
+    _displayedProgramStorageStatus = status;
+    if (state == SwingMetro::ProgramStorageModalState::Closed) {
+        lv_obj_add_flag(_programStorageModal, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    lv_obj_remove_flag(_programStorageModal, LV_OBJ_FLAG_HIDDEN);
+    if (state == SwingMetro::ProgramStorageModalState::Action) {
+        lv_label_set_text(_programStorageTitleLabel, "Save / Load");
+        lv_label_set_text(_programStorageValueLabel,
+                          action == SwingMetro::ProgramStorageAction::Save ? "Save" : "Load");
+    } else if (state == SwingMetro::ProgramStorageModalState::Slot) {
+        lv_label_set_text(_programStorageTitleLabel,
+                          action == SwingMetro::ProgramStorageAction::Save ? "Save slot"
+                                                                           : "Load slot");
+        lv_label_set_text_fmt(_programStorageValueLabel, "Slot %u", static_cast<unsigned>(slot));
+    } else if (state == SwingMetro::ProgramStorageModalState::Busy) {
+        lv_label_set_text(_programStorageTitleLabel, "Program Storage");
+        lv_label_set_text(_programStorageValueLabel,
+                          action == SwingMetro::ProgramStorageAction::Save ? "Saving..."
+                                                                           : "Loading...");
+    } else {
+        lv_label_set_text(_programStorageTitleLabel,
+                          state == SwingMetro::ProgramStorageModalState::Success ? "Complete"
+                                                                                 : "Error");
+        lv_label_set_text_fmt(_programStorageValueLabel, "Status %u",
+                              static_cast<unsigned>(status));
     }
 }
 

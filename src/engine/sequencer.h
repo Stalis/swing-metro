@@ -65,6 +65,7 @@ class Sequencer {
     bool adjustStepVelocity(StepIndex index, int8_t delta);
 
     [[nodiscard]] bool isRunning() const;
+    void stop();
     void toggleRunning(uint32_t micros);
 
     void sync(uint32_t micros);

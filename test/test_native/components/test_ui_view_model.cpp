@@ -200,6 +200,24 @@ void test_ui_view_model_publishes_external_clock_snapshot() {
     TEST_ASSERT_EQUAL_UINT8(123, snapshot.externalTempo);
 }
 
+void test_ui_view_model_publishes_program_storage_snapshot() {
+    UiViewModel viewModel;
+    UiSettings settings{.tempo = 120, .swing = 50, .volume = 100, .activeNote = UINT8_MAX};
+    settings.programStorageState = SwingMetro::ProgramStorageModalState::Slot;
+    settings.programStorageAction = SwingMetro::ProgramStorageAction::Load;
+    settings.programStorageSlot = 15;
+    settings.programStorageStatus = SwingMetro::ProgramStoreStatus::Empty;
+    viewModel.publish(settings);
+    const auto snapshot = viewModel.read();
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramStorageModalState::Slot),
+                            static_cast<uint8_t>(snapshot.programStorageState));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramStorageAction::Load),
+                            static_cast<uint8_t>(snapshot.programStorageAction));
+    TEST_ASSERT_EQUAL_UINT8(15, snapshot.programStorageSlot);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramStoreStatus::Empty),
+                            static_cast<uint8_t>(snapshot.programStorageStatus));
+}
+
 void test_ui_view_model_main() {
     RUN_TEST(test_ui_view_model_returns_published_snapshot);
     RUN_TEST(test_ui_view_model_replaces_the_whole_snapshot);
@@ -210,4 +228,5 @@ void test_ui_view_model_main() {
     RUN_TEST(test_ui_view_model_publishes_velocity_only_change);
     RUN_TEST(test_ui_view_model_publishes_midi_clock_modal_snapshot);
     RUN_TEST(test_ui_view_model_publishes_external_clock_snapshot);
+    RUN_TEST(test_ui_view_model_publishes_program_storage_snapshot);
 }

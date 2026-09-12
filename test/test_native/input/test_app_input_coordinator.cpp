@@ -654,6 +654,37 @@ void test_repeated_fast_navigation_keeps_only_one_settings_context() {
     TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().any());
 }
 
+void test_program_storage_modal_blocks_input_and_publishes_result() {
+    State state;
+    UiViewModel viewModel;
+    state.sequencer.stop();
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::OpenProgramStorage{}},
+                                     nullptr, 1000);
+    TEST_ASSERT_TRUE(state.coordinator.isProgramStorageModalOpen());
+    TEST_ASSERT_FALSE(turn(state, SwingMetro::InputId::TempoEncoder, 1).has_value());
+    TEST_ASSERT_EQUAL_UINT8(120, state.tempo.getValue());
+
+    state.coordinator.handleAppEvent(
+        SwingMetro::AppEvent{SwingMetro::SelectProgramStorageAction{1}}, nullptr, 1000);
+    state.coordinator.handleAppEvent(
+        SwingMetro::AppEvent{SwingMetro::ConfirmProgramStorageAction{}}, nullptr, 1000);
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::SelectProgramStorageSlot{4}},
+                                     nullptr, 1000);
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::ConfirmProgramStorageSlot{}},
+                                     nullptr, 1000);
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStorageModalState::Busy),
+                            static_cast<std::uint8_t>(viewModel.read().programStorageState));
+    state.coordinator.processProgramStorage();
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStorageModalState::Error),
+                            static_cast<std::uint8_t>(viewModel.read().programStorageState));
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::CloseProgramStorage{}},
+                                     nullptr, 1000);
+    TEST_ASSERT_FALSE(state.coordinator.isProgramStorageModalOpen());
+    TEST_ASSERT_FALSE(state.sequencer.isRunning());
+}
+
 } // namespace
 
 void test_app_input_coordinator_main() {
@@ -678,4 +709,5 @@ void test_app_input_coordinator_main() {
     RUN_TEST(test_apply_midi_clock_mode_changes_only_settings);
     RUN_TEST(test_external_mode_ignores_local_tempo_and_transport);
     RUN_TEST(test_repeated_fast_navigation_keeps_only_one_settings_context);
+    RUN_TEST(test_program_storage_modal_blocks_input_and_publishes_result);
 }

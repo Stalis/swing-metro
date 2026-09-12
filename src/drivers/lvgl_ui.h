@@ -66,6 +66,16 @@ class LVGL_Ui {
     SwingMetro::ExternalMidiClockStatus _displayedExternalClockStatus =
         SwingMetro::ExternalMidiClockStatus::Waiting;
     uint8_t _displayedExternalTempo = UINT8_MAX;
+    lv_obj_t* _programStorageModal;
+    lv_obj_t* _programStorageTitleLabel;
+    lv_obj_t* _programStorageValueLabel;
+    SwingMetro::ProgramStorageModalState _displayedProgramStorageState =
+        SwingMetro::ProgramStorageModalState::Closed;
+    SwingMetro::ProgramStorageAction _displayedProgramStorageAction =
+        SwingMetro::ProgramStorageAction::Save;
+    uint8_t _displayedProgramStorageSlot = UINT8_MAX;
+    SwingMetro::ProgramStoreStatus _displayedProgramStorageStatus =
+        SwingMetro::ProgramStoreStatus::Ok;
 
     // Main screen
     std::array<lv_obj_t*, SEQUENCER_STEPS_COUNT> _stepSquares{};
@@ -76,6 +86,10 @@ class LVGL_Ui {
     void setMidiClockModal(bool open, SwingMetro::MidiClockMode active,
                            SwingMetro::MidiClockMode preview);
     void setExternalClock(SwingMetro::ExternalMidiClockStatus status, uint8_t tempo);
+    void initProgramStorageModal();
+    void setProgramStorageModal(SwingMetro::ProgramStorageModalState state,
+                                SwingMetro::ProgramStorageAction action, uint8_t slot,
+                                SwingMetro::ProgramStoreStatus status);
     void drawSequencerSteps();
     void drawSequencerSteps(uint32_t rawValue);
 

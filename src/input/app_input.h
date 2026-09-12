@@ -2,6 +2,7 @@
 
 #include "engine/midi_clock_mode.h"
 #include "engine/sequencer.h"
+#include "program/program_storage_modal.h"
 
 #include <context_input.h>
 #include <cstdint>
@@ -95,11 +96,24 @@ struct ConfirmMidiClockSettings {};
 struct ApplyMidiClockMode {
     MidiClockMode mode;
 };
+struct OpenProgramStorage {};
+struct SelectProgramStorageAction {
+    std::int8_t delta;
+};
+struct ConfirmProgramStorageAction {};
+struct SelectProgramStorageSlot {
+    std::int8_t delta;
+};
+struct ConfirmProgramStorageSlot {};
+struct CloseProgramStorage {};
 
 using InputEvent = ContextInput::InputEvent<InputId>;
-using AppEvent = std::variant<AdjustTempo, AdjustSwing, AdjustVolume, ToggleStep, OpenStepSettings,
-                              CloseStepSettings, AdjustNote, AdjustVelocity, ToggleTransport,
-                              ActivateShift, DeactivateShift, OpenMidiClockSettings,
-                              AdjustMidiClockPreview, ConfirmMidiClockSettings, ApplyMidiClockMode>;
+using AppEvent =
+    std::variant<AdjustTempo, AdjustSwing, AdjustVolume, ToggleStep, OpenStepSettings,
+                 CloseStepSettings, AdjustNote, AdjustVelocity, ToggleTransport, ActivateShift,
+                 DeactivateShift, OpenMidiClockSettings, AdjustMidiClockPreview,
+                 ConfirmMidiClockSettings, ApplyMidiClockMode, OpenProgramStorage,
+                 SelectProgramStorageAction, ConfirmProgramStorageAction, SelectProgramStorageSlot,
+                 ConfirmProgramStorageSlot, CloseProgramStorage>;
 
 } // namespace SwingMetro

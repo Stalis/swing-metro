@@ -2,6 +2,8 @@
 
 #include "engine/external_midi_clock.h"
 #include "engine/midi_clock_mode.h"
+#include "program/program_slot_store.h"
+#include "program/program_storage_modal.h"
 
 #include <atomic>
 #include <bitset>
@@ -32,6 +34,11 @@ struct UiSettings {
     SwingMetro::ExternalMidiClockStatus externalClockStatus =
         SwingMetro::ExternalMidiClockStatus::Waiting;
     uint8_t externalTempo = 0;
+    SwingMetro::ProgramStorageModalState programStorageState =
+        SwingMetro::ProgramStorageModalState::Closed;
+    SwingMetro::ProgramStorageAction programStorageAction = SwingMetro::ProgramStorageAction::Save;
+    uint8_t programStorageSlot = 0;
+    SwingMetro::ProgramStoreStatus programStorageStatus = SwingMetro::ProgramStoreStatus::Ok;
 };
 
 class UiViewModel {
@@ -64,6 +71,11 @@ class UiViewModel {
         _externalClockPacked.store(static_cast<uint32_t>(settings.externalTempo) |
                                        static_cast<uint32_t>(settings.externalClockStatus) << 8,
                                    std::memory_order_seq_cst);
+        _programStoragePacked.store(static_cast<uint32_t>(settings.programStorageState) |
+                                        static_cast<uint32_t>(settings.programStorageAction) << 3 |
+                                        static_cast<uint32_t>(settings.programStorageSlot) << 4 |
+                                        static_cast<uint32_t>(settings.programStorageStatus) << 8,
+                                    std::memory_order_seq_cst);
         _generation.fetch_add(1, std::memory_order_seq_cst);
         _lastPublished = settings;
     }
@@ -80,6 +92,8 @@ class UiViewModel {
             const uint32_t navigationPacked = _navigationPacked.load(std::memory_order_seq_cst);
             const uint32_t externalClockPacked =
                 _externalClockPacked.load(std::memory_order_seq_cst);
+            const uint32_t programStoragePacked =
+                _programStoragePacked.load(std::memory_order_seq_cst);
             const uint32_t after = _generation.load(std::memory_order_seq_cst);
             if (before != after) {
                 continue;
@@ -104,6 +118,13 @@ class UiViewModel {
                 .externalClockStatus = static_cast<SwingMetro::ExternalMidiClockStatus>(
                     (externalClockPacked >> 8) & 3U),
                 .externalTempo = static_cast<uint8_t>(externalClockPacked),
+                .programStorageState =
+                    static_cast<SwingMetro::ProgramStorageModalState>(programStoragePacked & 7U),
+                .programStorageAction =
+                    static_cast<SwingMetro::ProgramStorageAction>((programStoragePacked >> 3) & 1U),
+                .programStorageSlot = static_cast<uint8_t>((programStoragePacked >> 4) & 15U),
+                .programStorageStatus =
+                    static_cast<SwingMetro::ProgramStoreStatus>(programStoragePacked >> 8),
             };
         }
     }
@@ -121,13 +142,18 @@ class UiViewModel {
                left.midiClockActive == right.midiClockActive &&
                left.midiClockPreview == right.midiClockPreview &&
                left.externalClockStatus == right.externalClockStatus &&
-               left.externalTempo == right.externalTempo;
+               left.externalTempo == right.externalTempo &&
+               left.programStorageState == right.programStorageState &&
+               left.programStorageAction == right.programStorageAction &&
+               left.programStorageSlot == right.programStorageSlot &&
+               left.programStorageStatus == right.programStorageStatus;
     }
 
     std::atomic<uint32_t> _packed{0};
     std::atomic<uint16_t> _notesPacked{0};
     std::atomic<uint32_t> _navigationPacked{0};
     std::atomic<uint32_t> _externalClockPacked{0};
+    std::atomic<uint32_t> _programStoragePacked{0};
     std::atomic<uint32_t> _generation{0};
     std::optional<UiSettings> _lastPublished;
 };
