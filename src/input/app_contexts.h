@@ -52,8 +52,18 @@ class StepSettingsContext {
 
         const auto* button = std::get_if<ContextInput::ButtonInput>(&input.payload);
         const auto step = stepIndexFromInputId(input.source);
-        if (button != nullptr && step.has_value() &&
-            button->phase == ContextInput::ButtonPhase::LongPressed) {
+        if (button == nullptr || !step.has_value()) {
+            return Result::pass();
+        }
+
+        if (button->phase == ContextInput::ButtonPhase::Clicked) {
+            if (*step == selectedStep_) {
+                return Result::consume();
+            }
+            return Result::emit(AppEvent{OpenStepSettings{*step}});
+        }
+
+        if (button->phase == ContextInput::ButtonPhase::LongPressed) {
             if (*step == selectedStep_) {
                 return Result::emit(AppEvent{CloseStepSettings{}});
             }

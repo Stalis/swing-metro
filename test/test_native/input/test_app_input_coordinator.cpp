@@ -131,10 +131,43 @@ void test_encoder_changes_note_in_settings_and_tempo_after_close() {
     TEST_ASSERT_EQUAL_UINT8(100, state.volume.getValue());
 
     click(state, 3, 1000);
-    TEST_ASSERT_TRUE(state.sequencer.getStepsEnabled().test(3));
+    TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().test(3));
+    TEST_ASSERT_EQUAL_UINT8(3, *state.coordinator.selectedStep());
     longPress(state, 3, 2000);
     turn(state, SwingMetro::InputId::TempoEncoder, 1);
     TEST_ASSERT_EQUAL_UINT8(122, state.tempo.getValue());
+}
+
+void test_click_in_settings_selects_step_without_toggling_it() {
+    State state;
+    UiViewModel viewModel;
+
+    longPress(state, 0, 100);
+    click(state, 2, 1000);
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+    TEST_ASSERT_EQUAL_UINT8(2, *state.coordinator.selectedStep());
+    TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().test(0));
+    TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().test(2));
+
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    const auto selectedUi = viewModel.read();
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(UiPage::StepSettings),
+                            static_cast<std::uint8_t>(selectedUi.page));
+    TEST_ASSERT_EQUAL_UINT8(2, selectedUi.selectedStep);
+
+    turn(state, SwingMetro::InputId::TempoEncoder, 1);
+    TEST_ASSERT_EQUAL_UINT8(36, *state.sequencer.getStepMidiNote(0));
+    TEST_ASSERT_EQUAL_UINT8(37, *state.sequencer.getStepMidiNote(2));
+
+    longPress(state, 0, 2000);
+    TEST_ASSERT_EQUAL_UINT8(0, *state.coordinator.selectedStep());
+    TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().test(2));
+    longPress(state, 0, 3000);
+    TEST_ASSERT_FALSE(state.coordinator.selectedStep().has_value());
+    TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().test(2));
+
+    click(state, 2, 4000);
+    TEST_ASSERT_TRUE(state.sequencer.getStepsEnabled().test(2));
 }
 
 void test_navigation_failure_preserves_main_page() {
@@ -158,11 +191,13 @@ void test_gesture_capture_suppresses_remaining_phases_only_for_source() {
 
     const auto otherClick = routeBatch(state, state.buttons.onReleased(8, 650));
     TEST_ASSERT_EQUAL_UINT32(1, otherClick);
-    TEST_ASSERT_TRUE(state.sequencer.getStepsEnabled().test(8));
+    TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().test(8));
     TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.buttons.onReleased(5, 700)));
-    TEST_ASSERT_EQUAL_UINT8(5, *state.coordinator.selectedStep());
+    TEST_ASSERT_EQUAL_UINT8(8, *state.coordinator.selectedStep());
 
     longPress(state, 5, 1000);
+    TEST_ASSERT_EQUAL_UINT8(5, *state.coordinator.selectedStep());
+    longPress(state, 5, 2000);
     TEST_ASSERT_FALSE(state.coordinator.selectedStep().has_value());
 
     const SwingMetro::InputEvent pressed{
@@ -283,6 +318,7 @@ void test_note_clamps_and_invalid_index() {
 void test_app_input_coordinator_main() {
     RUN_TEST(test_open_switch_close_and_publish_ui);
     RUN_TEST(test_encoder_changes_note_in_settings_and_tempo_after_close);
+    RUN_TEST(test_click_in_settings_selects_step_without_toggling_it);
     RUN_TEST(test_navigation_failure_preserves_main_page);
     RUN_TEST(test_gesture_capture_suppresses_remaining_phases_only_for_source);
     RUN_TEST(test_shift_lifecycle_is_independent_of_navigation);

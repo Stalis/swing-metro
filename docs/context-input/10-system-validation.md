@@ -48,6 +48,9 @@ MainDisplay
 StepSettings(step 5)
   тот же encoder right -> AdjustNote{+1}
   тот же encoder left  -> AdjustNote{-1}
+  Step 3 click         -> выбор step 3, без ToggleStep
+  Step 5 long press    -> выбор step 5, так как теперь выбран step 3
+  Step 5 long press    -> закрытие настроек
   StartStop             -> проходит в GlobalContext
   close                 -> возврат к MainDisplay
 
