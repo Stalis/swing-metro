@@ -15,6 +15,9 @@ auto LittleFsProgramStorage::mount() -> bool {
         _configured = true;
     }
     _mounted = LittleFS.begin();
+    if (!_mounted && LittleFS.format()) {
+        _mounted = LittleFS.begin();
+    }
     return _mounted;
 }
 
