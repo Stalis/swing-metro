@@ -41,6 +41,17 @@ auto Counter<T>::getValue() const {
 }
 
 template <typename T>
+void Counter<T>::setValue(T value) {
+    if (value < _minValue) {
+        _value = _minValue;
+    } else if (value > _maxValue) {
+        _value = _maxValue;
+    } else {
+        _value = value;
+    }
+}
+
+template <typename T>
 void Counter<T>::setStep(T step) {
     _step = step;
 }

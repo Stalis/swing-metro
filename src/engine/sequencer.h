@@ -52,6 +52,8 @@ class Sequencer {
 
     void setBpm(uint8_t bpm);
     [[nodiscard]] uint8_t getBpm() const;
+    [[nodiscard]] const std::array<SequencerStep, STEPS_COUNT>& steps() const;
+    void setSteps(const std::array<SequencerStep, STEPS_COUNT>& steps);
     [[nodiscard]] std::bitset<STEPS_COUNT> getStepsEnabled() const;
     [[nodiscard]] StepIndex getCurrentStepIndex() const;
     [[nodiscard]] std::optional<StepIndex> getDisplayStepIndex() const;

@@ -15,6 +15,8 @@
 #include "../test/test_native/input/test_main_display_context.h"
 #include "../test/test_native/input/test_midi_clock_settings_context.h"
 #include "../test/test_native/input/test_step_button_integration.h"
+#include "../test/test_native/program/test_program.h"
+#include "../test/test_native/program/test_program_codec.h"
 #include "../test/test_native/utils/counter/test_counter.h"
 #include "../test/test_native/utils/round_buffer/test_round_buffer.h"
 #include <unity.h>
@@ -49,6 +51,8 @@ int main() {
     test_app_input_coordinator_main();
     test_encoder_integration_main();
     test_step_button_integration_main();
+    test_program_main();
+    test_program_codec_main();
 
     UNITY_END();
 }

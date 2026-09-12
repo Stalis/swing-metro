@@ -31,6 +31,7 @@ class Counter {
     void step(CounterDirection direction);
 
     [[nodiscard]] auto getValue() const;
+    void setValue(T value);
     void setStep(T step);
     [[nodiscard]] auto getStep() const;
 

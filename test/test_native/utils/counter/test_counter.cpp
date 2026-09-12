@@ -91,6 +91,21 @@ void test_counter_step() {
     TEST_ASSERT_EQUAL(5, counter.getValue());
 }
 
+void test_counter_set_value_clamps_to_range() {
+    Counter<int> counter({.step = 1,
+                          .value = 2,
+                          .minValue = 0,
+                          .maxValue = 5,
+                          .overflowBehavior = CounterOverflowBehavior::Clamp});
+
+    counter.setValue(4);
+    TEST_ASSERT_EQUAL(4, counter.getValue());
+    counter.setValue(6);
+    TEST_ASSERT_EQUAL(5, counter.getValue());
+    counter.setValue(-1);
+    TEST_ASSERT_EQUAL(0, counter.getValue());
+}
+
 void test_counter_main() {
     // UNITY_BEGIN();
 
@@ -98,6 +113,7 @@ void test_counter_main() {
     RUN_TEST(test_counter_stepDown);
     RUN_TEST(test_counter_wrap_around);
     RUN_TEST(test_counter_step);
+    RUN_TEST(test_counter_set_value_clamps_to_range);
 
     // return UNITY_END();
 }

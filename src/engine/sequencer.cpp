@@ -21,6 +21,10 @@ Sequencer::Sequencer()
 
 uint8_t Sequencer::getBpm() const { return _bpm; }
 
+const std::array<SequencerStep, STEPS_COUNT>& Sequencer::steps() const { return _steps; }
+
+void Sequencer::setSteps(const std::array<SequencerStep, STEPS_COUNT>& steps) { _steps = steps; }
+
 std::bitset<STEPS_COUNT> Sequencer::getStepsEnabled() const {
     std::bitset<STEPS_COUNT> res{};
 
