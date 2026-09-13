@@ -17,6 +17,7 @@
 #include "../test/test_native/input/test_step_button_integration.h"
 #include "../test/test_native/program/test_program.h"
 #include "../test/test_native/program/test_program_codec.h"
+#include "../test/test_native/program/test_program_migration.h"
 #include "../test/test_native/program/test_program_slot_store.h"
 #include "../test/test_native/program/test_program_storage_controller.h"
 #include "../test/test_native/utils/counter/test_counter.h"
@@ -55,6 +56,7 @@ int main() {
     test_step_button_integration_main();
     testProgramMain();
     testProgramCodecMain();
+    testProgramMigrationMain();
     testProgramSlotStoreMain();
     testProgramStorageControllerMain();
 

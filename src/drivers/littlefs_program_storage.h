@@ -8,6 +8,7 @@ namespace SwingMetro {
 
 class LittleFsProgramStorage final : public ProgramStorageBackend {
   public:
+    explicit LittleFsProgramStorage(bool formatErasedOnMount = true) noexcept;
     [[nodiscard]] auto mount() -> bool override;
     [[nodiscard]] auto read(std::uint8_t slot, ProgramStorageCopy copy, ProgramStorageImage& image)
         -> ProgramStorageReadResult override;
@@ -19,6 +20,7 @@ class LittleFsProgramStorage final : public ProgramStorageBackend {
                                       std::size_t pathSize) -> bool;
 
     LittleFSConfig _config{false};
+    bool _formatErasedOnMount;
     bool _configured = false;
     bool _mounted = false;
 };
