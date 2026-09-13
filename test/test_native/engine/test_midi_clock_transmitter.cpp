@@ -130,9 +130,17 @@ void test_bpm_change_wraparound_and_limited_catch_up() {
     TEST_ASSERT_EQUAL_UINT32(5, delayedSink.size);
 }
 
+void test_sequencer_starts_stopped() {
+    Sequencer sequencer;
+
+    TEST_ASSERT_FALSE(sequencer.isRunning());
+    TEST_ASSERT_FALSE(sequencer.update(0));
+}
+
 void test_step_boundary_orders_transport_before_notes() {
     Sequencer sequencer;
     sequencer.toggleStep(0);
+    sequencer.toggleRunning(0);
     sequencer.sync(0);
 
     SwingMetro::MidiClockTransmitter clock;
@@ -164,6 +172,7 @@ void test_step_boundary_orders_note_packets_before_sixth_clock() {
     Sequencer sequencer;
     sequencer.toggleStep(0);
     sequencer.toggleStep(1);
+    sequencer.toggleRunning(0);
     sequencer.sync(0);
 
     SwingMetro::MidiClockTransmitter clock;
@@ -200,6 +209,7 @@ void test_midi_clock_transmitter_main() {
     RUN_TEST(test_24_ppqn_periods_at_tempo_limits);
     RUN_TEST(test_transitions_reset_phase_without_duplicates);
     RUN_TEST(test_bpm_change_wraparound_and_limited_catch_up);
+    RUN_TEST(test_sequencer_starts_stopped);
     RUN_TEST(test_step_boundary_orders_transport_before_notes);
     RUN_TEST(test_step_boundary_orders_note_packets_before_sixth_clock);
 }

@@ -84,7 +84,7 @@ class Sequencer {
     StepIndex _currentStepIndex;
     bool _hasCurrentStep = false;
     uint8_t _bpm;
-    bool _running = true;
+    bool _running = false;
 
     uint32_t _stepPeriodUs;
     uint32_t _lastStepAt = 0;

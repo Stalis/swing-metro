@@ -389,6 +389,7 @@ void test_shift_lifecycle_is_independent_of_navigation() {
 
 void test_tempo_switch_click_toggles_transport_once_and_long_press_does_not() {
     State state;
+    state.sequencer.toggleRunning(0);
     state.sequencer.sync(0);
     TEST_ASSERT_TRUE(state.sequencer.isRunning());
 
@@ -450,6 +451,7 @@ void test_midi_clock_modal_clamps_confirms_and_publishes_snapshot() {
 
 void test_midi_clock_modal_preserves_step_settings_and_restores_shift() {
     State state;
+    state.sequencer.toggleRunning(0);
     longPress(state, 2, 100);
     setShift(state, true);
     TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
@@ -475,6 +477,7 @@ void test_midi_clock_modal_preserves_step_settings_and_restores_shift() {
 void test_restart_runs_first_step_immediately_and_keeps_sixteenth_grid() {
     State state;
     UiViewModel viewModel;
+    state.sequencer.toggleRunning(0);
     state.sequencer.sync(0);
     TEST_ASSERT_FALSE(state.sequencer.getDisplayStepIndex().has_value());
     TEST_ASSERT_TRUE(state.sequencer.update(0));
@@ -534,6 +537,7 @@ void test_velocity_clamps_and_current_step_uses_edited_value() {
     TEST_ASSERT_TRUE(state.sequencer.adjustStepVelocity(0, 127));
     TEST_ASSERT_EQUAL_UINT8(127, *state.sequencer.getStepVelocity(0));
     TEST_ASSERT_TRUE(state.sequencer.adjustStepVelocity(0, -7));
+    state.sequencer.toggleRunning(0);
     state.sequencer.sync(0);
     TEST_ASSERT_TRUE(state.sequencer.update(125000));
     TEST_ASSERT_EQUAL_UINT8(0, state.sequencer.getCurrentStepIndex());
@@ -620,6 +624,7 @@ void test_apply_midi_clock_mode_changes_only_settings() {
 
 void test_external_mode_ignores_local_tempo_and_transport() {
     State state;
+    state.sequencer.toggleRunning(0);
     state.coordinator.handleAppEvent(
         SwingMetro::AppEvent{SwingMetro::ApplyMidiClockMode{SwingMetro::MidiClockMode::External}},
         nullptr, 1000);
