@@ -11,6 +11,7 @@
 #include "../test/test_native/engine/test_midi_clock_mode.h"
 #include "../test/test_native/engine/test_midi_clock_transmitter.h"
 #include "../test/test_native/engine/test_midi_event_queue.h"
+#include "../test/test_native/engine/test_sequencer.h"
 #include "../test/test_native/engine/test_transport.h"
 #include "../test/test_native/input/test_app_event_handler.h"
 #include "../test/test_native/input/test_app_input_coordinator.h"
@@ -43,6 +44,7 @@ int main() {
     test_internal_tick_main();
     test_midi_clock_transmitter_main();
     test_midi_event_queue_main();
+    test_sequencer_main();
     test_transport_main();
     test_input_event_main();
     test_dispatch_result_main();

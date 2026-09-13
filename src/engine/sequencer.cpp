@@ -95,7 +95,15 @@ bool Sequencer::adjustStepVelocity(StepIndex index, int8_t delta) {
 
 bool Sequencer::isRunning() const { return _running; }
 
-void Sequencer::stop() { _running = false; }
+std::optional<MIDI_Note> Sequencer::stop() {
+    _running = false;
+    const auto actual = _actualSoundingNote;
+    _actualSoundingNote.reset();
+    _projectedSoundingNote.reset();
+    _scheduledBoundaryTick.reset();
+    _scheduledSoundingNote.reset();
+    return actual;
+}
 
 void Sequencer::toggleRunning(uint32_t micros) {
     _running = !_running;
@@ -110,6 +118,62 @@ uint32_t Sequencer::getStepPeriodUs() const {
 
     return MICROSECONDS_PER_MINUTE / (static_cast<uint32_t>(_bpm) * STEPS_PER_QUARTER);
 }
+
+void Sequencer::start() {
+    _running = true;
+    _currentStepIndex = 0;
+    _hasCurrentStep = false;
+    _actualSoundingNote.reset();
+    _projectedSoundingNote.reset();
+    _nextBoundaryTick = 0;
+    _scheduledBoundaryTick.reset();
+    _scheduledSoundingNote.reset();
+}
+
+void Sequencer::continuePlayback() { _running = true; }
+
+SwingMetro::MidiEventQueueEnqueueResult
+Sequencer::scheduleThrough(SwingMetro::TransportPosition position,
+                           SwingMetro::MidiEventQueue& queue) {
+    if (!_running) {
+        return SwingMetro::MidiEventQueueEnqueueResult::Ok;
+    }
+    const auto horizon = position.tick + SCHEDULING_LOOKAHEAD_TICKS;
+    while (_nextBoundaryTick <= horizon) {
+        const auto stepIndex = static_cast<StepIndex>(
+            (_nextBoundaryTick / SwingMetro::kTicksPerSixteenth) % STEPS_COUNT);
+        const auto& step = _steps[stepIndex];
+        std::array<SwingMetro::MidiEventRequest, 2> requests{};
+        std::size_t count = 0;
+        if (_projectedSoundingNote.has_value()) {
+            requests[count++] = {{_nextBoundaryTick, 0}, {0x08, 0x80, *_projectedSoundingNote, 0}};
+        }
+        std::optional<MIDI_Note> projected;
+        if (step.isEnabled) {
+            projected = step.note;
+            requests[count++] = {{_nextBoundaryTick, 0}, {0x09, 0x90, step.note, step.velocity}};
+        }
+        const auto result = queue.enqueueBatch(requests, count);
+        if (result != SwingMetro::MidiEventQueueEnqueueResult::Ok) {
+            return result;
+        }
+        _currentStepIndex = stepIndex;
+        _hasCurrentStep = true;
+        _projectedSoundingNote = projected;
+        _scheduledBoundaryTick = _nextBoundaryTick;
+        _scheduledSoundingNote = projected;
+        _nextBoundaryTick += SwingMetro::kTicksPerSixteenth;
+    }
+    return SwingMetro::MidiEventQueueEnqueueResult::Ok;
+}
+
+void Sequencer::notifyBoundaryReached(SwingMetro::TransportTick tick) {
+    if (_scheduledBoundaryTick == tick) {
+        _actualSoundingNote = _scheduledSoundingNote;
+    }
+}
+
+std::optional<MIDI_Note> Sequencer::actualSoundingNote() const { return _actualSoundingNote; }
 
 void Sequencer::sync(uint32_t micros) {
     _lastStepAt = micros - _stepPeriodUs;
@@ -133,14 +197,13 @@ bool Sequencer::update(uint32_t micros) {
 }
 
 void Sequencer::externalStart() {
-    _running = true;
+    start();
     _currentStepIndex = STEPS_COUNT - 1;
-    _hasCurrentStep = false;
 }
 
-void Sequencer::externalContinue() { _running = true; }
+void Sequencer::externalContinue() { continuePlayback(); }
 
-void Sequencer::externalStop() { _running = false; }
+void Sequencer::externalStop() { (void)stop(); }
 
 bool Sequencer::advanceExternal() {
     if (!_running) {

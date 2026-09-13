@@ -16,6 +16,11 @@ struct MidiEvent {
     std::size_t sequenceNumber = 0;
 };
 
+struct MidiEventRequest {
+    TransportPosition target{};
+    MidiUsbPacket packet{};
+};
+
 enum class MidiEventQueueEnqueueResult : std::uint8_t {
     Ok,
     CapacityExceeded,
@@ -35,24 +40,39 @@ class MidiEventQueue {
 
     [[nodiscard]] auto enqueue(TransportPosition target, const MidiUsbPacket& packet) noexcept
         -> MidiEventQueueEnqueueResult {
-        if (_count == kCapacity) {
+        const MidiEventRequest request{target, packet};
+        return enqueueBatch(&request, 1);
+    }
+
+    [[nodiscard]] auto enqueueBatch(const MidiEventRequest* requests, std::size_t count) noexcept
+        -> MidiEventQueueEnqueueResult {
+        if (_count + count > kCapacity) {
             return MidiEventQueueEnqueueResult::CapacityExceeded;
         }
-        const bool isClock = packet[1] == 0xF8;
-        if (packetsAtTick(target.tick) == kMaxPacketsPerTick ||
-            (!isClock && packetsAtTick(target.tick) == kMaxPacketsPerTick - 1)) {
-            return MidiEventQueueEnqueueResult::TickQuotaExceeded;
+        for (std::size_t requestIndex = 0; requestIndex < count; ++requestIndex) {
+            const auto tick = requests[requestIndex].target.tick;
+            std::size_t packetCount = packetsAtTick(tick);
+            std::size_t nonClockCount = nonClockPacketsAtTick(tick);
+            for (std::size_t index = 0; index < count; ++index) {
+                if (requests[index].target.tick == tick) {
+                    ++packetCount;
+                    nonClockCount += requests[index].packet[1] != 0xF8;
+                }
+            }
+            if (packetCount > kMaxPacketsPerTick || nonClockCount >= kMaxPacketsPerTick) {
+                return MidiEventQueueEnqueueResult::TickQuotaExceeded;
+            }
         }
 
-        const MidiEvent event{target, packet, _nextSequenceNumber++};
-        std::size_t insertAt = _count;
-        while (insertAt > 0 && eventPrecedes(event, _events[insertAt - 1])) {
-            _events[insertAt] = _events[insertAt - 1];
-            --insertAt;
+        for (std::size_t index = 0; index < count; ++index) {
+            enqueueUnchecked(requests[index]);
         }
-        _events[insertAt] = event;
-        ++_count;
         return MidiEventQueueEnqueueResult::Ok;
+    }
+
+    [[nodiscard]] auto enqueueBatch(const std::array<MidiEventRequest, 2>& requests,
+                                    std::size_t count) noexcept -> MidiEventQueueEnqueueResult {
+        return enqueueBatch(requests.data(), count);
     }
 
     [[nodiscard]] auto drainAt(TransportPosition position) noexcept -> MidiEventQueueDrainResult {
@@ -94,10 +114,29 @@ class MidiEventQueue {
     }
 
   private:
+    auto enqueueUnchecked(const MidiEventRequest& request) noexcept -> void {
+        const MidiEvent event{request.target, request.packet, _nextSequenceNumber++};
+        std::size_t insertAt = _count;
+        while (insertAt > 0 && eventPrecedes(event, _events[insertAt - 1])) {
+            _events[insertAt] = _events[insertAt - 1];
+            --insertAt;
+        }
+        _events[insertAt] = event;
+        ++_count;
+    }
+
     [[nodiscard]] auto packetsAtTick(TransportTick tick) const noexcept -> std::size_t {
         std::size_t count = 0;
         for (std::size_t index = 0; index < _count; ++index) {
             count += _events[index].target.tick == tick;
+        }
+        return count;
+    }
+
+    [[nodiscard]] auto nonClockPacketsAtTick(TransportTick tick) const noexcept -> std::size_t {
+        std::size_t count = 0;
+        for (std::size_t index = 0; index < _count; ++index) {
+            count += _events[index].target.tick == tick && _events[index].packet[1] != 0xF8;
         }
         return count;
     }
