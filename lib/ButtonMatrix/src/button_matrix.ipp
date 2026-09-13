@@ -49,16 +49,6 @@ void ButtonMatrix<INPUT_PINS, OUTPUT_PINS, TButtonIds>::update() {
 }
 
 template <int INPUT_PINS, int OUTPUT_PINS, typename TButtonIds>
-void ButtonMatrix<INPUT_PINS, OUTPUT_PINS, TButtonIds>::getButtonStates(
-    ButtonStates& states) const {
-    for (int input = 0; input < INPUT_PINS; ++input) {
-        for (int output = 0; output < OUTPUT_PINS; ++output) {
-            states[input][output] = isButtonPressed(input, output);
-        }
-    }
-}
-
-template <int INPUT_PINS, int OUTPUT_PINS, typename TButtonIds>
 bool ButtonMatrix<INPUT_PINS, OUTPUT_PINS, TButtonIds>::isButtonJustPressed(int input,
                                                                             int output) const {
     return getButton(input, output).isJustPressed();
@@ -89,28 +79,6 @@ bool ButtonMatrix<INPUT_PINS, OUTPUT_PINS, TButtonIds>::isButtonJustReleased(int
 template <int INPUT_PINS, int OUTPUT_PINS, typename TButtonIds>
 bool ButtonMatrix<INPUT_PINS, OUTPUT_PINS, TButtonIds>::isButtonJustReleased(int number) const {
     return isButtonJustReleased(number / OUTPUT_PINS, number % OUTPUT_PINS);
-}
-
-template <int INPUT_PINS, int OUTPUT_PINS, typename TButtonIds>
-bool ButtonMatrix<INPUT_PINS, OUTPUT_PINS, TButtonIds>::isButtonReleased(int input,
-                                                                         int output) const {
-    return getButton(input, output).isReleased();
-}
-
-template <int INPUT_PINS, int OUTPUT_PINS, typename TButtonIds>
-bool ButtonMatrix<INPUT_PINS, OUTPUT_PINS, TButtonIds>::isButtonReleased(int number) const {
-    return isButtonReleased(number / OUTPUT_PINS, number % OUTPUT_PINS);
-}
-
-template <int INPUT_PINS, int OUTPUT_PINS, typename TButtonIds>
-bool ButtonMatrix<INPUT_PINS, OUTPUT_PINS, TButtonIds>::isButtonPressed(int input,
-                                                                        int output) const {
-    return isButtonJustPressed(input, output);
-}
-
-template <int INPUT_PINS, int OUTPUT_PINS, typename TButtonIds>
-bool ButtonMatrix<INPUT_PINS, OUTPUT_PINS, TButtonIds>::isButtonPressed(int number) const {
-    return isButtonJustPressed(number);
 }
 
 template <int INPUT_PINS, int OUTPUT_PINS, typename TButtonIds>

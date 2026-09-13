@@ -21,8 +21,6 @@ class ButtonMatrix {
   public:
     using InputPins = std::array<uint8_t, INPUT_PINS>;
     using OutputPins = std::array<uint8_t, OUTPUT_PINS>;
-    using ButtonStates = std::array<std::array<bool, OUTPUT_PINS>, INPUT_PINS>;
-
     ButtonMatrix(const InputPins& inputPins, const OutputPins& outputPins,
                  uint8_t debouncing = 3) noexcept;
     void init();
@@ -30,18 +28,12 @@ class ButtonMatrix {
 
     // Call readButtons(), consume events, then update() from the same context.
     void readButtons();
-    void getButtonStates(ButtonStates& states) const;
     [[nodiscard]] bool isButtonJustPressed(int input, int output) const;
     [[nodiscard]] bool isButtonJustPressed(int number) const;
     [[nodiscard]] bool isButtonHolding(int input, int output) const;
     [[nodiscard]] bool isButtonHolding(int number) const;
     [[nodiscard]] bool isButtonJustReleased(int input, int output) const;
     [[nodiscard]] bool isButtonJustReleased(int number) const;
-    [[nodiscard]] bool isButtonReleased(int input, int output) const;
-    [[nodiscard]] bool isButtonReleased(int number) const;
-    // Compatibility alias for isButtonJustPressed().
-    [[nodiscard]] bool isButtonPressed(int input, int output) const;
-    [[nodiscard]] bool isButtonPressed(int number) const;
     // TButtonIds::values maps physical indices to application IDs.
     [[nodiscard]] constexpr uint8_t getButtonId(int input, int output) const {
         return TButtonIds::values[input * OUTPUT_PINS + output];

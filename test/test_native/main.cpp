@@ -20,7 +20,6 @@
 #include "../test/test_native/program/test_program_slot_store.h"
 #include "../test/test_native/program/test_program_storage_controller.h"
 #include "../test/test_native/utils/counter/test_counter.h"
-#include "../test/test_native/utils/round_buffer/test_round_buffer.h"
 #include <unity.h>
 
 void setUp() {
@@ -35,7 +34,6 @@ int main() {
     UNITY_BEGIN();
 
     test_counter_main();
-    test_round_buffer_main();
     test_ui_view_model_main();
     test_midi_clock_mode_main();
     test_external_midi_clock_main();

@@ -5,6 +5,7 @@
 .vscode/ipch
 .cache
 .logs
+compile_commands.json
 *.instantiations.inc
 *.smbk
 __pycache__/

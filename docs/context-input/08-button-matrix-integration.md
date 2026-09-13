@@ -42,12 +42,9 @@
 isButtonJustPressed(...)
 isButtonHolding(...)
 isButtonJustReleased(...)
-isButtonReleased(...)
 ```
 
 Поддержать координатную и линейную формы, если обе реально нужны интеграции.
-Существующий `isButtonPressed()` сохранить как совместимый alias для just pressed,
-если удаление потребовало бы несвязанного изменения API.
 
 Не менять debounce, порядок `readButtons() -> consume events -> update()` или
 электрическую логику матрицы.
@@ -136,8 +133,7 @@ just pressed. Оно выполняется только после `Clicked`, �
 
 `ButtonMatrix` сохранил прежние сканирование, debounce и нумерацию кнопок. К его
 публичному API добавлены координатные и линейные запросы `isButtonJustPressed`,
-`isButtonHolding`, `isButtonJustReleased`, `isButtonReleased`. Старый
-`isButtonPressed` остался совместимым именем для `isButtonJustPressed`.
+`isButtonHolding`, `isButtonJustReleased`.
 Физическая раскладка `0, 1, 8, 9, 2, 3, 10, 11, 4, 5, 12, 13, 6, 7, 14, 15`
 вынесена без изменений в `src/input/pad_button_ids.h`.
 

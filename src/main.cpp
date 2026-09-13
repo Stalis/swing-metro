@@ -1,12 +1,3 @@
-#include <adapters/button_input.h>
-#include <adapters/encoder_input.h>
-#include <adapters/trigger_input.h>
-#include <button_matrix.h>
-#include <context_input.h>
-#include <encoder.h>
-// #include "drivers/spi_display.h"
-// #include "drivers/arduino_gfx.h"
-#include "components/main_display.h"
 #include "components/ui_view_model.h"
 #include "drivers/littlefs_program_storage.h"
 #include "drivers/lvgl_ui.h"
@@ -21,8 +12,14 @@
 #include "program/program_slot_store.h"
 #include "program/program_storage_controller.h"
 #include <Arduino.h>
+#include <adapters/button_input.h>
+#include <adapters/encoder_input.h>
+#include <adapters/trigger_input.h>
 #include <array>
+#include <button_matrix.h>
+#include <context_input.h>
 #include <cstddef>
+#include <encoder.h>
 #include <tuple>
 #include <variant>
 
@@ -246,7 +243,6 @@ void setup() {
         {tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue()}));
 
     mainSequencer.sync(micros());
-    // display_setup();
 }
 
 void loop() {
@@ -315,24 +311,11 @@ void loop() {
  *
  */
 
-// MainDisplay mainDisplay(*gfx);
 LVGL_Ui ui_provider{};
 
-void setup1() {
-    ui_provider.setup();
-
-    // mainDisplay.init();
-}
+void setup1() { ui_provider.setup(); }
 
 void loop1() {
     ui_provider.loop();
     ui_provider.readViewModel(uiViewModel);
-    //   const UiSettings settings = uiViewModel.read();
-    //   mainDisplay.updateTempo(settings.tempo);
-    //   mainDisplay.updateSwing(settings.swing);
-    //   mainDisplay.updateVolume(settings.volume);
-
-    //   mainDisplay.updateNotesStates(settings.notesState, settings.activeNote);
-
-    //   gfx->flush();
 }
