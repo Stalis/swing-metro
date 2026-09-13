@@ -19,11 +19,7 @@ auto ProgramStorageController::perform(ProgramStorageAction action, std::uint8_t
         if (status != ProgramStoreStatus::Ok) {
             return status;
         }
-        const auto currentStatus = _store.save(PROGRAM_CURRENT_SLOT, program);
-        if (currentStatus == ProgramStoreStatus::Ok) {
-            rememberCurrentProgram(program);
-        }
-        return currentStatus;
+        return saveCurrentProgram(program);
     }
 
     Program program;
@@ -34,11 +30,7 @@ auto ProgramStorageController::perform(ProgramStorageAction action, std::uint8_t
     if (!applyProgram(program, _tempo, _swing, _volume, _sequencer, _midiClock)) {
         return ProgramStoreStatus::InvalidProgram;
     }
-    const auto currentStatus = _store.save(PROGRAM_CURRENT_SLOT, program);
-    if (currentStatus == ProgramStoreStatus::Ok) {
-        rememberCurrentProgram(program);
-    }
-    return currentStatus;
+    return saveCurrentProgram(program);
 }
 
 auto ProgramStorageController::restoreCurrentProgram() -> ProgramStoreStatus {
@@ -63,6 +55,10 @@ auto ProgramStorageController::syncCurrentProgramIfChanged() -> ProgramStoreStat
     if (_hasCurrentProgramCrc && currentProgramCrc(program) == _currentProgramCrc) {
         return ProgramStoreStatus::Ok;
     }
+    return saveCurrentProgram(program);
+}
+
+auto ProgramStorageController::saveCurrentProgram(const Program& program) -> ProgramStoreStatus {
     const auto status = _store.save(PROGRAM_CURRENT_SLOT, program);
     if (status == ProgramStoreStatus::Ok) {
         rememberCurrentProgram(program);

@@ -22,8 +22,10 @@
    или применяет `Program{}` defaults без записи во flash. `perform()` после успешных
    Save/Load синхронно сохраняет Current Program, а `syncCurrentProgramIfChanged()`
    записывает его только при изменении CRC canonical payload и stopped transport.
-6. Пустой LittleFS-раздел первично инициализируется текущим mount fallback; отдельный
-   auto-format путь не используется.
+6. После failed mount LittleFS первично форматируется только когда raw-byte проверка всего
+   раздела подтверждает erased state (`0xFF` в каждом байте). Corruption, неверная конфигурация
+   и transient mount failures возвращают `MountFailed` без форматирования; Save/Load/autosave
+   не имеют format path.
 
 ## Проверка
 
@@ -38,5 +40,5 @@
 
 - Native tests покрывают restore defaults/current, sync Save/Load, отсутствие redundant
   writes и отказ autosave при running transport.
-- Первичная инициализация пустого LittleFS-раздела аппаратно проверена: Save доступен
-  после mount fallback.
+- Native test проверяет prerequisite безопасного format fallback: все bytes должны быть erased;
+  один programmed byte запрещает форматирование.

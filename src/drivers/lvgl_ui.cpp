@@ -268,11 +268,11 @@ void LVGL_Ui::initProgramStorageModal() {
     lv_obj_align(_programStorageValueLabel, LV_ALIGN_CENTER, 0, 12);
     lv_obj_set_style_text_color(_programStorageValueLabel, lv_color_white(), 0);
 
-    static constexpr const char* actionNames[] = {"Save", "Load"};
+    static constexpr const char* ACTION_NAMES[] = {"Save", "Load"};
     for (uint8_t index = 0; index < _programStorageActionLabels.size(); ++index) {
         auto* label = lv_label_create(_programStorageModal);
         _programStorageActionLabels[index] = label;
-        lv_label_set_text(label, actionNames[index]);
+        lv_label_set_text(label, ACTION_NAMES[index]);
         lv_obj_set_width(label, 92);
         lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_color(label, lv_color_white(), 0);

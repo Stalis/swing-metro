@@ -18,6 +18,7 @@ class ProgramStorageController {
     [[nodiscard]] auto syncCurrentProgramIfChanged() -> ProgramStoreStatus;
 
   private:
+    [[nodiscard]] auto saveCurrentProgram(const Program& program) -> ProgramStoreStatus;
     [[nodiscard]] auto currentProgramCrc(const Program& program) const -> std::uint32_t;
     auto rememberCurrentProgram(const Program& program) -> void;
     ProgramSlotStore& _store;

@@ -1,6 +1,11 @@
 #include "drivers/littlefs_program_storage.h"
 
+#include "program/erased_flash.h"
+
 #include <cstdio>
+
+extern std::uint8_t _FS_start;
+extern std::uint8_t _FS_end;
 
 namespace SwingMetro {
 
@@ -15,7 +20,9 @@ auto LittleFsProgramStorage::mount() -> bool {
         _configured = true;
     }
     _mounted = LittleFS.begin();
-    if (!_mounted && LittleFS.format()) {
+    const auto filesystemSize = static_cast<std::size_t>(&_FS_end - &_FS_start);
+    if (!_mounted && filesystemSize > 0 && isErasedFlash(&_FS_start, filesystemSize) &&
+        LittleFS.format()) {
         _mounted = LittleFS.begin();
     }
     return _mounted;

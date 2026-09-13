@@ -1,5 +1,6 @@
 #include "test_program_slot_store.h"
 
+#include "program/erased_flash.h"
 #include "program/program_slot_store.h"
 
 #include <array>
@@ -100,6 +101,14 @@ void testMountAndSlotValidation() {
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<std::uint8_t>(ProgramStoreStatus::InvalidSlot),
         static_cast<std::uint8_t>(store.load(SwingMetro::PROGRAM_SLOT_COUNT, program)));
+}
+
+void testErasedFlashRequiresEveryByteToBeErased() {
+    constexpr std::array<std::uint8_t, 4> erased{UINT8_MAX, UINT8_MAX, UINT8_MAX, UINT8_MAX};
+    constexpr std::array<std::uint8_t, 4> programmed{UINT8_MAX, UINT8_MAX, 0x00, UINT8_MAX};
+
+    TEST_ASSERT_TRUE(SwingMetro::isErasedFlash(erased.data(), erased.size()));
+    TEST_ASSERT_FALSE(SwingMetro::isErasedFlash(programmed.data(), programmed.size()));
 }
 
 void testSaveAndLoadAllUserSlotsAndCurrentProgram() {
@@ -239,6 +248,7 @@ void testSaveRejectsReadFailureInvalidProgramAndExhaustedRevision() {
 
 void testProgramSlotStoreMain() {
     RUN_TEST(testMountAndSlotValidation);
+    RUN_TEST(testErasedFlashRequiresEveryByteToBeErased);
     RUN_TEST(testSaveAndLoadAllUserSlotsAndCurrentProgram);
     RUN_TEST(testSaveAlternatesCopiesAndRevisionsWithoutTouchingOtherSlots);
     RUN_TEST(testLoadChoosesNewerCopyAndFallsBackFromCorruptNewerCopy);
