@@ -69,6 +69,7 @@ class LVGL_Ui {
     lv_obj_t* _programStorageModal;
     lv_obj_t* _programStorageTitleLabel;
     lv_obj_t* _programStorageValueLabel;
+    std::array<lv_obj_t*, 2> _programStorageActionLabels{};
     SwingMetro::ProgramStorageModalState _displayedProgramStorageState =
         SwingMetro::ProgramStorageModalState::Closed;
     SwingMetro::ProgramStorageAction _displayedProgramStorageAction =

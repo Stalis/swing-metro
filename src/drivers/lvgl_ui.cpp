@@ -254,7 +254,7 @@ void LVGL_Ui::setMidiClockModal(bool open, SwingMetro::MidiClockMode active,
 
 void LVGL_Ui::initProgramStorageModal() {
     _programStorageModal = lv_obj_create(lv_layer_top());
-    lv_obj_set_size(_programStorageModal, 112, 84);
+    lv_obj_set_size(_programStorageModal, 112, 100);
     lv_obj_align(_programStorageModal, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_color(_programStorageModal, lv_color_hex(0x101010), 0);
     lv_obj_set_style_bg_opa(_programStorageModal, LV_OPA_COVER, 0);
@@ -263,8 +263,22 @@ void LVGL_Ui::initProgramStorageModal() {
     lv_obj_remove_flag(_programStorageModal, LV_OBJ_FLAG_SCROLLABLE);
     _programStorageTitleLabel = lv_label_create(_programStorageModal);
     lv_obj_align(_programStorageTitleLabel, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_set_style_text_color(_programStorageTitleLabel, lv_color_white(), 0);
     _programStorageValueLabel = lv_label_create(_programStorageModal);
     lv_obj_align(_programStorageValueLabel, LV_ALIGN_CENTER, 0, 12);
+    lv_obj_set_style_text_color(_programStorageValueLabel, lv_color_white(), 0);
+
+    static constexpr const char* actionNames[] = {"Save", "Load"};
+    for (uint8_t index = 0; index < _programStorageActionLabels.size(); ++index) {
+        auto* label = lv_label_create(_programStorageModal);
+        _programStorageActionLabels[index] = label;
+        lv_label_set_text(label, actionNames[index]);
+        lv_obj_set_width(label, 92);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_color(label, lv_color_white(), 0);
+        lv_obj_align(label, LV_ALIGN_TOP_MID, 0, static_cast<int16_t>(36 + index * 24));
+        lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+    }
     lv_obj_add_flag(_programStorageModal, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -286,24 +300,41 @@ void LVGL_Ui::setProgramStorageModal(SwingMetro::ProgramStorageModalState state,
     lv_obj_remove_flag(_programStorageModal, LV_OBJ_FLAG_HIDDEN);
     if (state == SwingMetro::ProgramStorageModalState::Action) {
         lv_label_set_text(_programStorageTitleLabel, "Save / Load");
-        lv_label_set_text(_programStorageValueLabel,
-                          action == SwingMetro::ProgramStorageAction::Save ? "Save" : "Load");
+        lv_obj_add_flag(_programStorageValueLabel, LV_OBJ_FLAG_HIDDEN);
+        for (uint8_t index = 0; index < _programStorageActionLabels.size(); ++index) {
+            const bool selected = index == static_cast<uint8_t>(action);
+            lv_obj_remove_flag(_programStorageActionLabels[index], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_text_color(_programStorageActionLabels[index],
+                                        selected ? lv_color_hex(0xFFFF00) : lv_color_white(), 0);
+            lv_obj_set_style_bg_color(_programStorageActionLabels[index],
+                                      selected ? lv_color_hex(0x404000) : lv_color_black(), 0);
+            lv_obj_set_style_bg_opa(_programStorageActionLabels[index],
+                                    selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+        }
     } else if (state == SwingMetro::ProgramStorageModalState::Slot) {
+        lv_obj_remove_flag(_programStorageValueLabel, LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(_programStorageTitleLabel,
                           action == SwingMetro::ProgramStorageAction::Save ? "Save slot"
                                                                            : "Load slot");
         lv_label_set_text_fmt(_programStorageValueLabel, "Slot %u", static_cast<unsigned>(slot));
     } else if (state == SwingMetro::ProgramStorageModalState::Busy) {
+        lv_obj_remove_flag(_programStorageValueLabel, LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(_programStorageTitleLabel, "Program Storage");
         lv_label_set_text(_programStorageValueLabel,
                           action == SwingMetro::ProgramStorageAction::Save ? "Saving..."
                                                                            : "Loading...");
     } else {
+        lv_obj_remove_flag(_programStorageValueLabel, LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(_programStorageTitleLabel,
                           state == SwingMetro::ProgramStorageModalState::Success ? "Complete"
                                                                                  : "Error");
         lv_label_set_text_fmt(_programStorageValueLabel, "Status %u",
                               static_cast<unsigned>(status));
+    }
+    if (state != SwingMetro::ProgramStorageModalState::Action) {
+        for (auto* label : _programStorageActionLabels) {
+            lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 }
 
