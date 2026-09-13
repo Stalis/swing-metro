@@ -130,8 +130,8 @@ ContextInput::ButtonInputAdapter<SwingMetro::InputId> volumeSwitchInput{{
 
 constexpr const auto updatables = std::tie(tempoEncoder, swingEncoder, volumeEncoder);
 UiViewModel uiViewModel;
-bool note_sent = false;
-uint8_t last_note_sent = 0;
+bool noteSent = false;
+uint8_t lastNoteSent = 0;
 
 template <typename TAdapter>
 void handleEncoderDirection(const TAdapter& adapter, EncoderDirection direction) {
@@ -203,9 +203,9 @@ void midiSendNoteOff(uint8_t note) {
 void handleProgramStorageEvent(const SwingMetro::AppEvent& event) {
     if (std::holds_alternative<SwingMetro::OpenProgramStorage>(event) &&
         appInputCoordinator.isProgramStorageModalOpen()) {
-        if (note_sent) {
-            midiSendNoteOff(last_note_sent);
-            note_sent = false;
+        if (noteSent) {
+            midiSendNoteOff(lastNoteSent);
+            noteSent = false;
         }
         mainSequencer.stop();
         externalMidiClock.reset();
@@ -283,7 +283,7 @@ void loop() {
                                               midiClockSink);
     } else if (midiClockMode == SwingMetro::MidiClockMode::External) {
         const auto processExternal = [&](const SwingMetro::ExternalMidiClockResult& result) {
-            SwingMetro::processExternalMidiClock(mainSequencer, result, note_sent, last_note_sent,
+            SwingMetro::processExternalMidiClock(mainSequencer, result, noteSent, lastNoteSent,
                                                  midiSendNoteOff, midiSendNoteOn);
         };
         midiClockReceiver.poll([&](const SwingMetro::MidiRealtimeEvent& event) {
@@ -294,8 +294,8 @@ void loop() {
                                               mainSequencer.isRunning(), midiClockSink);
     } else {
         (void)SwingMetro::processMidiStepBoundary(mainSequencer, nowUs, midiClockMode,
-                                                  midiClockTransmitter, midiClockSink, note_sent,
-                                                  last_note_sent, midiSendNoteOff, midiSendNoteOn);
+                                                  midiClockTransmitter, midiClockSink, noteSent,
+                                                  lastNoteSent, midiSendNoteOff, midiSendNoteOn);
     }
 
     UiSettings settings{tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue(),
