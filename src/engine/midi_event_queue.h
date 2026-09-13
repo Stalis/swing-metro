@@ -72,6 +72,16 @@ class MidiEventQueue {
 
     auto clear() noexcept -> void { _count = 0; }
 
+    auto discardAt(TransportTick tick) noexcept -> void {
+        std::size_t write = 0;
+        for (std::size_t read = 0; read < _count; ++read) {
+            if (_events[read].target.tick != tick) {
+                _events[write++] = _events[read];
+            }
+        }
+        _count = write;
+    }
+
     [[nodiscard]] auto size() const noexcept -> std::size_t { return _count; }
 
     [[nodiscard]] auto empty() const noexcept -> bool { return _count == 0; }

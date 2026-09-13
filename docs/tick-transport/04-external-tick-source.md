@@ -1,6 +1,6 @@
 # Этап 4. External источник tick
 
-Статус: запланировано. Зависит от этапов 1–3.
+Статус: реализовано. Зависит от этапов 1–3.
 
 ## Задача
 
@@ -26,23 +26,45 @@ Start/Continue/Stop и loss/relock. Уточнить период для phase-d
 
 ## Реализация
 
-1. Рефакторить `ExternalMidiClock`: вместо `advanceStep` он должен выдавать
-   timestamped `Tick`, transport-команды и status. Шесть ticks на шаг больше не
-   принадлежат этому классу.
-2. Сохранить USB parser в драйвере и timestamp на приёме. В engine передавать
-   нейтральные события; Arduino/TinyUSB не включать в native-код.
-3. Добавить единый deadline controller для internal/external, чтобы external
-   receive и internal alarm не расходились в порядке отправки.
-4. Согласовать timeout для 40 BPM, фильтр выбросов и правило повторной блокировки
-   в тестах. UI продолжает получать `Waiting`/`Locked`/`Lost` и дробный tempo
-   (для UI возможно округлённое представление).
+- `ExternalMidiClock::handle()` возвращает timestamped `tickRecord` для каждого
+  принятого `F8` при running transport, а также Start/Continue/Stop и status.
+  `periodUs()` и fixed-point `bpmMilli()` доступны без округления; `bpm()` оставлен
+  для legacy UI.
+- `TransportTickConsumer` в `src/engine/transport_tick_consumer.h` владеет общими
+  phase deadlines и принимает `TransportTickRecord` как напрямую, так и из bounded
+  SPSC store. Internal consumer сохранён как alias для текущего кода.
+- Consumer получает источник в конструкторе: `Internal` ставит outgoing `F8` в
+  существующую очередь и посылает `FA`/`FB`/`FC`; `External` не посылает master ни
+  clock, ни transport-команды.
+- USB receive остаётся в `UsbMidiRealtimeReceiver::poll()` на main core. Отдельная
+  receive SPSC очередь не нужна до wiring этапа 6.
+- `main.cpp`, `processExternalMidiClock`, `Sequencer` и legacy direct MIDI path не
+  подключались и не менялись. Поле `advanceStep` временно сохранено в результате
+  `ExternalMidiClock` только для этой legacy-совместимости.
+
+## Policy
+
+- Период сглаживается на четверть разницы между sample и текущей оценкой. Samples
+  вне диапазона 40–240 BPM (`10'416..62'500` мкс на `F8`) не меняют фильтр, но сами
+  принятые `F8` остаются границами transport и обновляют timeout.
+- Timeout `250'000` мкс переводит status в `Lost`, останавливает transport и
+  очищает pending phase events через consumer. Только timeout теряет lock. Первый
+  `F8` после loss сразу возвращает `Locked`; последующий Continue запускает
+  transport без ожидания второй fresh sample.
+- Start не сбрасывает текущую external tempo estimate: она сохраняется до timeout.
+- Владелец deadline один: если external `F8` обработан до pending deadline, он
+  удаляет недоставленные события предыдущего tick перед новой границей. Если
+  deadline обработан раньше, событие уже отправлено и не отменяется.
+- Bounded catch-up (не более четырёх records за проход), `lateTicks`,
+  `droppedTicks`, `lateEvents` и существующая queue capacity/quota сохранены.
 
 ## Проверки
 
-Ровный clock, джиттер, постепенная смена tempo, единичный выброс, early/late
-следующий tick относительно phase 50/75, Start/Stop/Continue, loss/relock,
-wraparound и игнорирование входа вне `External`. Проверка на устройстве — DAW и
-hardware-master в диапазоне 40–240 BPM.
+Native Unity покрывает lock/loss/relock и wraparound, smoothing с джиттером,
+outlier filter, fixed-point fractional BPM, Start/Stop/Continue, внешний consumer
+без echo `F8`/`FA`/`FB`/`FC`, early/late race для phase 50%, а также прежние
+internal deadlines, bounded catch-up и diagnostics. Проверка на устройстве ещё
+нужна с DAW и hardware-master в диапазоне 40–240 BPM.
 
 ## Вне объёма
 
@@ -50,4 +72,5 @@ hardware-master в диапазоне 40–240 BPM.
 
 ## Передача результата
 
-Указать фильтр, timeout, race-policy, API и измерения.
+Фильтр, timeout, race-policy и API описаны выше. Аппаратные измерения остаются
+за интеграцией этапа 6.

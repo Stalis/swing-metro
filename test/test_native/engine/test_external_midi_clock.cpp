@@ -1,8 +1,10 @@
 #include "test_external_midi_clock.h"
 
 #include "engine/external_midi_clock.h"
+#include "engine/midi_event_queue.h"
 #include "engine/midi_step_boundary.h"
 #include "engine/sequencer.h"
+#include "engine/transport_tick_consumer.h"
 
 #include <array>
 #include <cstdint>
@@ -11,8 +13,15 @@
 namespace {
 
 using SwingMetro::ExternalMidiClock;
+using SwingMetro::MidiEventQueue;
 using SwingMetro::MidiRealtimeEvent;
 using SwingMetro::MidiRealtimeEventType;
+using SwingMetro::MidiUsbPacket;
+using SwingMetro::phaseFromPercent;
+using SwingMetro::Transport;
+using SwingMetro::TransportTickConsumer;
+using SwingMetro::TransportTickRecord;
+using SwingMetro::TransportTickSource;
 
 constexpr auto event(MidiRealtimeEventType type, std::uint32_t timestampUs) -> MidiRealtimeEvent {
     return {type, timestampUs};
@@ -79,6 +88,97 @@ void test_older_loop_timestamp_does_not_immediately_lose_new_clock() {
                             static_cast<uint8_t>(clock.status()));
 }
 
+void test_period_smoothing_ignores_outliers_and_reports_fractional_bpm() {
+    ExternalMidiClock clock;
+    clock.handle(event(MidiRealtimeEventType::Clock, 0));
+    clock.handle(event(MidiRealtimeEventType::Clock, 20'800));
+    TEST_ASSERT_EQUAL_UINT32(20'800, clock.periodUs());
+    TEST_ASSERT_EQUAL_UINT32(120'192, clock.bpmMilli());
+
+    clock.handle(event(MidiRealtimeEventType::Clock, 41'700));
+    TEST_ASSERT_INT_WITHIN(30, 20'825, clock.periodUs());
+    const auto periodBeforeOutlier = clock.periodUs();
+    clock.handle(event(MidiRealtimeEventType::Clock, 42'700));
+    TEST_ASSERT_EQUAL_UINT32(periodBeforeOutlier, clock.periodUs());
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ExternalMidiClockStatus::Locked),
+                            static_cast<uint8_t>(clock.status()));
+}
+
+void test_start_preserves_estimate_and_continue_runs_after_one_relock_tick() {
+    ExternalMidiClock clock;
+    clock.handle(event(MidiRealtimeEventType::Clock, 0));
+    clock.handle(event(MidiRealtimeEventType::Clock, 20'833));
+    const auto savedPeriod = clock.periodUs();
+    clock.handle(event(MidiRealtimeEventType::Start, 21'000));
+    TEST_ASSERT_EQUAL_UINT32(savedPeriod, clock.periodUs());
+
+    clock.update(20'833 + ExternalMidiClock::kClockLossTimeoutUs);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ExternalMidiClockStatus::Lost),
+                            static_cast<uint8_t>(clock.status()));
+    const auto relock = clock.handle(event(MidiRealtimeEventType::Clock, 300'000));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ExternalMidiClockStatus::Locked),
+                            static_cast<uint8_t>(clock.status()));
+    TEST_ASSERT_FALSE(relock.tick);
+    TEST_ASSERT_TRUE(clock.handle(event(MidiRealtimeEventType::Continue, 300'001)).started);
+    TEST_ASSERT_TRUE(clock.handle(event(MidiRealtimeEventType::Clock, 320'833)).tick);
+}
+
+void test_start_first_clock_waits_for_period_before_publishing_tick() {
+    ExternalMidiClock clock;
+    clock.handle(event(MidiRealtimeEventType::Start, 0));
+
+    const auto firstClock = clock.handle(event(MidiRealtimeEventType::Clock, 1'000));
+    TEST_ASSERT_FALSE(firstClock.tick);
+    TEST_ASSERT_EQUAL_UINT32(0, firstClock.tickRecord.periodUs);
+
+    const auto secondClock = clock.handle(event(MidiRealtimeEventType::Clock, 21'833));
+    TEST_ASSERT_TRUE(secondClock.tick);
+    TEST_ASSERT_EQUAL_UINT32(20'833, secondClock.tickRecord.periodUs);
+}
+
+void test_external_consumer_never_echoes_realtime_or_crosses_early_tick_boundary() {
+    Transport transport;
+    MidiEventQueue queue;
+    TransportTickConsumer consumer{transport, queue, TransportTickSource::External};
+    std::array<MidiUsbPacket, 8> packets{};
+    std::size_t count = 0;
+    const auto send = [&](const MidiUsbPacket& packet) { packets[count++] = packet; };
+
+    consumer.start(send);
+    TEST_ASSERT_EQUAL_UINT32(0, count);
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, phaseFromPercent(50)}, {0x09, 0x90, 0x3C, 0x40}));
+    consumer.consumeTick({1'000, 20'000}, 1'000, send);
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({1, phaseFromPercent(50)}, {0x09, 0x90, 0x3C, 0x40}));
+    consumer.consumeTick({9'000, 20'000}, 9'000, send);
+    TEST_ASSERT_EQUAL_UINT32(0, count);
+
+    consumer.dispatchDue(19'000, send);
+    TEST_ASSERT_EQUAL_UINT32(1, count);
+    TEST_ASSERT_EQUAL_HEX8(0x90, packets[0][1]);
+    consumer.stop(send);
+    TEST_ASSERT_EQUAL_UINT32(1, count);
+}
+
+void test_external_consumer_sends_phase_before_a_late_tick_boundary() {
+    Transport transport;
+    MidiEventQueue queue;
+    TransportTickConsumer consumer{transport, queue, TransportTickSource::External};
+    std::array<MidiUsbPacket, 4> packets{};
+    std::size_t count = 0;
+    const auto send = [&](const MidiUsbPacket& packet) { packets[count++] = packet; };
+
+    consumer.start(send);
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, phaseFromPercent(50)}, {0x09, 0x90, 0x3C, 0x40}));
+    consumer.consumeTick({1'000, 20'000}, 1'000, send);
+    consumer.dispatchDue(11'000, send);
+    consumer.consumeTick({12'000, 20'000}, 12'000, send);
+    TEST_ASSERT_EQUAL_UINT32(1, count);
+    TEST_ASSERT_EQUAL_HEX8(0x90, packets[0][1]);
+}
+
 void test_start_immediately_plays_first_step_then_advances_after_six_ticks() {
     ExternalMidiClock clock;
     Sequencer sequencer;
@@ -130,7 +230,7 @@ void test_external_mode_never_uses_internal_scheduler() {
     TEST_ASSERT_FALSE(sequencer.getDisplayStepIndex().has_value());
 }
 
-void test_relock_requires_six_fresh_ticks_after_loss() {
+void test_legacy_step_compatibility_still_advances_after_six_ticks() {
     ExternalMidiClock clock;
     Sequencer sequencer;
     bool noteSent = false;
@@ -163,7 +263,12 @@ void test_external_midi_clock_main() {
     RUN_TEST(test_packet_parser_accepts_only_single_byte_realtime_messages);
     RUN_TEST(test_waiting_lock_filter_loss_relock_and_wrap);
     RUN_TEST(test_older_loop_timestamp_does_not_immediately_lose_new_clock);
+    RUN_TEST(test_period_smoothing_ignores_outliers_and_reports_fractional_bpm);
+    RUN_TEST(test_start_preserves_estimate_and_continue_runs_after_one_relock_tick);
+    RUN_TEST(test_start_first_clock_waits_for_period_before_publishing_tick);
+    RUN_TEST(test_external_consumer_never_echoes_realtime_or_crosses_early_tick_boundary);
+    RUN_TEST(test_external_consumer_sends_phase_before_a_late_tick_boundary);
     RUN_TEST(test_start_immediately_plays_first_step_then_advances_after_six_ticks);
     RUN_TEST(test_external_mode_never_uses_internal_scheduler);
-    RUN_TEST(test_relock_requires_six_fresh_ticks_after_loss);
+    RUN_TEST(test_legacy_step_compatibility_still_advances_after_six_ticks);
 }
