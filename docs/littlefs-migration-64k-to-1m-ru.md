@@ -4,8 +4,8 @@
 копии A/B каждого слота, признак наличия и байты файлов. Она не декодирует программы:
 поврежденная или незавершенная резервная копия также переносится буквально.
 
-Обычная прошивка `rpipico2` остается с LittleFS 64 KB и не содержит протокол миграции
-или CDC/MIDI-изменений. Используйте только два отдельных окружения ниже. В прошивках
+Обычная прошивка `rpipico2` использует LittleFS 1 MB и не содержит протокол миграции.
+Профили с 64 KB существуют только для экспорта и rollback ниже. В прошивках
 миграции нет MIDI, дисплея, ввода или секвенсора; USB является только CDC.
 
 ## Требования
@@ -63,11 +63,11 @@ python3 scripts/littlefs_migrate.py --port /dev/cu.usbmodemXXXX --restore swing-
 
 ## Завершение и проверка
 
-После успешного restore-1m загрузите обычную 1 MB прошивку `rpipico2-1m`.
-Не загружайте `rpipico2`: это отдельный 64 KB profile.
+После успешного restore-1m загрузите обычную 1 MB прошивку `rpipico2`.
+Профиль `rpipico2-1m` оставлен как совместимый alias.
 
 ```sh
-pio run -e rpipico2-1m -t upload
+pio run -e rpipico2 -t upload
 ```
 
 Проверьте загрузку сохраненных программ вручную. Не используйте `uploadfs` в этой
@@ -76,14 +76,15 @@ pio run -e rpipico2-1m -t upload
 ## Откат
 
 Rollback снова пересекает destructive boundary: подготовьте пустой 64 KB target и
-используйте строго `migrate-restore-64k`, затем верните обычный `rpipico2`.
+используйте строго `migrate-restore-64k`, затем верните временный legacy-профиль
+`rpipico2-64k`.
 
 ```sh
 pio run -e migrate-restore-64k -t upload
 # DESTRUCTIVE: очищает 64 KB target.
 pio run -e migrate-restore-64k -t uploadfs
 python3 scripts/littlefs_migrate.py --port /dev/cu.usbmodemXXXX --restore swing-metro-64k.smbk --yes-restore --prepared-target <SHA256>
-pio run -e rpipico2 -t upload
+pio run -e rpipico2-64k -t upload
 ```
 
 Если восстановление 1 MB не завершилось, не форматируйте плату: сохраните SMBK,
