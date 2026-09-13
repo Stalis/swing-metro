@@ -200,4 +200,9 @@ void setup() {
     Serial.begin(115200);
 }
 
-void loop() { pollProtocol(); }
+void loop() {
+#ifdef TINYUSB_NEED_POLLING_TASK
+    TinyUSBDevice.task();
+#endif
+    pollProtocol();
+}
