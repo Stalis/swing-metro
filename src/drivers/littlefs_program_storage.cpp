@@ -9,9 +9,6 @@ extern std::uint8_t _FS_end;
 
 namespace SwingMetro {
 
-LittleFsProgramStorage::LittleFsProgramStorage(bool formatErasedOnMount) noexcept
-    : _formatErasedOnMount(formatErasedOnMount) {}
-
 auto LittleFsProgramStorage::mount() -> bool {
     if (_mounted) {
         return true;
@@ -24,8 +21,8 @@ auto LittleFsProgramStorage::mount() -> bool {
     }
     _mounted = LittleFS.begin();
     const auto filesystemSize = static_cast<std::size_t>(&_FS_end - &_FS_start);
-    if (_formatErasedOnMount && !_mounted && filesystemSize > 0 &&
-        isErasedFlash(&_FS_start, filesystemSize) && LittleFS.format()) {
+    if (!_mounted && filesystemSize > 0 && isErasedFlash(&_FS_start, filesystemSize) &&
+        LittleFS.format()) {
         _mounted = LittleFS.begin();
     }
     return _mounted;
