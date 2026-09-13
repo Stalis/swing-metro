@@ -2,6 +2,7 @@
 """Export a 64 KB Swing Metro LittleFS backup or restore it to a 1 MB image."""
 
 import argparse
+import fcntl
 import os
 import struct
 import sys
@@ -33,6 +34,8 @@ class Port:
         attrs[6][termios.VMIN] = 0
         attrs[6][termios.VTIME] = 0
         termios.tcsetattr(self.fd, termios.TCSANOW, attrs)
+        modem_bits = struct.pack("I", termios.TIOCM_DTR | termios.TIOCM_RTS)
+        fcntl.ioctl(self.fd, termios.TIOCMBIS, modem_bits)
         termios.tcflush(self.fd, termios.TCIOFLUSH)
         self.buffer = bytearray()
 

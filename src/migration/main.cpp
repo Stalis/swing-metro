@@ -1,7 +1,6 @@
 #include "drivers/littlefs_program_storage.h"
 #include "program/program_migration.h"
 
-#include <Adafruit_TinyUSB.h>
 #include <Arduino.h>
 
 #include <algorithm>
@@ -59,6 +58,16 @@ void write32(std::uint8_t* data, std::uint32_t value) {
     }
 }
 
+auto frameCrc(const std::uint8_t* header, const std::uint8_t* payload, std::uint16_t size)
+    -> std::uint32_t {
+    std::array<std::uint8_t, 8 + MAX_PAYLOAD> data{};
+    std::memcpy(data.data(), header, 8);
+    if (size > 0) {
+        std::memcpy(data.data() + 8, payload, size);
+    }
+    return SwingMetro::programMigrationCrc32(data.data(), 8 + size);
+}
+
 void sendFrame(std::uint8_t type, std::uint16_t sequence, const std::uint8_t* payload,
                std::uint16_t size) {
     std::array<std::uint8_t, HEADER_SIZE + MAX_PAYLOAD> wire{};
@@ -71,9 +80,9 @@ void sendFrame(std::uint8_t type, std::uint16_t sequence, const std::uint8_t* pa
     if (size > 0) {
         std::memcpy(wire.data() + HEADER_SIZE, payload, size);
     }
-    write32(wire.data() + 8,
-            SwingMetro::programMigrationCrc32(wire.data(), 8 + static_cast<std::size_t>(size)));
+    write32(wire.data() + 8, frameCrc(wire.data(), payload, size));
     Serial.write(wire.data(), HEADER_SIZE + size);
+    Serial.flush();
 }
 
 void sendStatus(std::uint8_t type, std::uint16_t sequence,
@@ -178,8 +187,7 @@ void pollProtocol() {
         if (used != HEADER_SIZE + size) {
             continue;
         }
-        if (read32(wire.data() + 8) ==
-            SwingMetro::programMigrationCrc32(wire.data(), 8 + static_cast<std::size_t>(size))) {
+        if (read32(wire.data() + 8) == frameCrc(wire.data(), wire.data() + HEADER_SIZE, size)) {
             Frame frame;
             frame.type = wire[3];
             frame.sequence = readFrame16(wire.data() + 4);
@@ -194,15 +202,8 @@ void pollProtocol() {
 } // namespace
 
 void setup() {
-    if (!TinyUSBDevice.isInitialized()) {
-        TinyUSBDevice.begin(0);
-    }
     Serial.begin(115200);
+    Serial.ignoreFlowControl(true);
 }
 
-void loop() {
-#ifdef TINYUSB_NEED_POLLING_TASK
-    TinyUSBDevice.task();
-#endif
-    pollProtocol();
-}
+void loop() { pollProtocol(); }

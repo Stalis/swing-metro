@@ -13,9 +13,9 @@ FORMAT_FILES := $(shell find $(CODE_DIRS) -type f \( \
 	-name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.cxx' -o \
 	-name '*.h' -o -name '*.hh' -o -name '*.hpp' -o -name '*.hxx' -o \
 	-name '*.ipp' -o -name '*.ino' \) 2>/dev/null | sort)
-TIDY_FILES := $(shell find src lib -type f \( \
+TIDY_FILES := $(shell find src lib -path 'src/migration' -prune -o -type f \( \
 	-name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.cxx' \
-	\) 2>/dev/null | sort)
+	\) -print 2>/dev/null | sort)
 
 # clang-tidy does not automatically discover the C++ standard library shipped
 # with PlatformIO's ARM cross-compiler. Resolve it from the generated database.

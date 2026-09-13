@@ -6,5 +6,7 @@
 .cache
 .logs
 *.instantiations.inc
+*.smbk
+__pycache__/
 
 .DS_Store
