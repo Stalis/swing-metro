@@ -239,7 +239,9 @@ void setup() {
     tempoEncoder.init();
     swingEncoder.init();
     volumeEncoder.init();
+    mainSequencer.stop();
     (void)programSlotStore.mount();
+    (void)programStorageController.restoreCurrentProgram();
     uiViewModel.publish(appInputCoordinator.decorateUiSettings(
         {tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue()}));
 
@@ -303,6 +305,9 @@ void loop() {
     settings.externalTempo = externalMidiClock.bpm();
     uiViewModel.publish(appInputCoordinator.decorateUiSettings(settings));
     appInputCoordinator.processProgramStorage();
+    if (!appInputCoordinator.isProgramStorageModalOpen()) {
+        (void)programStorageController.syncCurrentProgramIfChanged();
+    }
 }
 
 /*

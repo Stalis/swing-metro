@@ -15,6 +15,7 @@ struct FakeStorage final : SwingMetro::ProgramStorageBackend {
     std::array<std::array<SwingMetro::ProgramStorageImage, 2>, SwingMetro::PROGRAM_SLOT_COUNT>
         images{};
     std::array<std::array<bool, 2>, SwingMetro::PROGRAM_SLOT_COUNT> present{};
+    std::size_t writes = 0;
 
     auto mount() -> bool override { return true; }
     auto read(std::uint8_t slot, SwingMetro::ProgramStorageCopy copy,
@@ -28,6 +29,7 @@ struct FakeStorage final : SwingMetro::ProgramStorageBackend {
     }
     auto write(std::uint8_t slot, SwingMetro::ProgramStorageCopy copy,
                const SwingMetro::ProgramStorageImage& image) -> bool override {
+        ++writes;
         images[slot][copyIndex(copy)] = image;
         present[slot][copyIndex(copy)] = true;
         return true;
@@ -62,6 +64,7 @@ void testControllerSavesAndLoadsSelectedSlot() {
                             static_cast<std::uint8_t>(state.controller.perform(
                                 SwingMetro::ProgramStorageAction::Load, 3)));
     TEST_ASSERT_EQUAL_UINT8(42, state.volume.getValue());
+    TEST_ASSERT_EQUAL_UINT32(3, state.storage.writes);
 }
 
 void testControllerRejectsRunningTransport() {
@@ -73,9 +76,55 @@ void testControllerRejectsRunningTransport() {
             state.controller.perform(SwingMetro::ProgramStorageAction::Save, 0)));
 }
 
+void testControllerRestoresCurrentProgramAndDefaults() {
+    State state;
+    state.volume.setValue(42);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStoreStatus::Ok),
+                            static_cast<std::uint8_t>(state.controller.perform(
+                                SwingMetro::ProgramStorageAction::Save, 3)));
+    state.volume.setValue(99);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStoreStatus::Ok),
+                            static_cast<std::uint8_t>(state.controller.restoreCurrentProgram()));
+    TEST_ASSERT_EQUAL_UINT8(42, state.volume.getValue());
+
+    State defaults;
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStoreStatus::Empty),
+                            static_cast<std::uint8_t>(defaults.controller.restoreCurrentProgram()));
+    TEST_ASSERT_EQUAL_UINT8(100, defaults.volume.getValue());
+    TEST_ASSERT_EQUAL_UINT32(0, defaults.storage.writes);
+}
+
+void testControllerAutosavesOnlyChangedStoppedProgram() {
+    State state;
+    (void)state.controller.restoreCurrentProgram();
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(SwingMetro::ProgramStoreStatus::Ok),
+        static_cast<std::uint8_t>(state.controller.syncCurrentProgramIfChanged()));
+    TEST_ASSERT_EQUAL_UINT32(0, state.storage.writes);
+
+    state.volume.setValue(42);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(SwingMetro::ProgramStoreStatus::Ok),
+        static_cast<std::uint8_t>(state.controller.syncCurrentProgramIfChanged()));
+    TEST_ASSERT_EQUAL_UINT32(1, state.storage.writes);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(SwingMetro::ProgramStoreStatus::Ok),
+        static_cast<std::uint8_t>(state.controller.syncCurrentProgramIfChanged()));
+    TEST_ASSERT_EQUAL_UINT32(1, state.storage.writes);
+
+    state.sequencer.toggleRunning(0);
+    state.volume.setValue(43);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(SwingMetro::ProgramStoreStatus::TransportRunning),
+        static_cast<std::uint8_t>(state.controller.syncCurrentProgramIfChanged()));
+    TEST_ASSERT_EQUAL_UINT32(1, state.storage.writes);
+}
+
 } // namespace
 
 void testProgramStorageControllerMain() {
     RUN_TEST(testControllerSavesAndLoadsSelectedSlot);
     RUN_TEST(testControllerRejectsRunningTransport);
+    RUN_TEST(testControllerRestoresCurrentProgramAndDefaults);
+    RUN_TEST(testControllerAutosavesOnlyChangedStoppedProgram);
 }

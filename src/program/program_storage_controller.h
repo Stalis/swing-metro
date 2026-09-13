@@ -14,14 +14,20 @@ class ProgramStorageController {
 
     [[nodiscard]] auto perform(ProgramStorageAction action, std::uint8_t slot)
         -> ProgramStoreStatus;
+    [[nodiscard]] auto restoreCurrentProgram() -> ProgramStoreStatus;
+    [[nodiscard]] auto syncCurrentProgramIfChanged() -> ProgramStoreStatus;
 
   private:
+    [[nodiscard]] auto currentProgramCrc(const Program& program) const -> std::uint32_t;
+    auto rememberCurrentProgram(const Program& program) -> void;
     ProgramSlotStore& _store;
     Counter<std::uint8_t>& _tempo;
     Counter<std::uint8_t>& _swing;
     Counter<std::uint8_t>& _volume;
     Sequencer& _sequencer;
     MidiClockSettings& _midiClock;
+    std::uint32_t _currentProgramCrc = 0;
+    bool _hasCurrentProgramCrc = false;
 };
 
 } // namespace SwingMetro

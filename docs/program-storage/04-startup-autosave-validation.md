@@ -1,6 +1,6 @@
 # Этап 4 — старт, Current Program и валидация
 
-Статус: планируется.
+Статус: реализовано.
 
 ## Цель
 
@@ -18,8 +18,12 @@
 4. Не выполнять filesystem I/O во время Internal или External playback. Если
    питание выключено в этот период, изменения после последнего autosave могут
    быть потеряны; это осознанный компромисс ради MIDI-тайминга.
-5. Обновить документацию фактическими API, изменёнными файлами и результатами
-   аппаратных проверок.
+5. `ProgramStorageController::restoreCurrentProgram()` восстанавливает Current Program
+   или применяет `Program{}` defaults без записи во flash. `perform()` после успешных
+   Save/Load синхронно сохраняет Current Program, а `syncCurrentProgramIfChanged()`
+   записывает его только при изменении CRC canonical payload и stopped transport.
+6. Пустой LittleFS-раздел первично инициализируется текущим mount fallback; отдельный
+   auto-format путь не используется.
 
 ## Проверка
 
@@ -29,3 +33,10 @@
 - отключение питания во время записи оставляет доступной предыдущую A/B-копию;
 - на устройстве проверить все текущие параметры шага, а затем добавить
   совместимый fixture старой версии перед расширением шага gate/repeat-полями.
+
+## Результаты
+
+- Native tests покрывают restore defaults/current, sync Save/Load, отсутствие redundant
+  writes и отказ autosave при running transport.
+- Первичная инициализация пустого LittleFS-раздела аппаратно проверена: Save доступен
+  после mount fallback.
