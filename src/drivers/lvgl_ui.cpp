@@ -122,6 +122,7 @@ void LVGL_Ui::flush(lv_display_t* display, const lv_area_t* area, uint8_t* pixel
 void LVGL_Ui::initMainScreen() {
     _mainScreen = lv_obj_create(nullptr);
 
+    lv_obj_set_style_text_font(_mainScreen, &lv_font_montserrat_12, 0);
     lv_obj_set_style_bg_color(_mainScreen, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(_mainScreen, LV_OPA_COVER, 0);
 
