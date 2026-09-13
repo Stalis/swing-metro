@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 namespace SwingMetro {
 
@@ -37,7 +38,9 @@ class MidiEventQueue {
         if (_count == kCapacity) {
             return MidiEventQueueEnqueueResult::CapacityExceeded;
         }
-        if (packetsAtTick(target.tick) == kMaxPacketsPerTick) {
+        const bool isClock = packet[1] == 0xF8;
+        if (packetsAtTick(target.tick) == kMaxPacketsPerTick ||
+            (!isClock && packetsAtTick(target.tick) == kMaxPacketsPerTick - 1)) {
             return MidiEventQueueEnqueueResult::TickQuotaExceeded;
         }
 
@@ -72,6 +75,13 @@ class MidiEventQueue {
     [[nodiscard]] auto size() const noexcept -> std::size_t { return _count; }
 
     [[nodiscard]] auto empty() const noexcept -> bool { return _count == 0; }
+
+    [[nodiscard]] auto nextPosition() const noexcept -> std::optional<TransportPosition> {
+        if (_count == 0) {
+            return std::nullopt;
+        }
+        return _events[0].target;
+    }
 
   private:
     [[nodiscard]] auto packetsAtTick(TransportTick tick) const noexcept -> std::size_t {

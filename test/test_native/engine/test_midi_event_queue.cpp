@@ -20,15 +20,16 @@ constexpr MidiUsbPacket kNoteOn = {0x09, 0x90, 0x3C, 0x40};
 constexpr MidiUsbPacket kNoteOnZeroVelocity = {0x09, 0x90, 0x3D, 0x00};
 constexpr MidiUsbPacket kOther = {0x0B, 0xB0, 0x01, 0x7F};
 
-void test_tick_quota_rejects_ninth_packet_without_changing_queue() {
+void test_clock_reserves_one_tick_packet_slot() {
     MidiEventQueue queue;
-    for (std::size_t index = 0; index < MidiEventQueue::kMaxPacketsPerTick; ++index) {
+    for (std::size_t index = 0; index < MidiEventQueue::kMaxPacketsPerTick - 1; ++index) {
         TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
                           queue.enqueue({4, static_cast<std::uint16_t>(index)}, kNoteOn));
     }
 
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({4, 0}, kClock));
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::TickQuotaExceeded,
-                      queue.enqueue({4, 75}, kClock));
+                      queue.enqueue({4, 75}, kNoteOn));
     TEST_ASSERT_EQUAL_UINT32(MidiEventQueue::kMaxPacketsPerTick, queue.size());
     TEST_ASSERT_FALSE(queue.empty());
 }
@@ -115,14 +116,28 @@ void test_clear_removes_all_events() {
     TEST_ASSERT_EQUAL_UINT32(0, queue.drainAt({1, 0}).count);
 }
 
+void test_next_position_is_read_only_and_returns_the_earliest_event() {
+    MidiEventQueue queue;
+    TEST_ASSERT_FALSE(queue.nextPosition().has_value());
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({3, 50}, kNoteOn));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 75}, kOther));
+
+    const auto next = queue.nextPosition();
+    TEST_ASSERT_TRUE(next.has_value());
+    TEST_ASSERT_EQUAL_UINT64(2, next->tick);
+    TEST_ASSERT_EQUAL_UINT16(75, next->phase);
+    TEST_ASSERT_EQUAL_UINT32(2, queue.size());
+}
+
 } // namespace
 
 void test_midi_event_queue_main() {
-    RUN_TEST(test_tick_quota_rejects_ninth_packet_without_changing_queue);
+    RUN_TEST(test_clock_reserves_one_tick_packet_slot);
     RUN_TEST(test_capacity_rejects_packet_without_changing_queue);
     RUN_TEST(test_drain_respects_phase_zero_fifty_and_seventy_five);
     RUN_TEST(test_phase_zero_prioritizes_clock_note_off_note_on_and_other_stably);
     RUN_TEST(test_nonzero_phase_preserves_insertion_order);
     RUN_TEST(test_drain_returns_late_events_and_preserves_all_packet_bytes);
     RUN_TEST(test_clear_removes_all_events);
+    RUN_TEST(test_next_position_is_read_only_and_returns_the_earliest_event);
 }

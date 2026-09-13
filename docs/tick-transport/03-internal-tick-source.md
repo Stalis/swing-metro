@@ -1,6 +1,6 @@
 # Этап 3. Internal источник tick и фазовые deadlines
 
-Статус: запланировано. Зависит от этапов 1–2.
+Статус: реализовано. Зависит от этапов 1–2.
 
 ## Задача
 
@@ -25,25 +25,51 @@
 - При Start внутренний генератор фиксирует новую фазу и публикует первый tick;
   Stop отменяет ожидающие phase deadlines и больше не создаёт ticks.
 
-## Реализация
+## Фактическая реализация
 
-1. Выделить `InternalTickSource` с чистой частью расчёта и тонким board adapter.
-   IRQ пишет только атомарные счётчики/временную отметку; никаких USB write,
-   секвенсора, очереди или UI из IRQ.
-2. Добавить consumer, который для каждого опубликованного tick открывает очередь,
-   отправляет clock/phase-0 события и выставляет ближайший phase deadline.
-3. Временно сохранить старый clock transmitter только до этапа 6; не допустить,
-   чтобы два генератора одновременно посылали `0xF8`.
-4. Зафиксировать policy при задержке main loop: обработать ограниченное число
-   накопившихся ticks в порядке времени, записать late delivery и сбросить лишний
-   долг безопасно, если лимит достигнут.
+- `src/engine/internal_tick_source.h`: header-only `InternalTickSource` и
+  фиксированное SPSC `InternalTickStore`. Период `60'000'000 / (BPM * 24)`
+  распределяет остаток целыми микросекундами. Запись tick содержит timestamp и
+  период открытого интервала.
+- `src/engine/internal_tick_consumer.h`: header-only consumer владеет только
+  логикой `Transport` и `MidiEventQueue`; USB sink передаётся вызывающим кодом.
+  Он отправляет `F8` и phase-0 события при открытии tick, затем вычисляет
+  ближайший deadline через `periodUs * phase / 65536` с 64-bit произведением.
+- `MidiEventQueue::nextPosition()` добавлен как read-only доступ к ближайшей
+  позиции. Для `F8` зарезервирован один из восьми пакетов tick: не-clock события
+  ограничены семью, clock допускается восьмым. Поэтому note scheduling не может
+  вытеснить clock.
+- `src/drivers/pico_internal_tick_alarm.{h,cpp}`: one-shot adapter RP2350/Pico
+  SDK на `pico/time.h`. IRQ только публикует timestamped tick и переармливает
+  `add_alarm_in_us`; USB, очередь и Transport остаются на main core. Критическая
+  секция сериализует callback с `cancel_alarm`/rearm при Stop и смене BPM.
+- Новый источник намеренно не подключён в `main.cpp`; legacy `Sequencer::update`,
+  `MidiClockTransmitter`, `midi_step_boundary` и прямая отправка нот не менялись.
+
+## Policy
+
+- `InternalTickConsumer` обрабатывает максимум 4 накопленных tick за проход,
+  сохраняет их временной порядок, считает late delivery и сбрасывает остаток с
+  `droppedTicks`. Неограниченный burst запрещён.
+- `InternalTickSource::setBpm()` сбрасывает дробный остаток: следующий ещё не
+  открытый tick использует новый период. `InternalTickConsumer::setBpm()`
+  пересчитывает deadline только неотправленного phase-события открытого tick;
+  уже отправленные события не переигрываются.
+- При будущем wiring изменение BPM вызывает оба API на main core: сначала
+  `PicoInternalTickAlarm::setBpm()` для следующей границы, затем
+  `InternalTickConsumer::setBpm()` для открытого tick.
+- `start()` consumer посылает Start и ждёт опубликованный первый tick; `stop()`
+  посылает Stop, очищает очередь и отменяет phase deadline; `continuePlayback()`
+  посылает Continue.
 
 ## Проверки
 
-Native: 40/120/240 BPM, дробное распределение периодов, BPM change, wraparound
-`micros()`, Start/Stop, catch-up limit и deadlines для 0/50/75%. На устройстве:
-измерить 24 PPQN, отсутствие дрейфа на нескольких минутах и phase-offset на MIDI
-monitor/логическом анализаторе.
+Native Unity: 40/120/240 BPM и дробный остаток, deadlines 0/50/75%, порядок
+`F8 -> Off -> On`, Start/Stop/Continue, BPM change, wraparound `micros()`,
+ограниченный catch-up и диагностика, future queue events, read-only ближайшая
+позиция и резерв clock slot. На устройстве всё ещё нужно измерить 24 PPQN,
+отсутствие дрейфа на нескольких минутах и phase-offset на MIDI monitor/логическом
+анализаторе.
 
 ## Вне объёма
 
@@ -51,4 +77,5 @@ External clock и миграция нот секвенсора.
 
 ## Передача результата
 
-Зафиксировать выбранный таймер/адаптер, catch-up policy, замеры и API.
+Выбран `pico/time.h` one-shot alarm adapter; API и catch-up policy описаны выше.
+Аппаратные замеры остаются задачей при подключении источника в отдельном этапе.
