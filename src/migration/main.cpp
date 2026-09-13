@@ -1,6 +1,7 @@
 #include "drivers/littlefs_program_storage.h"
 #include "program/program_migration.h"
 
+#include <Adafruit_TinyUSB.h>
 #include <Arduino.h>
 
 #include <algorithm>
@@ -192,6 +193,11 @@ void pollProtocol() {
 
 } // namespace
 
-void setup() { Serial.begin(115200); }
+void setup() {
+    if (!TinyUSBDevice.isInitialized()) {
+        TinyUSBDevice.begin(0);
+    }
+    Serial.begin(115200);
+}
 
 void loop() { pollProtocol(); }
