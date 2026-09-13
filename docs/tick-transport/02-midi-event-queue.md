@@ -1,6 +1,6 @@
 # Этап 2. Ограниченная очередь MIDI-событий
 
-Статус: запланировано. Зависит от этапа 1.
+Статус: реализовано. Зависит от этапа 1.
 
 ## Задача
 
@@ -49,4 +49,38 @@ off → on; несколько нот с одинаковой фазой; соб
 
 ## Передача результата
 
-Указать ёмкость, политику overflow, packet type и тесты.
+### Выбранные решения
+
+- Общая фиксированная ёмкость: 16 событий (`MidiEventQueue::kCapacity`).
+- Квота: 8 MIDI-пакетов на `target.tick`, независимо от `phase`
+  (`MidiEventQueue::kMaxPacketsPerTick`).
+- Overflow: `enqueue` возвращает `CapacityExceeded` или `TickQuotaExceeded` и не
+  изменяет очередь. Fail-stop реакция transport остаётся задачей этапа 6.
+- USB packet: `MidiUsbPacket = std::array<std::uint8_t, 4>`; API
+  `usbMidiRealTimePacket` сохранён и теперь возвращает этот именованный тип.
+
+### Фактический API
+
+```cpp
+MidiEventQueue queue;
+MidiEventQueueEnqueueResult result = queue.enqueue(target, packet);
+MidiEventQueueDrainResult due = queue.drainAt(position);
+queue.clear();
+std::size_t count = queue.size();
+bool isEmpty = queue.empty();
+```
+
+`MidiEventQueueDrainResult` содержит фиксированный `std::array<MidiEvent, 16>`,
+поле `count` и `lateCount`. Пакет хранится полностью. События дренируются при
+`target <= position`; `lateCount` учитывает события с `target < position`.
+На `(T, 0)` порядок: Clock, Note Off (включая Note On с velocity 0), Note On,
+Other; внутри класса приоритета порядок постановки сохраняется. На остальных
+фазах сохраняется порядок постановки.
+
+### Проверки
+
+- Unity: квота 8 и точная ошибка девятого пакета; capacity 16 и точная ошибка
+  переполнения; фазы 0/50/75%; приоритет и стабильность; late drain; clear;
+  сохранность всех четырёх байт пакета.
+- `make format-check`: успешно.
+- `make test`: успешно, 180/180 тестов.
