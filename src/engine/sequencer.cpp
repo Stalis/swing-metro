@@ -21,6 +21,10 @@ Sequencer::Sequencer()
 
 uint8_t Sequencer::getBpm() const { return _bpm; }
 
+void Sequencer::setSwing(uint8_t swing) { _swing = SwingMetro::clampSwingValue(swing); }
+
+uint8_t Sequencer::getSwing() const { return _swing; }
+
 const std::array<SequencerStep, STEPS_COUNT>& Sequencer::steps() const { return _steps; }
 
 void Sequencer::setSteps(const std::array<SequencerStep, STEPS_COUNT>& steps) { _steps = steps; }
@@ -100,8 +104,6 @@ std::optional<MIDI_Note> Sequencer::stop() {
     const auto actual = _actualSoundingNote;
     _actualSoundingNote.reset();
     _projectedSoundingNote.reset();
-    _scheduledBoundaryTick.reset();
-    _scheduledSoundingNote.reset();
     return actual;
 }
 
@@ -126,8 +128,6 @@ void Sequencer::start() {
     _actualSoundingNote.reset();
     _projectedSoundingNote.reset();
     _nextBoundaryTick = 0;
-    _scheduledBoundaryTick.reset();
-    _scheduledSoundingNote.reset();
 }
 
 void Sequencer::continuePlayback() { _running = true; }
@@ -151,7 +151,8 @@ Sequencer::scheduleThrough(SwingMetro::TransportPosition position,
         std::optional<MIDI_Note> projected;
         if (step.isEnabled) {
             projected = step.note;
-            requests[count++] = {{_nextBoundaryTick, 0}, {0x09, 0x90, step.note, step.velocity}};
+            requests[count++] = {{_nextBoundaryTick, SwingMetro::swingPhase(stepIndex, _swing)},
+                                 {0x09, 0x90, step.note, step.velocity}};
         }
         const auto result = queue.enqueueBatch(requests, count);
         if (result != SwingMetro::MidiEventQueueEnqueueResult::Ok) {
@@ -160,16 +161,16 @@ Sequencer::scheduleThrough(SwingMetro::TransportPosition position,
         _currentStepIndex = stepIndex;
         _hasCurrentStep = true;
         _projectedSoundingNote = projected;
-        _scheduledBoundaryTick = _nextBoundaryTick;
-        _scheduledSoundingNote = projected;
         _nextBoundaryTick += SwingMetro::TICKS_PER_SIXTEENTH;
     }
     return SwingMetro::MidiEventQueueEnqueueResult::Ok;
 }
 
-void Sequencer::notifyBoundaryReached(SwingMetro::TransportTick tick) {
-    if (_scheduledBoundaryTick == tick) {
-        _actualSoundingNote = _scheduledSoundingNote;
+void Sequencer::notifyNoteOnSent(MIDI_Note note) { _actualSoundingNote = note; }
+
+void Sequencer::notifyNoteOffSent(MIDI_Note note) {
+    if (_actualSoundingNote == note) {
+        _actualSoundingNote.reset();
     }
 }
 

@@ -55,6 +55,8 @@ class Sequencer {
 
     void setBpm(uint8_t bpm);
     [[nodiscard]] uint8_t getBpm() const;
+    void setSwing(uint8_t swing);
+    [[nodiscard]] uint8_t getSwing() const;
     [[nodiscard]] const std::array<SequencerStep, STEPS_COUNT>& steps() const;
     void setSteps(const std::array<SequencerStep, STEPS_COUNT>& steps);
     [[nodiscard]] std::bitset<STEPS_COUNT> getStepsEnabled() const;
@@ -75,7 +77,8 @@ class Sequencer {
     void continuePlayback();
     [[nodiscard]] SwingMetro::MidiEventQueueEnqueueResult
     scheduleThrough(SwingMetro::TransportPosition position, SwingMetro::MidiEventQueue& queue);
-    void notifyBoundaryReached(SwingMetro::TransportTick tick);
+    void notifyNoteOnSent(MIDI_Note note);
+    void notifyNoteOffSent(MIDI_Note note);
     [[nodiscard]] std::optional<MIDI_Note> actualSoundingNote() const;
 
     void sync(uint32_t micros);
@@ -94,12 +97,11 @@ class Sequencer {
     StepIndex _currentStepIndex;
     bool _hasCurrentStep = false;
     uint8_t _bpm;
+    uint8_t _swing = SwingMetro::SWING_MIN_VALUE;
     bool _running = false;
     std::optional<MIDI_Note> _actualSoundingNote;
     std::optional<MIDI_Note> _projectedSoundingNote;
     SwingMetro::TransportTick _nextBoundaryTick = 0;
-    std::optional<SwingMetro::TransportTick> _scheduledBoundaryTick;
-    std::optional<MIDI_Note> _scheduledSoundingNote;
 
     uint32_t _stepPeriodUs;
     uint32_t _lastStepAt = 0;

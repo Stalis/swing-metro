@@ -159,6 +159,106 @@ void test_external_continue_waits_for_next_tick_without_retriggering() {
     TEST_ASSERT_EQUAL_HEX8(0x80, sink.packets[1][1]);
 }
 
+void test_swing_orders_clock_off_then_delayed_on() {
+    Sequencer sequencer;
+    auto steps = sequencer.steps();
+    steps[0] = {true, 60, 100};
+    steps[1] = {true, 61, 100};
+    sequencer.setSteps(steps);
+    sequencer.setSwing(75);
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickStore<> ticks;
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal);
+    controller.toggle(0);
+    for (std::uint32_t tick = 0; tick <= 6; ++tick) {
+        TEST_ASSERT_TRUE(ticks.publish({1'000 + tick * 20'000, 20'000}));
+        controller.process(1'000 + tick * 20'000, ticks);
+    }
+    TEST_ASSERT_EQUAL_HEX8(0xF8, sink.packets[sink.count - 2][1]);
+    TEST_ASSERT_EQUAL_HEX8(0x80, sink.packets[sink.count - 1][1]);
+    controller.process(136'000, ticks);
+    TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[sink.count - 1][1]);
+    TEST_ASSERT_EQUAL_UINT8(61, sink.packets[sink.count - 1][2]);
+}
+
+void test_stop_before_delayed_on_does_not_send_an_off() {
+    Sequencer sequencer;
+    auto steps = sequencer.steps();
+    steps[0] = {true, 60, 100};
+    steps[1] = {true, 61, 100};
+    sequencer.setSteps(steps);
+    sequencer.setSwing(90);
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickStore<> ticks;
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal);
+    controller.toggle(0);
+    for (std::uint32_t tick = 0; tick <= 6; ++tick) {
+        TEST_ASSERT_TRUE(ticks.publish({1'000 + tick * 20'000, 20'000}));
+        controller.process(1'000 + tick * 20'000, ticks);
+    }
+    const auto beforeStop = sink.count;
+    controller.toggle(122'000);
+    TEST_ASSERT_EQUAL_UINT32(beforeStop + 1, sink.count);
+    TEST_ASSERT_EQUAL_HEX8(0xFC, sink.packets[sink.count - 1][1]);
+    controller.process(200'000, ticks);
+    TEST_ASSERT_EQUAL_UINT32(beforeStop + 1, sink.count);
+}
+
+void test_stop_after_delayed_on_sends_its_actual_off() {
+    Sequencer sequencer;
+    auto steps = sequencer.steps();
+    steps[0] = {true, 60, 100};
+    steps[1] = {true, 61, 100};
+    sequencer.setSteps(steps);
+    sequencer.setSwing(90);
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickStore<> ticks;
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal);
+    controller.toggle(0);
+    for (std::uint32_t tick = 0; tick <= 6; ++tick) {
+        TEST_ASSERT_TRUE(ticks.publish({1'000 + tick * 20'000, 20'000}));
+        controller.process(1'000 + tick * 20'000, ticks);
+    }
+    controller.process(139'000, ticks);
+    const auto beforeStop = sink.count;
+    controller.toggle(140'000);
+    TEST_ASSERT_EQUAL_UINT32(beforeStop + 2, sink.count);
+    TEST_ASSERT_EQUAL_HEX8(0x80, sink.packets[beforeStop][1]);
+    TEST_ASSERT_EQUAL_UINT8(61, sink.packets[beforeStop][2]);
+    TEST_ASSERT_EQUAL_HEX8(0xFC, sink.packets[beforeStop + 1][1]);
+}
+
+void test_period_changes_retime_deadline_without_changing_queue_position() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink};
+    const auto phase = SwingMetro::phaseFromPercent(75);
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({1, phase}, {0x09, 0x90, 60, 100}));
+
+    dispatcher.start(false);
+    dispatcher.consumeTick({1'000, 20'000}, false);
+    dispatcher.consumeTick({21'000, 40'000}, false);
+    TEST_ASSERT_EQUAL_UINT64(1, queue.nextPosition()->tick);
+    TEST_ASSERT_EQUAL_UINT16(phase, queue.nextPosition()->phase);
+    dispatcher.dispatchDue(50'999);
+    TEST_ASSERT_EQUAL_UINT32(0, sink.count);
+    dispatcher.dispatchDue(51'000);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.count);
+    TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[0][1]);
+}
+
 } // namespace
 
 void test_transport_controller_main() {
@@ -169,4 +269,8 @@ void test_transport_controller_main() {
     RUN_TEST(test_stop_switch_and_loss_send_one_note_off_without_realtime_leak);
     RUN_TEST(test_local_toggle_starts_then_stops_external_without_continue_packet);
     RUN_TEST(test_external_continue_waits_for_next_tick_without_retriggering);
+    RUN_TEST(test_swing_orders_clock_off_then_delayed_on);
+    RUN_TEST(test_stop_before_delayed_on_does_not_send_an_off);
+    RUN_TEST(test_stop_after_delayed_on_sends_its_actual_off);
+    RUN_TEST(test_period_changes_retime_deadline_without_changing_queue_position);
 }

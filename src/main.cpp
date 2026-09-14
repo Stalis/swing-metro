@@ -85,7 +85,7 @@ Encoder swingEncoder(SWING_ENCODER_SETTINGS);
 Counter<uint8_t> swingCounter({.step = 1,
                                .value = 50,
                                .minValue = 50,
-                               .maxValue = 100,
+                               .maxValue = SwingMetro::SWING_MAX_VALUE,
                                .overflowBehavior = CounterOverflowBehavior::Clamp});
 
 void volumeEncoderHandler(EncoderDirection direction);

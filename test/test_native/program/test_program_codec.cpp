@@ -85,6 +85,30 @@ void testCodecRejectsInvalidProgram() {
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<std::uint8_t>(SwingMetro::ProgramCodecStatus::InvalidProgram),
         static_cast<std::uint8_t>(SwingMetro::encodeProgram(invalid, 1, encoded)));
+    invalid = sampleProgram();
+    invalid.swing = 91;
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(SwingMetro::ProgramCodecStatus::InvalidProgram),
+        static_cast<std::uint8_t>(SwingMetro::encodeProgram(invalid, 1, encoded)));
+}
+
+void testCodecClampsLegacySwingOnDecode() {
+    SwingMetro::Program legacy = sampleProgram();
+    legacy.swing = 90;
+    SwingMetro::EncodedProgram encoded;
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(SwingMetro::ProgramCodecStatus::Ok),
+        static_cast<std::uint8_t>(SwingMetro::encodeProgram(legacy, 1, encoded)));
+    encoded.bytes[SWING_TLV_OFFSET + 2] = 100;
+    updateCrc(encoded);
+
+    SwingMetro::Program decoded;
+    std::uint32_t revision = 0;
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramCodecStatus::Ok),
+                            static_cast<std::uint8_t>(SwingMetro::decodeProgram(
+                                encoded.bytes.data(), encoded.size, decoded, revision)));
+    TEST_ASSERT_EQUAL_UINT8(90, decoded.swing);
+    TEST_ASSERT_TRUE(SwingMetro::isValid(decoded));
 }
 
 void testCodecDefaultsMissingFieldsAndRewritesCurrentFormat() {
@@ -233,6 +257,7 @@ void testProgramCodecMain() {
     RUN_TEST(testCodecRoundTripPreservesProgramAndRevision);
     RUN_TEST(testCodecIsDeterministicAndHasBoundedSize);
     RUN_TEST(testCodecRejectsInvalidProgram);
+    RUN_TEST(testCodecClampsLegacySwingOnDecode);
     RUN_TEST(testCodecDefaultsMissingFieldsAndRewritesCurrentFormat);
     RUN_TEST(testCodecSkipsUnknownTlv);
     RUN_TEST(testCodecRejectsInvalidMagicVersionLengthAndCrc);

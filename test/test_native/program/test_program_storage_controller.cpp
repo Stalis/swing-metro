@@ -38,7 +38,8 @@ struct FakeStorage final : SwingMetro::ProgramStorageBackend {
 
 struct State {
     Counter<std::uint8_t> tempo{{.step = 1, .value = 120, .minValue = 40, .maxValue = 240}};
-    Counter<std::uint8_t> swing{{.step = 1, .value = 50, .minValue = 50, .maxValue = 100}};
+    Counter<std::uint8_t> swing{
+        {.step = 1, .value = 50, .minValue = 50, .maxValue = SwingMetro::SWING_MAX_VALUE}};
     Counter<std::uint8_t> volume{{.step = 1, .value = 100, .minValue = 0, .maxValue = 100}};
     Sequencer sequencer;
     SwingMetro::MidiClockSettings midiClock;

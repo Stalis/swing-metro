@@ -202,6 +202,9 @@ auto decodeProgram(const std::uint8_t* data, std::size_t size, Program& program,
         }
     }
 
+    if (decoded.swing > PROGRAM_MAX_SWING && decoded.swing <= PROGRAM_LEGACY_MAX_SWING) {
+        decoded.swing = PROGRAM_MAX_SWING;
+    }
     if (!isValid(decoded)) {
         return ProgramCodecStatus::InvalidField;
     }

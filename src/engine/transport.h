@@ -11,6 +11,8 @@ using TransportPhase = std::uint16_t;
 constexpr TransportTick TICKS_PER_QUARTER = 24;
 constexpr TransportTick TICKS_PER_SIXTEENTH = 6;
 constexpr TransportPhase PHASE_MAX = UINT16_MAX;
+constexpr std::uint8_t SWING_MIN_VALUE = 50;
+constexpr std::uint8_t SWING_MAX_VALUE = 90;
 
 struct TransportPosition {
     TransportTick tick = 0;
@@ -47,6 +49,22 @@ struct TransportPosition {
     }
     return static_cast<TransportPhase>(static_cast<std::uint32_t>(percent) *
                                        (static_cast<std::uint32_t>(PHASE_MAX) + 1U) / 100U);
+}
+
+[[nodiscard]] constexpr auto clampSwingValue(std::uint8_t swing) noexcept -> std::uint8_t {
+    if (swing < SWING_MIN_VALUE) {
+        return SWING_MIN_VALUE;
+    }
+    return swing > SWING_MAX_VALUE ? SWING_MAX_VALUE : swing;
+}
+
+[[nodiscard]] constexpr auto swingPhase(std::uint8_t sixteenthStep, std::uint8_t swing) noexcept
+    -> TransportPhase {
+    const auto clampedSwing = clampSwingValue(swing);
+    if ((sixteenthStep % 2U) == 0U || clampedSwing == SWING_MIN_VALUE) {
+        return 0;
+    }
+    return phaseFromPercent(clampedSwing);
 }
 
 struct TransportSnapshot {

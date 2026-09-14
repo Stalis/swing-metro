@@ -43,7 +43,10 @@ auto AppEventHandler::handle(const AdjustTempo& event) -> void {
     _sequencer.setBpm(_tempo.getValue());
 }
 
-auto AppEventHandler::handle(const AdjustSwing& event) -> void { applyDelta(_swing, event.delta); }
+auto AppEventHandler::handle(const AdjustSwing& event) -> void {
+    applyDelta(_swing, event.delta);
+    _sequencer.setSwing(_swing.getValue());
+}
 
 auto AppEventHandler::handle(const AdjustVolume& event) -> void {
     applyDelta(_volume, event.delta);

@@ -74,6 +74,7 @@ class MidiDispatcher {
         }
         if (_haveTick) {
             dispatchDue(record.timestampUs);
+            _queue.discardAt(_transport.position().tick);
             (void)_transport.advanceTick();
         }
         _tickStartUs = record.timestampUs;
@@ -83,7 +84,6 @@ class MidiDispatcher {
             _sink.send(usbMidiRealTimePacket(0xF8));
         }
         sendDue({_transport.position().tick, 0});
-        _sequencer.notifyBoundaryReached(_transport.position().tick);
     }
 
     [[nodiscard]] auto position() const noexcept -> TransportPosition {
@@ -95,6 +95,13 @@ class MidiDispatcher {
         const auto due = _queue.drainAt(position);
         for (std::size_t index = 0; index < due.count; ++index) {
             _sink.send(due.events[index].packet);
+            const auto& packet = due.events[index].packet;
+            if ((packet[1] & 0xF0U) == 0x90U && packet[3] != 0U) {
+                _sequencer.notifyNoteOnSent(packet[2]);
+            } else if ((packet[1] & 0xF0U) == 0x80U ||
+                       ((packet[1] & 0xF0U) == 0x90U && packet[3] == 0U)) {
+                _sequencer.notifyNoteOffSent(packet[2]);
+            }
         }
     }
 

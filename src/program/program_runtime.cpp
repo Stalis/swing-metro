@@ -26,7 +26,11 @@ auto captureProgram(const Counter<std::uint8_t>& tempo, const Counter<std::uint8
 auto applyProgram(const Program& program, Counter<std::uint8_t>& tempo,
                   Counter<std::uint8_t>& swing, Counter<std::uint8_t>& volume, Sequencer& sequencer,
                   MidiClockSettings& midiClock) -> bool {
-    if (!isValid(program)) {
+    auto normalized = program;
+    if (normalized.swing > PROGRAM_MAX_SWING && normalized.swing <= PROGRAM_LEGACY_MAX_SWING) {
+        normalized.swing = PROGRAM_MAX_SWING;
+    }
+    if (!isValid(normalized)) {
         return false;
     }
 
@@ -34,18 +38,19 @@ auto applyProgram(const Program& program, Counter<std::uint8_t>& tempo,
     static_assert(PROGRAM_STEP_COUNT == STEPS_COUNT);
     for (std::size_t index = 0; index < PROGRAM_STEP_COUNT; ++index) {
         steps[index] = {
-            .isEnabled = program.steps[index].enabled,
-            .note = program.steps[index].note,
-            .velocity = program.steps[index].velocity,
+            .isEnabled = normalized.steps[index].enabled,
+            .note = normalized.steps[index].note,
+            .velocity = normalized.steps[index].velocity,
         };
     }
 
-    tempo.setValue(program.tempo);
-    swing.setValue(program.swing);
-    volume.setValue(program.volume);
-    sequencer.setBpm(program.tempo);
+    tempo.setValue(normalized.tempo);
+    swing.setValue(normalized.swing);
+    volume.setValue(normalized.volume);
+    sequencer.setBpm(normalized.tempo);
+    sequencer.setSwing(normalized.swing);
     sequencer.setSteps(steps);
-    midiClock.apply(program.midiClockMode);
+    midiClock.apply(normalized.midiClockMode);
     return true;
 }
 
