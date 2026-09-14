@@ -19,6 +19,12 @@ class MidiPacketSink {
     virtual auto send(const MidiUsbPacket& packet) -> void = 0;
 };
 
+struct TransportDiagnostics {
+    std::uint32_t lateTicks = 0;
+    std::uint32_t droppedTicks = 0;
+    std::uint32_t lateEvents = 0;
+};
+
 class MidiDispatcher {
   public:
     MidiDispatcher(MidiEventQueue& queue, Transport& transport, Sequencer& sequencer,
@@ -80,6 +86,7 @@ class MidiDispatcher {
         _tickStartUs = record.timestampUs;
         _tickPeriodUs = record.periodUs;
         _haveTick = true;
+        _sequencer.notifyBoundaryReached(_transport.position().tick);
         if (emitClock) {
             _sink.send(usbMidiRealTimePacket(0xF8));
         }
@@ -119,7 +126,12 @@ class TransportController {
   public:
     TransportController(Sequencer& sequencer, MidiClockSettings& settings,
                         MidiPacketSink& sink) noexcept
-        : _sequencer{sequencer}, _settings{settings},
+        : _sequencer{sequencer}, _settings{settings}, _queue{_ownedQueue},
+          _dispatcher{_queue, _transport, sequencer, sink} {}
+
+    TransportController(Sequencer& sequencer, MidiClockSettings& settings, MidiPacketSink& sink,
+                        MidiEventQueue& queue) noexcept
+        : _sequencer{sequencer}, _settings{settings}, _queue{queue},
           _dispatcher{_queue, _transport, sequencer, sink} {}
 
     auto toggle(std::uint32_t) -> void {
@@ -172,14 +184,19 @@ class TransportController {
         }
         if (_internalTiming) {
             TransportTickRecord record;
-            while (ticks.pop(record)) {
+            std::uint8_t processed = 0;
+            while (processed < MAX_INTERNAL_TICKS_PER_PASS && ticks.pop(record)) {
+                _diagnostics.lateTicks +=
+                    static_cast<std::uint32_t>(isDue(nowUs, record.timestampUs));
                 _dispatcher.consumeTick(record, _settings.mode() == MidiClockMode::Internal);
+                ++processed;
             }
+            _diagnostics.droppedTicks += ticks.discard();
         } else {
             (void)ticks.discard();
         }
         _dispatcher.dispatchDue(nowUs);
-        (void)_sequencer.scheduleThrough(_dispatcher.position(), _queue);
+        schedule();
         if (_settings.mode() == MidiClockMode::External) {
             const auto result = _external.update(nowUs);
             if (result.stopped) {
@@ -193,6 +210,7 @@ class TransportController {
         return _external.status();
     }
     [[nodiscard]] auto externalBpm() const noexcept -> std::uint8_t { return _external.bpm(); }
+    [[nodiscard]] auto diagnostics() const noexcept -> TransportDiagnostics { return _diagnostics; }
 
   private:
     auto start(bool waitForExternalTick) -> void {
@@ -202,7 +220,19 @@ class TransportController {
         _sequencer.start();
         _dispatcher.start(_settings.mode() == MidiClockMode::Internal);
         _internalTiming = !waitForExternalTick;
-        (void)_sequencer.scheduleThrough(_dispatcher.position(), _queue);
+        schedule();
+    }
+
+    auto schedule() -> void {
+        if (_sequencer.scheduleThrough(_dispatcher.position(), _queue) !=
+            MidiEventQueueEnqueueResult::Ok) {
+            stop();
+        }
+    }
+
+    [[nodiscard]] static auto isDue(std::uint32_t nowUs, std::uint32_t timestampUs) noexcept
+        -> bool {
+        return static_cast<std::int32_t>(nowUs - timestampUs) >= 0;
     }
 
     auto stop(bool resetExternal = true) -> void {
@@ -217,12 +247,15 @@ class TransportController {
 
     Sequencer& _sequencer;
     MidiClockSettings& _settings;
-    MidiEventQueue _queue;
+    MidiEventQueue _ownedQueue;
+    MidiEventQueue& _queue;
     Transport _transport;
     ExternalMidiClock _external;
+    TransportDiagnostics _diagnostics{};
     MidiDispatcher _dispatcher;
     bool _internalTiming = false;
     bool _storageOpen = false;
+    static constexpr std::uint8_t MAX_INTERNAL_TICKS_PER_PASS = 4;
 };
 
 } // namespace SwingMetro

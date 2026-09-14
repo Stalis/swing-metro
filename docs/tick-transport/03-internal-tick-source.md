@@ -31,10 +31,10 @@
   фиксированное SPSC `InternalTickStore`. Период `60'000'000 / (BPM * 24)`
   распределяет остаток целыми микросекундами. Запись tick содержит timestamp и
   период открытого интервала.
-- `src/engine/internal_tick_consumer.h`: header-only consumer владеет только
-  логикой `Transport` и `MidiEventQueue`; USB sink передаётся вызывающим кодом.
-  Он отправляет `F8` и phase-0 события при открытии tick, затем вычисляет
-  ближайший deadline через `periodUs * phase / 65536` с 64-bit произведением.
+- `TransportController` передаёт records в `MidiDispatcher`, единственный
+  consumer очереди и USB-MIDI output. Он отправляет `F8` и phase-0 события при
+  открытии tick, затем вычисляет phase через `periodUs * phase / 65536` с
+  64-bit произведением.
 - `MidiEventQueue::nextPosition()` добавлен как read-only доступ к ближайшей
   позиции. Для `F8` зарезервирован один из восьми пакетов tick: не-clock события
   ограничены семью, clock допускается восьмым. Поэтому note scheduling не может
@@ -48,19 +48,15 @@
 
 ## Policy
 
-- `InternalTickConsumer` обрабатывает максимум 4 накопленных tick за проход,
-  сохраняет их временной порядок, считает late delivery и сбрасывает остаток с
-  `droppedTicks`. Неограниченный burst запрещён.
+- `TransportController` обрабатывает максимум 4 накопленных internal tick за
+  проход, сохраняет их временной порядок, считает late delivery и сбрасывает
+  остаток с `droppedTicks`. `diagnostics()` предоставляет эти счётчики;
+  неограниченный burst запрещён.
 - `InternalTickSource::setBpm()` сбрасывает дробный остаток: следующий ещё не
-  открытый tick использует новый период. `InternalTickConsumer::setBpm()`
-  пересчитывает deadline только неотправленного phase-события открытого tick;
-  уже отправленные события не переигрываются.
-- При будущем wiring изменение BPM вызывает оба API на main core: сначала
-  `PicoInternalTickAlarm::setBpm()` для следующей границы, затем
-  `InternalTickConsumer::setBpm()` для открытого tick.
-- `start()` consumer посылает Start и ждёт опубликованный первый tick; `stop()`
-  посылает Stop, очищает очередь и отменяет phase deadline; `continuePlayback()`
-  посылает Continue.
+  открытый tick использует новый период. Уже отправленные события не
+  переигрываются.
+- `TransportController` посылает Start и ждёт опубликованный первый tick;
+  Stop очищает очередь и отменяет phase deadline.
 
 ## Проверки
 

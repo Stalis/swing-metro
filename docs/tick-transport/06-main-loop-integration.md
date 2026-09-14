@@ -11,8 +11,8 @@ deadlines и USB-MIDI output. `Sequencer` только ставит событи
 ## Фактический порядок loop
 
 1. `UsbMidiRealtimeReceiver` передаёт входные realtime-сообщения контроллеру.
-2. `MidiDispatcher` принимает опубликованные internal ticks, обрабатывает due phase deadlines и
-   отправляет пакеты.
+2. `MidiDispatcher` принимает до четырёх опубликованных internal ticks за проход,
+   обрабатывает due phase deadlines и отправляет пакеты; остаток backlog сбрасывается.
 3. `Sequencer::scheduleThrough` пополняет будущий two-tick horizon.
 4. Обычный input/UI/storage код остаётся вне realtime-участка. После input
    `PicoInternalTickAlarm` синхронизируется с состоянием контроллера.
@@ -29,16 +29,18 @@ External не отправляет outgoing realtime bytes.
 отправляется только для active Internal output session.
 
 External Start ставит tick 0, но ждёт первого F8 с measured period до note output; incoming F8
-не echo. External Continue продолжает на следующем F8 без reset/retrigger. Loss очищает pending
-state и actual note, остаётся stopped/lost; relock сам не запускает playback. Смена режима
+не echo. После loss первый F8 возвращает lock, Continue использует сохранённый period, а следующий
+F8 открывает tick без второго sample. Loss очищает pending state и actual note, остаётся
+stopped/lost; relock сам не запускает playback. `CapacityExceeded` или `TickQuotaExceeded`
+останавливают transport, очищают queue и отправляют один actual Note Off. Смена режима
 безопасно останавливает старый путь и не запускает новый автоматически. Открытие storage modal
 синхронно останавливает transport перед LittleFS работой.
 
 ## Удалённый production path
 
 `main.cpp` больше не использует `MidiClockTransmitter`, `midi_step_boundary`, direct
-`midiSendNoteOn/Off`, `noteSent` или `lastNoteSent`. Legacy engine headers остаются только для
-существующих native compatibility tests и не вызываются production firmware.
+`midiSendNoteOn/Off`, `noteSent` или `lastNoteSent`. `MidiDispatcher` остаётся единственным
+production owner tick lifecycle, queue consumption и packet notifications.
 
 ## Проверки
 

@@ -77,6 +77,7 @@ class Sequencer {
     void continuePlayback();
     [[nodiscard]] SwingMetro::MidiEventQueueEnqueueResult
     scheduleThrough(SwingMetro::TransportPosition position, SwingMetro::MidiEventQueue& queue);
+    void notifyBoundaryReached(SwingMetro::TransportTick tick);
     void notifyNoteOnSent(MIDI_Note note);
     void notifyNoteOffSent(MIDI_Note note);
     [[nodiscard]] std::optional<MIDI_Note> actualSoundingNote() const;

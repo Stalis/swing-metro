@@ -30,17 +30,13 @@ Start/Continue/Stop и loss/relock. Уточнить период для phase-d
   принятого `F8` при running transport, а также Start/Continue/Stop и status.
   `periodUs()` и fixed-point `bpmMilli()` доступны без округления; `bpm()` оставлен
   для legacy UI.
-- `TransportTickConsumer` в `src/engine/transport_tick_consumer.h` владеет общими
-  phase deadlines и принимает `TransportTickRecord` как напрямую, так и из bounded
-  SPSC store. Internal consumer сохранён как alias для текущего кода.
-- Consumer получает источник в конструкторе: `Internal` ставит outgoing `F8` в
-  существующую очередь и посылает `FA`/`FB`/`FC`; `External` не посылает master ни
-  clock, ни transport-команды.
+- `MidiDispatcher` внутри `TransportController` владеет общими phase deadlines,
+  queue consumption и packet notifications. `Internal` посылает `F8` и
+  `FA`/`FC`; `External` не посылает master ни clock, ни transport-команды.
 - USB receive остаётся в `UsbMidiRealtimeReceiver::poll()` на main core. Отдельная
   receive SPSC очередь не нужна до wiring этапа 6.
-- `main.cpp`, `processExternalMidiClock`, `Sequencer` и legacy direct MIDI path не
-  подключались и не менялись. Поле `advanceStep` временно сохранено в результате
-  `ExternalMidiClock` только для этой legacy-совместимости.
+- `main.cpp` передаёт realtime events в `TransportController`; direct MIDI path
+  не участвует в production transport.
 
 ## Policy
 
@@ -48,15 +44,16 @@ Start/Continue/Stop и loss/relock. Уточнить период для phase-d
   вне диапазона 40–240 BPM (`10'416..62'500` мкс на `F8`) не меняют фильтр, но сами
   принятые `F8` остаются границами transport и обновляют timeout.
 - Timeout `250'000` мкс переводит status в `Lost`, останавливает transport и
-  очищает pending phase events через consumer. Только timeout теряет lock. Первый
-  `F8` после loss сразу возвращает `Locked`; последующий Continue запускает
-  transport без ожидания второй fresh sample.
+  очищает pending phase events через dispatcher. Только timeout теряет lock.
+  Первый `F8` после loss сразу возвращает `Locked` и сохраняет фильтрованную
+  оценку периода; последующий Continue запускает transport, а следующий `F8`
+  открывает tick без ожидания второго fresh sample.
 - Start не сбрасывает текущую external tempo estimate: она сохраняется до timeout.
 - Владелец deadline один: если external `F8` обработан до pending deadline, он
   удаляет недоставленные события предыдущего tick перед новой границей. Если
   deadline обработан раньше, событие уже отправлено и не отменяется.
 - Bounded catch-up (не более четырёх records за проход), `lateTicks`,
-  `droppedTicks`, `lateEvents` и существующая queue capacity/quota сохранены.
+  `droppedTicks` и существующая queue capacity/quota сохранены.
 
 ## Проверки
 

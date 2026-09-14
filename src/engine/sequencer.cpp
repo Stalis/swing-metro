@@ -158,12 +158,16 @@ Sequencer::scheduleThrough(SwingMetro::TransportPosition position,
         if (result != SwingMetro::MidiEventQueueEnqueueResult::Ok) {
             return result;
         }
-        _currentStepIndex = stepIndex;
-        _hasCurrentStep = true;
         _projectedSoundingNote = projected;
         _nextBoundaryTick += SwingMetro::TICKS_PER_SIXTEENTH;
     }
     return SwingMetro::MidiEventQueueEnqueueResult::Ok;
+}
+
+void Sequencer::notifyBoundaryReached(SwingMetro::TransportTick tick) {
+    _currentStepIndex =
+        static_cast<StepIndex>((tick / SwingMetro::TICKS_PER_SIXTEENTH) % STEPS_COUNT);
+    _hasCurrentStep = true;
 }
 
 void Sequencer::notifyNoteOnSent(MIDI_Note note) { _actualSoundingNote = note; }

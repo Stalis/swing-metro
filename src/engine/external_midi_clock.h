@@ -78,7 +78,6 @@ class ExternalMidiClock {
             _running = false;
             _haveClock = false;
             _legacyPhase = 0;
-            _periodUs = 0;
             return {.stopped = wasRunning};
         }
         return {};
