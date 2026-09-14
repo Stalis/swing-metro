@@ -7,7 +7,7 @@ template <typename TContext>
 auto Router<TInputEvent, TOutputEvent, Capacity>::addContext(TContext& context) noexcept
     -> AddContextResult {
     using Context = std::remove_reference_t<TContext>;
-    constexpr bool isCompatible = Detail::isCompatibleContextV<Context, TInputEvent, Result>;
+    constexpr bool isCompatible = Detail::IS_COMPATIBLE_CONTEXT_V<Context, TInputEvent, Result>;
 
     static_assert(!std::is_const_v<Context>,
                   "ContextInput::Router requires a non-const context object");
@@ -19,15 +19,15 @@ auto Router<TInputEvent, TOutputEvent, Capacity>::addContext(TContext& context) 
             return AddContextResult::AlreadyPresent;
         }
 
-        if (size_ == Capacity) {
+        if (_size == Capacity) {
             return AddContextResult::StackFull;
         }
 
-        contexts_[size_] = ContextRef{
+        _contexts[_size] = ContextRef{
             static_cast<void*>(std::addressof(context)),
             &invokeContext<Context>,
         };
-        ++size_;
+        ++_size;
         return AddContextResult::Added;
     }
 
@@ -40,17 +40,17 @@ auto Router<TInputEvent, TOutputEvent, Capacity>::releaseContext(TContext& conte
     -> ReleaseContextResult {
     const auto* identity = static_cast<const void*>(std::addressof(context));
 
-    for (std::size_t index = 0; index < size_; ++index) {
-        if (contexts_[index].context != identity) {
+    for (std::size_t index = 0; index < _size; ++index) {
+        if (_contexts[index].context != identity) {
             continue;
         }
 
-        for (std::size_t next = index + 1; next < size_; ++next) {
-            contexts_[next - 1] = contexts_[next];
+        for (std::size_t next = index + 1; next < _size; ++next) {
+            _contexts[next - 1] = _contexts[next];
         }
 
-        --size_;
-        contexts_[size_] = ContextRef{};
+        --_size;
+        _contexts[_size] = ContextRef{};
         return ReleaseContextResult::Released;
     }
 
@@ -63,8 +63,8 @@ auto Router<TInputEvent, TOutputEvent, Capacity>::contains(const TContext& conte
     -> bool {
     const auto* identity = static_cast<const void*>(std::addressof(context));
 
-    for (std::size_t index = 0; index < size_; ++index) {
-        if (contexts_[index].context == identity) {
+    for (std::size_t index = 0; index < _size; ++index) {
+        if (_contexts[index].context == identity) {
             return true;
         }
     }
@@ -75,8 +75,8 @@ auto Router<TInputEvent, TOutputEvent, Capacity>::contains(const TContext& conte
 template <typename TInputEvent, typename TOutputEvent, std::size_t Capacity>
 auto Router<TInputEvent, TOutputEvent, Capacity>::dispatch(const TInputEvent& event)
     -> DispatchResult<TOutputEvent> {
-    for (std::size_t index = size_; index > 0; --index) {
-        auto result = contexts_[index - 1].handle(contexts_[index - 1].context, event);
+    for (std::size_t index = _size; index > 0; --index) {
+        auto result = _contexts[index - 1].handle(_contexts[index - 1].context, event);
         if (result.status() != DispatchStatus::Unhandled) {
             return result;
         }
@@ -87,7 +87,7 @@ auto Router<TInputEvent, TOutputEvent, Capacity>::dispatch(const TInputEvent& ev
 
 template <typename TInputEvent, typename TOutputEvent, std::size_t Capacity>
 auto Router<TInputEvent, TOutputEvent, Capacity>::size() const noexcept -> std::size_t {
-    return size_;
+    return _size;
 }
 
 template <typename TInputEvent, typename TOutputEvent, std::size_t Capacity>

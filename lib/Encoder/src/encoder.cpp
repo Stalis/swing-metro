@@ -129,7 +129,7 @@ void Encoder::update() {
         _accumulatedSteps = 1;
     }
 
-    if (_accumulatedSteps >= _targetSteps) {
+    if (_accumulatedSteps >= _TARGET_STEPS) {
         if (_handler != nullptr) {
             _handler(direction);
         }

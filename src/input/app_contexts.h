@@ -79,7 +79,7 @@ class MidiClockSettingsContext {
 
 class StepSettingsContext {
   public:
-    auto setSelectedStep(std::uint8_t step) noexcept -> void { selectedStep_ = step; }
+    auto setSelectedStep(std::uint8_t step) noexcept -> void { _selectedStep = step; }
 
     [[nodiscard]] auto handle(const InputEvent& input) const
         -> ContextInput::DispatchResult<AppEvent> {
@@ -106,14 +106,14 @@ class StepSettingsContext {
 
         if (button->phase == ContextInput::ButtonPhase::Pressed ||
             button->phase == ContextInput::ButtonPhase::Clicked) {
-            if (*step == selectedStep_) {
+            if (*step == _selectedStep) {
                 return Result::consume();
             }
             return Result::emit(AppEvent{OpenStepSettings{*step}});
         }
 
         if (button->phase == ContextInput::ButtonPhase::LongPressed) {
-            if (*step == selectedStep_) {
+            if (*step == _selectedStep) {
                 return Result::emit(AppEvent{CloseStepSettings{}});
             }
             return Result::emit(AppEvent{OpenStepSettings{*step}});
@@ -123,18 +123,18 @@ class StepSettingsContext {
     }
 
   private:
-    std::uint8_t selectedStep_ = 0;
+    std::uint8_t _selectedStep = 0;
 };
 
 class ShiftContext {
   public:
     explicit ShiftContext(const std::optional<std::uint8_t>& selectedStep) noexcept
-        : selectedStep_{selectedStep} {}
+        : _selectedStep{selectedStep} {}
 
     [[nodiscard]] auto handle(const InputEvent& input) const
         -> ContextInput::DispatchResult<AppEvent> {
         using Result = ContextInput::DispatchResult<AppEvent>;
-        if (selectedStep_.has_value() && input.source == InputId::TempoEncoder) {
+        if (_selectedStep.has_value() && input.source == InputId::TempoEncoder) {
             if (const auto* encoder = std::get_if<ContextInput::EncoderInput>(&input.payload)) {
                 const auto semitones = static_cast<std::int16_t>(
                     static_cast<std::int16_t>(encoder->delta) * NOTES_IN_OCTAVE);
@@ -145,7 +145,7 @@ class ShiftContext {
     }
 
   private:
-    const std::optional<std::uint8_t>& selectedStep_;
+    const std::optional<std::uint8_t>& _selectedStep;
 };
 
 class ProgramStorageContext {

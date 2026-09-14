@@ -61,9 +61,9 @@ class MidiDispatcher {
         const auto elapsed = nowUs - _tickStartUs;
         const auto phase =
             elapsed >= _tickPeriodUs
-                ? kPhaseMax
+                ? PHASE_MAX
                 : static_cast<TransportPhase>((static_cast<std::uint64_t>(elapsed) *
-                                               (static_cast<std::uint32_t>(kPhaseMax) + 1U)) /
+                                               (static_cast<std::uint32_t>(PHASE_MAX) + 1U)) /
                                               _tickPeriodUs);
         sendDue({_transport.position().tick, phase});
     }

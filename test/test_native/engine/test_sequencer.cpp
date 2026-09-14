@@ -48,7 +48,7 @@ void test_steps_wrap_after_sixteen_sixteenth_boundaries() {
 
     for (uint8_t step = 0; step < STEPS_COUNT; ++step) {
         const auto tick =
-            static_cast<SwingMetro::TransportTick>(step) * SwingMetro::kTicksPerSixteenth;
+            static_cast<SwingMetro::TransportTick>(step) * SwingMetro::TICKS_PER_SIXTEENTH;
         TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
                           sequencer.scheduleThrough({tick, 0}, queue));
         (void)queue.drainAt({tick, 0});
@@ -64,7 +64,7 @@ void test_queue_rejection_keeps_boundary_retryable() {
     Sequencer sequencer;
     MidiEventQueue queue;
     enableStep(sequencer, 0, 60, 100);
-    for (std::size_t index = 0; index < MidiEventQueue::kCapacity; ++index) {
+    for (std::size_t index = 0; index < MidiEventQueue::CAPACITY; ++index) {
         TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
                           queue.enqueue({100 + index, 0}, {0x09, 0x90, 1, 1}));
     }

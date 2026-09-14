@@ -25,16 +25,16 @@ class ButtonInputAdapter {
     using Time = std::uint32_t;
 
     explicit ButtonInputAdapter(ButtonInputAdapterSettings<TSourceId> settings)
-        : source_{settings.source}, longPressThreshold_{settings.longPressThreshold} {}
+        : _source{settings.source}, _longPressThreshold{settings.longPressThreshold} {}
 
     [[nodiscard]] auto onPressed(Time now) -> Batch {
-        if (pressed_) {
+        if (_pressed) {
             return Batch{};
         }
 
-        pressed_ = true;
-        pressedAt_ = now;
-        longPressSent_ = false;
+        _pressed = true;
+        _pressedAt = now;
+        _longPressSent = false;
         return Batch{makeEvent(ButtonPhase::Pressed)};
     }
 
@@ -43,49 +43,49 @@ class ButtonInputAdapter {
             return Batch{};
         }
 
-        longPressSent_ = true;
+        _longPressSent = true;
         return Batch{makeEvent(ButtonPhase::LongPressed)};
     }
 
     [[nodiscard]] auto onReleased(Time now) -> Batch {
-        if (!pressed_) {
+        if (!_pressed) {
             return Batch{};
         }
 
-        pressed_ = false;
+        _pressed = false;
 
-        if (longPressSent_) {
-            longPressSent_ = false;
+        if (_longPressSent) {
+            _longPressSent = false;
             return Batch{makeEvent(ButtonPhase::Released)};
         }
 
-        if (elapsedSincePress(now) >= longPressThreshold_) {
+        if (elapsedSincePress(now) >= _longPressThreshold) {
             return Batch{makeEvent(ButtonPhase::LongPressed), makeEvent(ButtonPhase::Released)};
         }
 
         return Batch{makeEvent(ButtonPhase::Clicked), makeEvent(ButtonPhase::Released)};
     }
 
-    [[nodiscard]] auto isPressed() const noexcept -> bool { return pressed_; }
+    [[nodiscard]] auto isPressed() const noexcept -> bool { return _pressed; }
 
   private:
     [[nodiscard]] auto makeEvent(ButtonPhase phase) const -> Event {
-        return Event{source_, ButtonInput{phase}};
+        return Event{_source, ButtonInput{phase}};
     }
 
     [[nodiscard]] auto elapsedSincePress(Time now) const noexcept -> Time {
-        return now - pressedAt_;
+        return now - _pressedAt;
     }
 
     [[nodiscard]] auto isLongPressDue(Time now) const noexcept -> bool {
-        return pressed_ && !longPressSent_ && elapsedSincePress(now) >= longPressThreshold_;
+        return _pressed && !_longPressSent && elapsedSincePress(now) >= _longPressThreshold;
     }
 
-    TSourceId source_;
-    Time longPressThreshold_;
-    Time pressedAt_ = 0;
-    bool pressed_ = false;
-    bool longPressSent_ = false;
+    TSourceId _source;
+    Time _longPressThreshold;
+    Time _pressedAt = 0;
+    bool _pressed = false;
+    bool _longPressSent = false;
 };
 
 } // namespace ContextInput

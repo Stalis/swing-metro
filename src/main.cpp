@@ -59,7 +59,7 @@ SwingMetro::StepButtonInputs stepButtonInputs;
 void tempoEncoderHandler(EncoderDirection direction);
 void tempoEncoderSwitchHandler();
 void tempoEncoderSwitchReleaseHandler();
-constexpr EncoderSettings tempoEncoderSettings{
+constexpr EncoderSettings TEMPO_ENCODER_SETTINGS{
     .pinA = 16,
     .pinB = 17,
     .pinSwitch = 18,
@@ -67,7 +67,7 @@ constexpr EncoderSettings tempoEncoderSettings{
     .switchHandler = tempoEncoderSwitchHandler,
     .switchReleaseHandler = tempoEncoderSwitchReleaseHandler,
 };
-Encoder tempoEncoder(tempoEncoderSettings);
+Encoder tempoEncoder(TEMPO_ENCODER_SETTINGS);
 Counter<uint8_t> tempoCounter({.step = 1,
                                .value = 120,
                                .minValue = 40,
@@ -75,13 +75,13 @@ Counter<uint8_t> tempoCounter({.step = 1,
                                .overflowBehavior = CounterOverflowBehavior::Clamp});
 
 void swingEncoderHandler(EncoderDirection direction);
-constexpr EncoderSettings swingEncoderSettings{
+constexpr EncoderSettings SWING_ENCODER_SETTINGS{
     .pinA = 19,
     .pinB = 20,
     .pinSwitch = 21,
     .handler = swingEncoderHandler,
 };
-Encoder swingEncoder(swingEncoderSettings);
+Encoder swingEncoder(SWING_ENCODER_SETTINGS);
 Counter<uint8_t> swingCounter({.step = 1,
                                .value = 50,
                                .minValue = 50,
@@ -91,7 +91,7 @@ Counter<uint8_t> swingCounter({.step = 1,
 void volumeEncoderHandler(EncoderDirection direction);
 void volumeEncoderSwitchHandler();
 void volumeEncoderSwitchReleaseHandler();
-constexpr EncoderSettings volumeEncoderSettings{
+constexpr EncoderSettings VOLUME_ENCODER_SETTINGS{
     .pinA = 22,
     .pinB = 26,
     .pinSwitch = 27,
@@ -99,7 +99,7 @@ constexpr EncoderSettings volumeEncoderSettings{
     .switchHandler = volumeEncoderSwitchHandler,
     .switchReleaseHandler = volumeEncoderSwitchReleaseHandler,
 };
-Encoder volumeEncoder(volumeEncoderSettings);
+Encoder volumeEncoder(VOLUME_ENCODER_SETTINGS);
 Counter<uint8_t> volumeCounter({.step = 1,
                                 .value = 100,
                                 .minValue = 0,
@@ -126,7 +126,7 @@ ContextInput::ButtonInputAdapter<SwingMetro::InputId> volumeSwitchInput{{
     500,
 }};
 
-constexpr const auto updatables = std::tie(tempoEncoder, swingEncoder, volumeEncoder);
+constexpr const auto UPDATABLES = std::tie(tempoEncoder, swingEncoder, volumeEncoder);
 UiViewModel uiViewModel;
 bool internalAlarmActive = false;
 uint8_t internalAlarmBpm = 0;
@@ -256,7 +256,7 @@ void loop() {
 
     buttonMatrix.update();
 
-    std::apply([](auto&... objects) { (objects.update(), ...); }, updatables);
+    std::apply([](auto&... objects) { (objects.update(), ...); }, UPDATABLES);
     handleButtonBatch(tempoSwitchInput.update(millis()));
     handleButtonBatch(volumeSwitchInput.update(millis()));
 
@@ -279,11 +279,11 @@ void loop() {
  *
  */
 
-LVGL_Ui ui_provider{};
+LvglUi uiProvider{};
 
-void setup1() { ui_provider.setup(); }
+void setup1() { uiProvider.setup(); }
 
 void loop1() {
-    ui_provider.loop();
-    ui_provider.readViewModel(uiViewModel);
+    uiProvider.loop();
+    uiProvider.readViewModel(uiViewModel);
 }

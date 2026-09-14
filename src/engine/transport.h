@@ -8,9 +8,9 @@ namespace SwingMetro {
 using TransportTick = std::uint64_t;
 using TransportPhase = std::uint16_t;
 
-constexpr TransportTick kTicksPerQuarter = 24;
-constexpr TransportTick kTicksPerSixteenth = 6;
-constexpr TransportPhase kPhaseMax = UINT16_MAX;
+constexpr TransportTick TICKS_PER_QUARTER = 24;
+constexpr TransportTick TICKS_PER_SIXTEENTH = 6;
+constexpr TransportPhase PHASE_MAX = UINT16_MAX;
 
 struct TransportPosition {
     TransportTick tick = 0;
@@ -43,10 +43,10 @@ struct TransportPosition {
 
 [[nodiscard]] constexpr auto phaseFromPercent(std::uint8_t percent) noexcept -> TransportPhase {
     if (percent >= 100) {
-        return kPhaseMax;
+        return PHASE_MAX;
     }
     return static_cast<TransportPhase>(static_cast<std::uint32_t>(percent) *
-                                       (static_cast<std::uint32_t>(kPhaseMax) + 1U) / 100U);
+                                       (static_cast<std::uint32_t>(PHASE_MAX) + 1U) / 100U);
 }
 
 struct TransportSnapshot {
@@ -81,7 +81,7 @@ class Transport {
 
     [[nodiscard]] constexpr auto snapshot() const noexcept -> TransportSnapshot {
         return {_running, _position.tick,
-                static_cast<std::uint8_t>(_position.tick % kTicksPerSixteenth)};
+                static_cast<std::uint8_t>(_position.tick % TICKS_PER_SIXTEENTH)};
     }
 
     [[nodiscard]] constexpr auto position() const noexcept -> TransportPosition {

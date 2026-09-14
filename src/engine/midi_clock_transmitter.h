@@ -19,11 +19,11 @@ struct MidiClockTickResult {
 
 class MidiClockTransmitter {
   public:
-    static constexpr std::uint8_t kClockStatus = 0xF8;
-    static constexpr std::uint8_t kStartStatus = 0xFA;
-    static constexpr std::uint8_t kStopStatus = 0xFC;
-    static constexpr std::uint8_t kPpqn = 24;
-    static constexpr std::uint8_t kMaxCatchUpPulses = 4;
+    static constexpr std::uint8_t CLOCK_STATUS = 0xF8;
+    static constexpr std::uint8_t START_STATUS = 0xFA;
+    static constexpr std::uint8_t STOP_STATUS = 0xFC;
+    static constexpr std::uint8_t PPQN = 24;
+    static constexpr std::uint8_t MAX_CATCH_UP_PULSES = 4;
 
     auto transition(std::uint32_t nowUs, std::uint8_t bpm, MidiClockMode mode, bool running,
                     MidiRealTimeSink& sink) noexcept -> MidiClockTickResult {
@@ -40,10 +40,10 @@ class MidiClockTransmitter {
         if (shouldRun && !active_) {
             active_ = true;
             setPhase(nowUs, bpm);
-            sink.send(kStartStatus);
+            sink.send(START_STATUS);
         } else if (!shouldRun && active_) {
             active_ = false;
-            sink.send(kStopStatus);
+            sink.send(STOP_STATUS);
         }
 
         if (!active_) {
@@ -60,15 +60,15 @@ class MidiClockTransmitter {
         }
 
         std::uint8_t sent = 0;
-        while (sent < kMaxCatchUpPulses && nowUs - lastClockAtUs_ >= nextPeriodUs()) {
+        while (sent < MAX_CATCH_UP_PULSES && nowUs - lastClockAtUs_ >= nextPeriodUs()) {
             const auto periodUs = nextPeriodUs();
             lastClockAtUs_ += periodUs;
             advanceFraction();
-            sink.send(kClockStatus);
+            sink.send(CLOCK_STATUS);
             ++sent;
         }
 
-        if (sent == kMaxCatchUpPulses && nowUs - lastClockAtUs_ >= nextPeriodUs()) {
+        if (sent == MAX_CATCH_UP_PULSES && nowUs - lastClockAtUs_ >= nextPeriodUs()) {
             // ponytail: drop residual clock debt; raise the limit only if a measured loop stall
             // needs it.
             setPhase(nowUs, bpm_);
@@ -83,25 +83,25 @@ class MidiClockTransmitter {
     }
 
   private:
-    static constexpr std::uint8_t kMinBpm = 40;
-    static constexpr std::uint8_t kMaxBpm = 240;
-    static constexpr std::uint32_t kMicrosecondsPerMinute = 60'000'000;
+    static constexpr std::uint8_t MIN_BPM = 40;
+    static constexpr std::uint8_t MAX_BPM = 240;
+    static constexpr std::uint32_t MICROSECONDS_PER_MINUTE = 60'000'000;
 
     [[nodiscard]] static constexpr auto clampBpm(std::uint8_t bpm) noexcept -> std::uint8_t {
-        return bpm < kMinBpm ? kMinBpm : (bpm > kMaxBpm ? kMaxBpm : bpm);
+        return bpm < MIN_BPM ? MIN_BPM : (bpm > MAX_BPM ? MAX_BPM : bpm);
     }
 
     [[nodiscard]] auto denominator() const noexcept -> std::uint32_t {
-        return static_cast<std::uint32_t>(bpm_) * kPpqn;
+        return static_cast<std::uint32_t>(bpm_) * PPQN;
     }
 
     [[nodiscard]] auto nextPeriodUs() const noexcept -> std::uint32_t {
-        return kMicrosecondsPerMinute / denominator() +
-               (fractionalUs_ + kMicrosecondsPerMinute % denominator() >= denominator());
+        return MICROSECONDS_PER_MINUTE / denominator() +
+               (fractionalUs_ + MICROSECONDS_PER_MINUTE % denominator() >= denominator());
     }
 
     auto advanceFraction() noexcept -> void {
-        fractionalUs_ += kMicrosecondsPerMinute % denominator();
+        fractionalUs_ += MICROSECONDS_PER_MINUTE % denominator();
         if (fractionalUs_ >= denominator()) {
             fractionalUs_ -= denominator();
         }
@@ -125,7 +125,7 @@ class MidiClockTransmitter {
     bool observedTransport_ = false;
     bool running_ = false;
     bool active_ = false;
-    std::uint8_t bpm_ = kMinBpm;
+    std::uint8_t bpm_ = MIN_BPM;
     std::uint32_t lastClockAtUs_ = 0;
     std::uint32_t fractionalUs_ = 0;
 };

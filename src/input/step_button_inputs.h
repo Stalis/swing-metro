@@ -16,27 +16,27 @@ class StepButtonInputs {
     using Batch = Adapter::Batch;
     using Time = Adapter::Time;
 
-    static constexpr Time longPressThresholdMs = 500;
+    static constexpr Time LONG_PRESS_THRESHOLD_MS = 500;
 
     [[nodiscard]] auto onPressed(std::uint8_t step, Time now) -> Batch {
         if (step >= STEPS_COUNT) {
             return Batch{};
         }
-        return adapters_[step].onPressed(now);
+        return _adapters[step].onPressed(now);
     }
 
     [[nodiscard]] auto update(std::uint8_t step, Time now) -> Batch {
         if (step >= STEPS_COUNT) {
             return Batch{};
         }
-        return adapters_[step].update(now);
+        return _adapters[step].update(now);
     }
 
     [[nodiscard]] auto onReleased(std::uint8_t step, Time now) -> Batch {
         if (step >= STEPS_COUNT) {
             return Batch{};
         }
-        return adapters_[step].onReleased(now);
+        return _adapters[step].onReleased(now);
     }
 
   private:
@@ -44,10 +44,10 @@ class StepButtonInputs {
     [[nodiscard]] static auto makeAdapters(std::index_sequence<Indices...>)
         -> std::array<Adapter, STEPS_COUNT> {
         return {{Adapter{ContextInput::ButtonInputAdapterSettings<InputId>{
-            inputIdForStep(static_cast<std::uint8_t>(Indices)), longPressThresholdMs}}...}};
+            inputIdForStep(static_cast<std::uint8_t>(Indices)), LONG_PRESS_THRESHOLD_MS}}...}};
     }
 
-    std::array<Adapter, STEPS_COUNT> adapters_{
+    std::array<Adapter, STEPS_COUNT> _adapters{
         makeAdapters(std::make_index_sequence<STEPS_COUNT>{})};
 };
 

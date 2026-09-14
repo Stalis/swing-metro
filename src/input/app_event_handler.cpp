@@ -21,8 +21,8 @@ auto applyDelta(Counter<std::uint8_t>& counter, std::int8_t remaining) -> void {
 namespace SwingMetro {
 
 AppEventHandler::AppEventHandler(AppEventHandlerDependencies dependencies) noexcept
-    : tempo_{dependencies.tempo}, swing_{dependencies.swing}, volume_{dependencies.volume},
-      sequencer_{dependencies.sequencer} {}
+    : _tempo{dependencies.tempo}, _swing{dependencies.swing}, _volume{dependencies.volume},
+      _sequencer{dependencies.sequencer} {}
 
 auto AppEventHandler::handle(const AppEvent& event) -> void {
     std::visit(
@@ -39,19 +39,19 @@ auto AppEventHandler::handle(const AppEvent& event) -> void {
 }
 
 auto AppEventHandler::handle(const AdjustTempo& event) -> void {
-    applyDelta(tempo_, event.delta);
-    sequencer_.setBpm(tempo_.getValue());
+    applyDelta(_tempo, event.delta);
+    _sequencer.setBpm(_tempo.getValue());
 }
 
-auto AppEventHandler::handle(const AdjustSwing& event) -> void { applyDelta(swing_, event.delta); }
+auto AppEventHandler::handle(const AdjustSwing& event) -> void { applyDelta(_swing, event.delta); }
 
 auto AppEventHandler::handle(const AdjustVolume& event) -> void {
-    applyDelta(volume_, event.delta);
+    applyDelta(_volume, event.delta);
 }
 
 auto AppEventHandler::handle(const ToggleStep& event) -> void {
     if (event.step < STEPS_COUNT) {
-        sequencer_.toggleStep(event.step);
+        _sequencer.toggleStep(event.step);
     }
 }
 

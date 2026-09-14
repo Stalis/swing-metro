@@ -15,8 +15,8 @@
 
 namespace {
 
-static_assert(SwingMetro::StepButtonInputs::longPressThresholdMs == 500);
-static_assert(SwingMetro::PadButtonIds::values.size() == STEPS_COUNT);
+static_assert(SwingMetro::StepButtonInputs::LONG_PRESS_THRESHOLD_MS == 500);
+static_assert(SwingMetro::PadButtonIds::VALUES.size() == STEPS_COUNT);
 
 struct IntegrationState {
     Counter<std::uint8_t> tempo{{.step = 1,
@@ -69,7 +69,7 @@ void test_physical_layout_is_the_expected_permutation() {
     std::array<bool, STEPS_COUNT> seen{};
 
     for (std::size_t physical = 0; physical < STEPS_COUNT; ++physical) {
-        const auto step = SwingMetro::PadButtonIds::values[physical];
+        const auto step = SwingMetro::PadButtonIds::VALUES[physical];
         TEST_ASSERT_EQUAL_UINT8(expected[physical], step);
         TEST_ASSERT_TRUE(step < STEPS_COUNT);
         TEST_ASSERT_FALSE(seen[step]);
@@ -160,8 +160,8 @@ void test_two_held_steps_have_independent_timers() {
 void test_simultaneous_clicks_create_two_step_actions() {
     IntegrationState state;
     addMainContext(state);
-    const auto firstStep = SwingMetro::PadButtonIds::values[0];
-    const auto secondStep = SwingMetro::PadButtonIds::values[2];
+    const auto firstStep = SwingMetro::PadButtonIds::VALUES[0];
+    const auto secondStep = SwingMetro::PadButtonIds::VALUES[2];
 
     TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.buttons.onPressed(firstStep, 100)));
     TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.buttons.onPressed(secondStep, 100)));

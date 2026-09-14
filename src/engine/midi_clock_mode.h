@@ -8,11 +8,11 @@ enum class MidiClockMode : std::uint8_t { Off, Internal, External };
 
 class MidiClockSettings {
   public:
-    [[nodiscard]] constexpr auto mode() const noexcept -> MidiClockMode { return mode_; }
-    constexpr auto apply(MidiClockMode mode) noexcept -> void { mode_ = mode; }
+    [[nodiscard]] constexpr auto mode() const noexcept -> MidiClockMode { return _mode; }
+    constexpr auto apply(MidiClockMode mode) noexcept -> void { _mode = mode; }
 
   private:
-    MidiClockMode mode_ = MidiClockMode::Off;
+    MidiClockMode _mode = MidiClockMode::Off;
 };
 
 } // namespace SwingMetro

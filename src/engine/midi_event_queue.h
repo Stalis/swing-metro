@@ -35,8 +35,8 @@ struct MidiEventQueueDrainResult {
 
 class MidiEventQueue {
   public:
-    static constexpr std::size_t kCapacity = 16;
-    static constexpr std::size_t kMaxPacketsPerTick = 8;
+    static constexpr std::size_t CAPACITY = 16;
+    static constexpr std::size_t MAX_PACKETS_PER_TICK = 8;
 
     [[nodiscard]] auto enqueue(TransportPosition target, const MidiUsbPacket& packet) noexcept
         -> MidiEventQueueEnqueueResult {
@@ -46,7 +46,7 @@ class MidiEventQueue {
 
     [[nodiscard]] auto enqueueBatch(const MidiEventRequest* requests, std::size_t count) noexcept
         -> MidiEventQueueEnqueueResult {
-        if (_count + count > kCapacity) {
+        if (_count + count > CAPACITY) {
             return MidiEventQueueEnqueueResult::CapacityExceeded;
         }
         for (std::size_t requestIndex = 0; requestIndex < count; ++requestIndex) {
@@ -59,7 +59,7 @@ class MidiEventQueue {
                     nonClockCount += requests[index].packet[1] != 0xF8;
                 }
             }
-            if (packetCount > kMaxPacketsPerTick || nonClockCount >= kMaxPacketsPerTick) {
+            if (packetCount > MAX_PACKETS_PER_TICK || nonClockCount >= MAX_PACKETS_PER_TICK) {
                 return MidiEventQueueEnqueueResult::TickQuotaExceeded;
             }
         }
@@ -169,7 +169,7 @@ class MidiEventQueue {
                                              : left.sequenceNumber < right.sequenceNumber;
     }
 
-    std::array<MidiEvent, kCapacity> _events{};
+    std::array<MidiEvent, CAPACITY> _events{};
     std::size_t _count = 0;
     std::size_t _nextSequenceNumber = 0;
 };

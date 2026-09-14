@@ -154,7 +154,7 @@ void test_step_boundary_orders_transport_before_notes() {
         [&](std::uint8_t note, std::uint8_t velocity) { sink.sendNoteOn(note, velocity); });
 
     TEST_ASSERT_EQUAL_UINT32(2, sink.size);
-    TEST_ASSERT_EQUAL_HEX8(SwingMetro::MidiClockTransmitter::kStartStatus, sink.events[0]);
+    TEST_ASSERT_EQUAL_HEX8(SwingMetro::MidiClockTransmitter::START_STATUS, sink.events[0]);
     TEST_ASSERT_EQUAL_HEX8(0x90 | getNote(Note::C, 0), sink.events[1]);
 
     sequencer.toggleRunning(1);
@@ -164,7 +164,7 @@ void test_step_boundary_orders_transport_before_notes() {
         [&](std::uint8_t note, std::uint8_t velocity) { sink.sendNoteOn(note, velocity); });
 
     TEST_ASSERT_EQUAL_UINT32(4, sink.size);
-    TEST_ASSERT_EQUAL_HEX8(SwingMetro::MidiClockTransmitter::kStopStatus, sink.events[2]);
+    TEST_ASSERT_EQUAL_HEX8(SwingMetro::MidiClockTransmitter::STOP_STATUS, sink.events[2]);
     TEST_ASSERT_EQUAL_HEX8(0x80 | getNote(Note::C, 0), sink.events[3]);
 }
 
@@ -195,11 +195,11 @@ void test_step_boundary_orders_note_packets_before_sixth_clock() {
     process(125'000);
 
     TEST_ASSERT_EQUAL_UINT32(10, sink.size);
-    TEST_ASSERT_EQUAL_HEX8(SwingMetro::MidiClockTransmitter::kStartStatus, sink.events[0]);
+    TEST_ASSERT_EQUAL_HEX8(SwingMetro::MidiClockTransmitter::START_STATUS, sink.events[0]);
     TEST_ASSERT_EQUAL_HEX8(0x90 | getNote(Note::C, 0), sink.events[1]);
     TEST_ASSERT_EQUAL_HEX8(0x80 | getNote(Note::C, 0), sink.events[7]);
     TEST_ASSERT_EQUAL_HEX8(0x90 | getNote(Note::C, 0), sink.events[8]);
-    TEST_ASSERT_EQUAL_HEX8(SwingMetro::MidiClockTransmitter::kClockStatus, sink.events[9]);
+    TEST_ASSERT_EQUAL_HEX8(SwingMetro::MidiClockTransmitter::CLOCK_STATUS, sink.events[9]);
 }
 
 } // namespace

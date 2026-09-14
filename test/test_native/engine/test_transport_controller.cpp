@@ -118,7 +118,7 @@ void test_stop_switch_and_loss_send_one_note_off_without_realtime_leak() {
     controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Start, 30'000));
     controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 31'000));
     controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 51'833));
-    controller.process(51'833 + SwingMetro::ExternalMidiClock::kClockLossTimeoutUs, ticks);
+    controller.process(51'833 + SwingMetro::ExternalMidiClock::CLOCK_LOSS_TIMEOUT_US, ticks);
     TEST_ASSERT_EQUAL_UINT32(7, sink.count);
     TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[5][1]);
     TEST_ASSERT_EQUAL_HEX8(0x80, sink.packets[6][1]);

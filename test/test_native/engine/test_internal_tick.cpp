@@ -19,8 +19,8 @@ using SwingMetro::MidiUsbPacket;
 using SwingMetro::phaseFromPercent;
 using SwingMetro::Transport;
 
-constexpr MidiUsbPacket kNoteOff = {0x08, 0x80, 0x3C, 0x40};
-constexpr MidiUsbPacket kNoteOn = {0x09, 0x90, 0x3C, 0x40};
+constexpr MidiUsbPacket NOTE_OFF = {0x08, 0x80, 0x3C, 0x40};
+constexpr MidiUsbPacket NOTE_ON = {0x09, 0x90, 0x3C, 0x40};
 
 struct PacketLog {
     std::array<MidiUsbPacket, 32> packets{};
@@ -49,11 +49,11 @@ void test_phase_deadlines_for_zero_fifty_and_seventy_five_percent() {
     InternalTickConsumer consumer{transport, queue};
     PacketLog log;
     consumer.start([&](const MidiUsbPacket& packet) { log.send(packet); });
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({0, 0}, kNoteOff));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({0, 0}, NOTE_OFF));
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
-                      queue.enqueue({0, phaseFromPercent(50)}, kNoteOn));
+                      queue.enqueue({0, phaseFromPercent(50)}, NOTE_ON));
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
-                      queue.enqueue({0, phaseFromPercent(75)}, kNoteOff));
+                      queue.enqueue({0, phaseFromPercent(75)}, NOTE_OFF));
     InternalTickStore<> ticks;
     TEST_ASSERT_TRUE(ticks.publish({1000, 20000}));
 
@@ -73,8 +73,8 @@ void test_phase_zero_orders_clock_before_note_off_before_note_on() {
     InternalTickConsumer consumer{transport, queue};
     PacketLog log;
     consumer.start([&](const MidiUsbPacket& packet) { log.send(packet); });
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({0, 0}, kNoteOn));
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({0, 0}, kNoteOff));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({0, 0}, NOTE_ON));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({0, 0}, NOTE_OFF));
     InternalTickStore<> ticks;
     TEST_ASSERT_TRUE(ticks.publish({0, 1000}));
 
@@ -106,7 +106,7 @@ void test_bpm_change_recalculates_unsent_open_tick_deadline() {
     PacketLog log;
     consumer.start([&](const MidiUsbPacket& packet) { log.send(packet); });
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
-                      queue.enqueue({0, phaseFromPercent(50)}, kNoteOn));
+                      queue.enqueue({0, phaseFromPercent(50)}, NOTE_ON));
     InternalTickStore<> ticks;
     TEST_ASSERT_TRUE(ticks.publish({1000, 20833}));
     consumer.consume(ticks, 1000, [&](const MidiUsbPacket& packet) { log.send(packet); });
@@ -123,7 +123,7 @@ void test_deadlines_work_across_micros_wraparound() {
     PacketLog log;
     consumer.start([&](const MidiUsbPacket& packet) { log.send(packet); });
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
-                      queue.enqueue({0, phaseFromPercent(50)}, kNoteOn));
+                      queue.enqueue({0, phaseFromPercent(50)}, NOTE_ON));
     InternalTickStore<> ticks;
     TEST_ASSERT_TRUE(ticks.publish({0xFFFFFFE0U, 64}));
     consumer.consume(ticks, 0xFFFFFFE0U, [&](const MidiUsbPacket& packet) { log.send(packet); });
@@ -155,7 +155,7 @@ void test_future_queue_events_wait_for_their_tick() {
     InternalTickConsumer consumer{transport, queue};
     PacketLog log;
     consumer.start([&](const MidiUsbPacket& packet) { log.send(packet); });
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({1, 0}, kNoteOn));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({1, 0}, NOTE_ON));
     InternalTickStore<> ticks;
     TEST_ASSERT_TRUE(ticks.publish({0, 1000}));
     consumer.consume(ticks, 0, [&](const MidiUsbPacket& packet) { log.send(packet); });

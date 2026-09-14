@@ -13,17 +13,17 @@ using InternalTickStore = TransportTickStore<Capacity>;
 
 class InternalTickSource {
   public:
-    static constexpr std::uint8_t kMinBpm = 40;
-    static constexpr std::uint8_t kMaxBpm = 240;
-    static constexpr std::uint32_t kMicrosecondsPerMinute = 60'000'000;
-    static constexpr std::uint8_t kPpqn = 24;
+    static constexpr std::uint8_t MIN_BPM = 40;
+    static constexpr std::uint8_t MAX_BPM = 240;
+    static constexpr std::uint32_t MICROSECONDS_PER_MINUTE = 60'000'000;
+    static constexpr std::uint8_t PPQN = 24;
 
     [[nodiscard]] static constexpr auto clampBpm(std::uint8_t bpm) noexcept -> std::uint8_t {
-        return bpm < kMinBpm ? kMinBpm : (bpm > kMaxBpm ? kMaxBpm : bpm);
+        return bpm < MIN_BPM ? MIN_BPM : (bpm > MAX_BPM ? MAX_BPM : bpm);
     }
 
     [[nodiscard]] static constexpr auto periodForBpm(std::uint8_t bpm) noexcept -> std::uint32_t {
-        return kMicrosecondsPerMinute / (static_cast<std::uint32_t>(clampBpm(bpm)) * kPpqn);
+        return MICROSECONDS_PER_MINUTE / (static_cast<std::uint32_t>(clampBpm(bpm)) * PPQN);
     }
 
     auto start(std::uint32_t timestampUs, std::uint8_t bpm) noexcept -> std::uint32_t {
@@ -59,17 +59,17 @@ class InternalTickSource {
   private:
     [[nodiscard]] auto nextPeriodUs() noexcept -> std::uint32_t {
         const auto denominator =
-            static_cast<std::uint32_t>(_bpm.load(std::memory_order_acquire)) * kPpqn;
-        const auto remainder = kMicrosecondsPerMinute % denominator;
+            static_cast<std::uint32_t>(_bpm.load(std::memory_order_acquire)) * PPQN;
+        const auto remainder = MICROSECONDS_PER_MINUTE % denominator;
         const auto periodUs =
-            kMicrosecondsPerMinute / denominator + (_fractionalUs + remainder >= denominator);
+            MICROSECONDS_PER_MINUTE / denominator + (_fractionalUs + remainder >= denominator);
         _fractionalUs = (_fractionalUs + remainder) % denominator;
         return periodUs;
     }
 
     InternalTickStore<> _ticks;
     std::atomic<bool> _active{false};
-    std::atomic<std::uint8_t> _bpm{kMinBpm};
+    std::atomic<std::uint8_t> _bpm{MIN_BPM};
     std::uint32_t _fractionalUs = 0;
 };
 

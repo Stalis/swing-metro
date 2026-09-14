@@ -22,45 +22,45 @@ struct ExternalMidiClockResult {
 
 class ExternalMidiClock {
   public:
-    static constexpr std::uint32_t kClockLossTimeoutUs = 250'000;
-    static constexpr std::uint8_t kTicksPerStep = 6;
-    static constexpr std::uint32_t kMicrosecondsPerMinute = 60'000'000;
-    static constexpr std::uint8_t kPpqn = 24;
-    static constexpr std::uint32_t kMinPeriodUs = kMicrosecondsPerMinute / (240U * kPpqn);
-    static constexpr std::uint32_t kMaxPeriodUs = kMicrosecondsPerMinute / (40U * kPpqn);
+    static constexpr std::uint32_t CLOCK_LOSS_TIMEOUT_US = 250'000;
+    static constexpr std::uint8_t TICKS_PER_STEP = 6;
+    static constexpr std::uint32_t MICROSECONDS_PER_MINUTE = 60'000'000;
+    static constexpr std::uint8_t PPQN = 24;
+    static constexpr std::uint32_t MIN_PERIOD_US = MICROSECONDS_PER_MINUTE / (240U * PPQN);
+    static constexpr std::uint32_t MAX_PERIOD_US = MICROSECONDS_PER_MINUTE / (40U * PPQN);
 
     auto reset() noexcept -> void {
-        status_ = ExternalMidiClockStatus::Waiting;
-        running_ = false;
-        haveClock_ = false;
-        legacyPhase_ = 0;
-        periodUs_ = 0;
+        _status = ExternalMidiClockStatus::Waiting;
+        _running = false;
+        _haveClock = false;
+        _legacyPhase = 0;
+        _periodUs = 0;
     }
 
-    [[nodiscard]] auto status() const noexcept -> ExternalMidiClockStatus { return status_; }
+    [[nodiscard]] auto status() const noexcept -> ExternalMidiClockStatus { return _status; }
     [[nodiscard]] auto bpm() const noexcept -> std::uint8_t {
         return static_cast<std::uint8_t>(bpmMilli() / 1000U);
     }
     [[nodiscard]] auto bpmMilli() const noexcept -> std::uint32_t {
-        return periodUs_ == 0 ? 0
+        return _periodUs == 0 ? 0
                               : static_cast<std::uint32_t>(
-                                    (static_cast<std::uint64_t>(kMicrosecondsPerMinute) * 1000U) /
-                                    (periodUs_ * kPpqn));
+                                    (static_cast<std::uint64_t>(MICROSECONDS_PER_MINUTE) * 1000U) /
+                                    (_periodUs * PPQN));
     }
-    [[nodiscard]] auto periodUs() const noexcept -> std::uint32_t { return periodUs_; }
-    [[nodiscard]] auto running() const noexcept -> bool { return running_; }
+    [[nodiscard]] auto periodUs() const noexcept -> std::uint32_t { return _periodUs; }
+    [[nodiscard]] auto running() const noexcept -> bool { return _running; }
 
     auto handle(const MidiRealtimeEvent& event) noexcept -> ExternalMidiClockResult {
         switch (event.type) {
         case MidiRealtimeEventType::Start:
-            legacyPhase_ = 0;
-            running_ = true;
+            _legacyPhase = 0;
+            _running = true;
             return {.reset = true, .started = true, .advanceStep = true};
         case MidiRealtimeEventType::Continue:
-            running_ = true;
+            _running = true;
             return {.started = true};
         case MidiRealtimeEventType::Stop:
-            running_ = false;
+            _running = false;
             return {.stopped = true};
         case MidiRealtimeEventType::Clock:
             return handleClock(event.timestampUs);
@@ -69,16 +69,16 @@ class ExternalMidiClock {
     }
 
     auto update(std::uint32_t nowUs) noexcept -> ExternalMidiClockResult {
-        if (haveClock_ &&
-            static_cast<std::int32_t>(nowUs - lastClockAtUs_) >=
-                static_cast<std::int32_t>(kClockLossTimeoutUs) &&
-            status_ != ExternalMidiClockStatus::Lost) {
-            status_ = ExternalMidiClockStatus::Lost;
-            const bool wasRunning = running_;
-            running_ = false;
-            haveClock_ = false;
-            legacyPhase_ = 0;
-            periodUs_ = 0;
+        if (_haveClock &&
+            static_cast<std::int32_t>(nowUs - _lastClockAtUs) >=
+                static_cast<std::int32_t>(CLOCK_LOSS_TIMEOUT_US) &&
+            _status != ExternalMidiClockStatus::Lost) {
+            _status = ExternalMidiClockStatus::Lost;
+            const bool wasRunning = _running;
+            _running = false;
+            _haveClock = false;
+            _legacyPhase = 0;
+            _periodUs = 0;
             return {.stopped = wasRunning};
         }
         return {};
@@ -86,40 +86,41 @@ class ExternalMidiClock {
 
   private:
     auto handleClock(std::uint32_t timestampUs) noexcept -> ExternalMidiClockResult {
-        const auto sampleUs = timestampUs - lastClockAtUs_;
-        if (haveClock_ && sampleUs >= kMinPeriodUs && sampleUs <= kMaxPeriodUs && periodUs_ != 0) {
-            const auto delta = static_cast<std::int32_t>(sampleUs - periodUs_);
-            periodUs_ =
-                static_cast<std::uint32_t>(static_cast<std::int32_t>(periodUs_) + delta / 4);
-        } else if (haveClock_ && sampleUs >= kMinPeriodUs && sampleUs <= kMaxPeriodUs) {
-            periodUs_ = sampleUs;
+        const auto sampleUs = timestampUs - _lastClockAtUs;
+        if (_haveClock && sampleUs >= MIN_PERIOD_US && sampleUs <= MAX_PERIOD_US &&
+            _periodUs != 0) {
+            const auto delta = static_cast<std::int32_t>(sampleUs - _periodUs);
+            _periodUs =
+                static_cast<std::uint32_t>(static_cast<std::int32_t>(_periodUs) + delta / 4);
+        } else if (_haveClock && sampleUs >= MIN_PERIOD_US && sampleUs <= MAX_PERIOD_US) {
+            _periodUs = sampleUs;
         } else {
-            haveClock_ = true;
+            _haveClock = true;
         }
-        lastClockAtUs_ = timestampUs;
-        status_ = ExternalMidiClockStatus::Locked;
+        _lastClockAtUs = timestampUs;
+        _status = ExternalMidiClockStatus::Locked;
 
         ExternalMidiClockResult result;
-        if (running_) {
-            if (periodUs_ != 0) {
+        if (_running) {
+            if (_periodUs != 0) {
                 result.tick = true;
-                result.tickRecord = {timestampUs, periodUs_};
+                result.tickRecord = {timestampUs, _periodUs};
             }
-            ++legacyPhase_;
-            if (legacyPhase_ == kTicksPerStep) {
-                legacyPhase_ = 0;
+            ++_legacyPhase;
+            if (_legacyPhase == TICKS_PER_STEP) {
+                _legacyPhase = 0;
                 result.advanceStep = true;
             }
         }
         return result;
     }
 
-    ExternalMidiClockStatus status_ = ExternalMidiClockStatus::Waiting;
-    std::uint32_t lastClockAtUs_ = 0;
-    std::uint32_t periodUs_ = 0;
-    std::uint8_t legacyPhase_ = 0;
-    bool haveClock_ = false;
-    bool running_ = false;
+    ExternalMidiClockStatus _status = ExternalMidiClockStatus::Waiting;
+    std::uint32_t _lastClockAtUs = 0;
+    std::uint32_t _periodUs = 0;
+    std::uint8_t _legacyPhase = 0;
+    bool _haveClock = false;
+    bool _running = false;
 };
 
 } // namespace SwingMetro

@@ -113,10 +113,10 @@ void Sequencer::toggleRunning(uint32_t micros) {
 }
 
 uint32_t Sequencer::getStepPeriodUs() const {
-    constexpr uint32_t MICROSECONDS_PER_MINUTE = 60'000'000;
-    constexpr uint8_t STEPS_PER_QUARTER = 4;
+    constexpr uint32_t microsecondsPerMinute = 60'000'000;
+    constexpr uint8_t stepsPerQuarter = 4;
 
-    return MICROSECONDS_PER_MINUTE / (static_cast<uint32_t>(_bpm) * STEPS_PER_QUARTER);
+    return microsecondsPerMinute / (static_cast<uint32_t>(_bpm) * stepsPerQuarter);
 }
 
 void Sequencer::start() {
@@ -141,7 +141,7 @@ Sequencer::scheduleThrough(SwingMetro::TransportPosition position,
     const auto horizon = position.tick + SCHEDULING_LOOKAHEAD_TICKS;
     while (_nextBoundaryTick <= horizon) {
         const auto stepIndex = static_cast<StepIndex>(
-            (_nextBoundaryTick / SwingMetro::kTicksPerSixteenth) % STEPS_COUNT);
+            (_nextBoundaryTick / SwingMetro::TICKS_PER_SIXTEENTH) % STEPS_COUNT);
         const auto& step = _steps[stepIndex];
         std::array<SwingMetro::MidiEventRequest, 2> requests{};
         std::size_t count = 0;
@@ -162,7 +162,7 @@ Sequencer::scheduleThrough(SwingMetro::TransportPosition position,
         _projectedSoundingNote = projected;
         _scheduledBoundaryTick = _nextBoundaryTick;
         _scheduledSoundingNote = projected;
-        _nextBoundaryTick += SwingMetro::kTicksPerSixteenth;
+        _nextBoundaryTick += SwingMetro::TICKS_PER_SIXTEENTH;
     }
     return SwingMetro::MidiEventQueueEnqueueResult::Ok;
 }

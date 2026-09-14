@@ -12,24 +12,24 @@ namespace SwingMetro {
 
 class UsbMidiPacketSink final : public MidiPacketSink {
   public:
-    explicit UsbMidiPacketSink(Adafruit_USBD_MIDI& midi) noexcept : midi_{midi} {}
+    explicit UsbMidiPacketSink(Adafruit_USBD_MIDI& midi) noexcept : _midi{midi} {}
 
     auto send(const MidiUsbPacket& packet) -> void override {
-        (void)midi_.writePacket(packet.data());
+        (void)_midi.writePacket(packet.data());
     }
 
   private:
-    Adafruit_USBD_MIDI& midi_;
+    Adafruit_USBD_MIDI& _midi;
 };
 
 class UsbMidiRealtimeReceiver final {
   public:
-    explicit UsbMidiRealtimeReceiver(Adafruit_USBD_MIDI& midi) noexcept : midi_{midi} {}
+    explicit UsbMidiRealtimeReceiver(Adafruit_USBD_MIDI& midi) noexcept : _midi{midi} {}
 
     template <typename HandleEvent>
     auto poll(HandleEvent handleEvent) -> void {
         std::uint8_t packet[4];
-        while (midi_.readPacket(packet)) {
+        while (_midi.readPacket(packet)) {
             const auto event = midiRealtimeEventFromUsbPacket(packet, micros());
             if (event.has_value()) {
                 handleEvent(*event);
@@ -38,7 +38,7 @@ class UsbMidiRealtimeReceiver final {
     }
 
   private:
-    Adafruit_USBD_MIDI& midi_;
+    Adafruit_USBD_MIDI& _midi;
 };
 
 } // namespace SwingMetro

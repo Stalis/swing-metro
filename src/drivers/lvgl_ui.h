@@ -20,7 +20,7 @@ constexpr const int16_t BUFFER_SIZE = DISPLAY_HEIGHT * BUFFER_ROWS;
 
 constexpr const uint8_t SEQUENCER_STEPS_COUNT = 16;
 
-class LVGL_Ui {
+class LvglUi {
   public:
     void setup();
     void loop();

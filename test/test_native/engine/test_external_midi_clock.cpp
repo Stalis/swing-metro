@@ -57,10 +57,10 @@ void test_waiting_lock_filter_loss_relock_and_wrap() {
                             static_cast<uint8_t>(clock.status()));
     TEST_ASSERT_INT_WITHIN(1, 120, clock.bpm());
 
-    clock.update(first + 41'900 + ExternalMidiClock::kClockLossTimeoutUs - 1);
+    clock.update(first + 41'900 + ExternalMidiClock::CLOCK_LOSS_TIMEOUT_US - 1);
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ExternalMidiClockStatus::Locked),
                             static_cast<uint8_t>(clock.status()));
-    clock.update(first + 41'900 + ExternalMidiClock::kClockLossTimeoutUs);
+    clock.update(first + 41'900 + ExternalMidiClock::CLOCK_LOSS_TIMEOUT_US);
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ExternalMidiClockStatus::Lost),
                             static_cast<uint8_t>(clock.status()));
     TEST_ASSERT_EQUAL_UINT8(0, clock.bpm());
@@ -80,10 +80,10 @@ void test_older_loop_timestamp_does_not_immediately_lose_new_clock() {
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ExternalMidiClockStatus::Locked),
                             static_cast<uint8_t>(clock.status()));
 
-    clock.update(acceptedClockUs + ExternalMidiClock::kClockLossTimeoutUs - 1);
+    clock.update(acceptedClockUs + ExternalMidiClock::CLOCK_LOSS_TIMEOUT_US - 1);
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ExternalMidiClockStatus::Locked),
                             static_cast<uint8_t>(clock.status()));
-    clock.update(acceptedClockUs + ExternalMidiClock::kClockLossTimeoutUs);
+    clock.update(acceptedClockUs + ExternalMidiClock::CLOCK_LOSS_TIMEOUT_US);
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ExternalMidiClockStatus::Lost),
                             static_cast<uint8_t>(clock.status()));
 }
@@ -112,7 +112,7 @@ void test_start_preserves_estimate_and_continue_runs_after_one_relock_tick() {
     clock.handle(event(MidiRealtimeEventType::Start, 21'000));
     TEST_ASSERT_EQUAL_UINT32(savedPeriod, clock.periodUs());
 
-    clock.update(20'833 + ExternalMidiClock::kClockLossTimeoutUs);
+    clock.update(20'833 + ExternalMidiClock::CLOCK_LOSS_TIMEOUT_US);
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ExternalMidiClockStatus::Lost),
                             static_cast<uint8_t>(clock.status()));
     const auto relock = clock.handle(event(MidiRealtimeEventType::Clock, 300'000));
@@ -244,7 +244,7 @@ void test_legacy_step_compatibility_still_advances_after_six_ticks() {
     for (uint8_t tick = 1; tick <= 5; ++tick) {
         process(clock.handle(event(MidiRealtimeEventType::Clock, tick * 20'833U)));
     }
-    process(clock.update(5 * 20'833U + ExternalMidiClock::kClockLossTimeoutUs));
+    process(clock.update(5 * 20'833U + ExternalMidiClock::CLOCK_LOSS_TIMEOUT_US));
     TEST_ASSERT_FALSE(sequencer.isRunning());
 
     process(clock.handle(event(MidiRealtimeEventType::Clock, 500'000)));

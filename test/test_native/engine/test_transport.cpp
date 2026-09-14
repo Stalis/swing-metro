@@ -18,12 +18,12 @@ void test_phase_from_percent_maps_fraction_of_tick() {
     TEST_ASSERT_EQUAL_UINT16(0, SwingMetro::phaseFromPercent(0));
     TEST_ASSERT_EQUAL_UINT16(32768, SwingMetro::phaseFromPercent(50));
     TEST_ASSERT_EQUAL_UINT16(49152, SwingMetro::phaseFromPercent(75));
-    TEST_ASSERT_EQUAL_UINT16(SwingMetro::kPhaseMax, SwingMetro::phaseFromPercent(100));
-    TEST_ASSERT_EQUAL_UINT16(SwingMetro::kPhaseMax, SwingMetro::phaseFromPercent(255));
+    TEST_ASSERT_EQUAL_UINT16(SwingMetro::PHASE_MAX, SwingMetro::phaseFromPercent(100));
+    TEST_ASSERT_EQUAL_UINT16(SwingMetro::PHASE_MAX, SwingMetro::phaseFromPercent(255));
 }
 
 void test_positions_compare_lexicographically_and_keep_equal_order() {
-    constexpr TransportPosition before{12, SwingMetro::kPhaseMax};
+    constexpr TransportPosition before{12, SwingMetro::PHASE_MAX};
     constexpr TransportPosition after{13, 0};
     TEST_ASSERT_TRUE(before < after);
 
@@ -42,8 +42,8 @@ void test_positions_compare_lexicographically_and_keep_equal_order() {
 }
 
 void test_tick_constants_match_midi_resolution() {
-    TEST_ASSERT_EQUAL_UINT64(24, SwingMetro::kTicksPerQuarter);
-    TEST_ASSERT_EQUAL_UINT64(6, SwingMetro::kTicksPerSixteenth);
+    TEST_ASSERT_EQUAL_UINT64(24, SwingMetro::TICKS_PER_QUARTER);
+    TEST_ASSERT_EQUAL_UINT64(6, SwingMetro::TICKS_PER_SIXTEENTH);
 }
 
 void test_start_stop_continue_and_reset_position() {
@@ -72,7 +72,7 @@ void test_start_stop_continue_and_reset_position() {
 void test_snapshot_tracks_ticks_within_sixteenth() {
     Transport transport;
     transport.start();
-    for (TransportTick tick = 0; tick < SwingMetro::kTicksPerSixteenth; ++tick) {
+    for (TransportTick tick = 0; tick < SwingMetro::TICKS_PER_SIXTEENTH; ++tick) {
         TEST_ASSERT_EQUAL_UINT8(tick, transport.snapshot().tickInSixteenth);
         TEST_ASSERT_TRUE(transport.advanceTick());
     }

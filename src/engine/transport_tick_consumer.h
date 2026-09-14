@@ -17,7 +17,7 @@ struct TransportTickDiagnostics {
 
 class TransportTickConsumer {
   public:
-    static constexpr std::uint8_t kMaxTicksPerPass = 4;
+    static constexpr std::uint8_t MAX_TICKS_PER_PASS = 4;
 
     TransportTickConsumer(Transport& transport, MidiEventQueue& queue,
                           TransportTickSource source = TransportTickSource::Internal) noexcept
@@ -57,7 +57,7 @@ class TransportTickConsumer {
     auto consume(TickStore& ticks, std::uint32_t nowUs, SendPacket sendPacket) -> void {
         TransportTickRecord record;
         std::uint8_t processed = 0;
-        while (processed < kMaxTicksPerPass && ticks.pop(record)) {
+        while (processed < MAX_TICKS_PER_PASS && ticks.pop(record)) {
             _diagnostics.lateTicks += isDue(nowUs, record.timestampUs);
             openTick(record, sendPacket);
             ++processed;

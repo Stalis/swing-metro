@@ -15,63 +15,62 @@ using SwingMetro::MidiUsbPacket;
 using SwingMetro::phaseFromPercent;
 using SwingMetro::TransportPosition;
 
-constexpr MidiUsbPacket kClock = {0x0F, 0xF8, 0x00, 0x00};
-constexpr MidiUsbPacket kNoteOff = {0x08, 0x80, 0x3C, 0x40};
-constexpr MidiUsbPacket kNoteOn = {0x09, 0x90, 0x3C, 0x40};
-constexpr MidiUsbPacket kNoteOnZeroVelocity = {0x09, 0x90, 0x3D, 0x00};
-constexpr MidiUsbPacket kOther = {0x0B, 0xB0, 0x01, 0x7F};
+constexpr MidiUsbPacket CLOCK = {0x0F, 0xF8, 0x00, 0x00};
+constexpr MidiUsbPacket NOTE_OFF = {0x08, 0x80, 0x3C, 0x40};
+constexpr MidiUsbPacket NOTE_ON = {0x09, 0x90, 0x3C, 0x40};
+constexpr MidiUsbPacket NOTE_ON_ZERO_VELOCITY = {0x09, 0x90, 0x3D, 0x00};
+constexpr MidiUsbPacket OTHER = {0x0B, 0xB0, 0x01, 0x7F};
 
 void test_clock_reserves_one_tick_packet_slot() {
     MidiEventQueue queue;
-    for (std::size_t index = 0; index < MidiEventQueue::kMaxPacketsPerTick - 1; ++index) {
+    for (std::size_t index = 0; index < MidiEventQueue::MAX_PACKETS_PER_TICK - 1; ++index) {
         TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
-                          queue.enqueue({4, static_cast<std::uint16_t>(index)}, kNoteOn));
+                          queue.enqueue({4, static_cast<std::uint16_t>(index)}, NOTE_ON));
     }
 
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({4, 0}, kClock));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({4, 0}, CLOCK));
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::TickQuotaExceeded,
-                      queue.enqueue({4, 75}, kNoteOn));
-    TEST_ASSERT_EQUAL_UINT32(MidiEventQueue::kMaxPacketsPerTick, queue.size());
+                      queue.enqueue({4, 75}, NOTE_ON));
+    TEST_ASSERT_EQUAL_UINT32(MidiEventQueue::MAX_PACKETS_PER_TICK, queue.size());
     TEST_ASSERT_FALSE(queue.empty());
 }
 
 void test_capacity_rejects_packet_without_changing_queue() {
     MidiEventQueue queue;
-    for (std::size_t index = 0; index < MidiEventQueue::kCapacity; ++index) {
-        TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({index, 0}, kNoteOn));
+    for (std::size_t index = 0; index < MidiEventQueue::CAPACITY; ++index) {
+        TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({index, 0}, NOTE_ON));
     }
 
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::CapacityExceeded,
-                      queue.enqueue({16, 0}, kClock));
-    TEST_ASSERT_EQUAL_UINT32(MidiEventQueue::kCapacity, queue.size());
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::CapacityExceeded, queue.enqueue({16, 0}, CLOCK));
+    TEST_ASSERT_EQUAL_UINT32(MidiEventQueue::CAPACITY, queue.size());
 }
 
 void test_batch_rejects_capacity_without_inserting_any_packet() {
     MidiEventQueue queue;
-    for (std::size_t index = 0; index < MidiEventQueue::kCapacity - 1; ++index) {
-        TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({index, 0}, kNoteOn));
+    for (std::size_t index = 0; index < MidiEventQueue::CAPACITY - 1; ++index) {
+        TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({index, 0}, NOTE_ON));
     }
     const std::array<MidiEventRequest, 2> batch = {
-        MidiEventRequest{{17, 0}, kNoteOff},
-        MidiEventRequest{{17, 0}, kNoteOn},
+        MidiEventRequest{{17, 0}, NOTE_OFF},
+        MidiEventRequest{{17, 0}, NOTE_ON},
     };
 
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::CapacityExceeded, queue.enqueueBatch(batch, 2));
-    TEST_ASSERT_EQUAL_UINT32(MidiEventQueue::kCapacity - 1, queue.size());
+    TEST_ASSERT_EQUAL_UINT32(MidiEventQueue::CAPACITY - 1, queue.size());
 }
 
 void test_batch_rejects_tick_quota_without_inserting_any_packet() {
     MidiEventQueue queue;
-    for (std::size_t index = 0; index < MidiEventQueue::kMaxPacketsPerTick - 2; ++index) {
-        TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({4, 0}, kNoteOn));
+    for (std::size_t index = 0; index < MidiEventQueue::MAX_PACKETS_PER_TICK - 2; ++index) {
+        TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({4, 0}, NOTE_ON));
     }
     const std::array<MidiEventRequest, 2> batch = {
-        MidiEventRequest{{4, 0}, kNoteOff},
-        MidiEventRequest{{4, 0}, kNoteOn},
+        MidiEventRequest{{4, 0}, NOTE_OFF},
+        MidiEventRequest{{4, 0}, NOTE_ON},
     };
 
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::TickQuotaExceeded, queue.enqueueBatch(batch, 2));
-    TEST_ASSERT_EQUAL_UINT32(MidiEventQueue::kMaxPacketsPerTick - 2, queue.size());
+    TEST_ASSERT_EQUAL_UINT32(MidiEventQueue::MAX_PACKETS_PER_TICK - 2, queue.size());
     queue.clear();
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueueBatch(batch, 2));
     TEST_ASSERT_EQUAL_UINT32(2, queue.size());
@@ -80,8 +79,8 @@ void test_batch_rejects_tick_quota_without_inserting_any_packet() {
 void test_batch_accepts_note_off_note_on_in_dispatch_order() {
     MidiEventQueue queue;
     const std::array<MidiEventRequest, 2> batch = {
-        MidiEventRequest{{4, 0}, kNoteOff},
-        MidiEventRequest{{4, 0}, kNoteOn},
+        MidiEventRequest{{4, 0}, NOTE_OFF},
+        MidiEventRequest{{4, 0}, NOTE_ON},
     };
 
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueueBatch(batch, 2));
@@ -92,7 +91,7 @@ void test_batch_accepts_note_off_note_on_in_dispatch_order() {
 
 void test_enqueued_packet_is_immutable_copy() {
     MidiEventQueue queue;
-    MidiUsbPacket packet = kNoteOn;
+    MidiUsbPacket packet = NOTE_ON;
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({4, 0}, packet));
     packet[2] = 0x7F;
 
@@ -103,9 +102,9 @@ void test_drain_respects_phase_zero_fifty_and_seventy_five() {
     MidiEventQueue queue;
     constexpr auto phase50 = phaseFromPercent(50);
     constexpr auto phase75 = phaseFromPercent(75);
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({7, phase75}, kOther));
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({7, 0}, kClock));
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({7, phase50}, kNoteOn));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({7, phase75}, OTHER));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({7, 0}, CLOCK));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({7, phase50}, NOTE_ON));
 
     const auto result = queue.drainAt({7, phase75});
     TEST_ASSERT_EQUAL_UINT32(3, result.count);
@@ -117,11 +116,12 @@ void test_drain_respects_phase_zero_fifty_and_seventy_five() {
 
 void test_phase_zero_prioritizes_clock_note_off_note_on_and_other_stably() {
     MidiEventQueue queue;
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 0}, kOther));
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 0}, kNoteOn));
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 0}, kNoteOnZeroVelocity));
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 0}, kNoteOff));
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 0}, kClock));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 0}, OTHER));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 0}, NOTE_ON));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({2, 0}, NOTE_ON_ZERO_VELOCITY));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 0}, NOTE_OFF));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 0}, CLOCK));
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
                       queue.enqueue({2, 0}, {0x09, 0x90, 0x3E, 0x41}));
 
@@ -137,9 +137,9 @@ void test_phase_zero_prioritizes_clock_note_off_note_on_and_other_stably() {
 
 void test_nonzero_phase_preserves_insertion_order() {
     MidiEventQueue queue;
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 50}, kOther));
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 50}, kClock));
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 50}, kNoteOff));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 50}, OTHER));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 50}, CLOCK));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 50}, NOTE_OFF));
 
     const auto result = queue.drainAt({2, 50});
     TEST_ASSERT_EQUAL_HEX8(0xB0, result.events[0].packet[1]);
@@ -151,7 +151,7 @@ void test_drain_returns_late_events_and_preserves_all_packet_bytes() {
     MidiEventQueue queue;
     constexpr MidiUsbPacket packet = {0x09, 0x91, 0x45, 0x64};
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 50}, packet));
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({3, 0}, kClock));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({3, 0}, CLOCK));
 
     const auto result = queue.drainAt({3, 0});
     TEST_ASSERT_EQUAL_UINT32(2, result.count);
@@ -162,7 +162,7 @@ void test_drain_returns_late_events_and_preserves_all_packet_bytes() {
 
 void test_clear_removes_all_events() {
     MidiEventQueue queue;
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({1, 0}, kNoteOn));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({1, 0}, NOTE_ON));
     queue.clear();
 
     TEST_ASSERT_TRUE(queue.empty());
@@ -173,8 +173,8 @@ void test_clear_removes_all_events() {
 void test_next_position_is_read_only_and_returns_the_earliest_event() {
     MidiEventQueue queue;
     TEST_ASSERT_FALSE(queue.nextPosition().has_value());
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({3, 50}, kNoteOn));
-    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 75}, kOther));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({3, 50}, NOTE_ON));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 75}, OTHER));
 
     const auto next = queue.nextPosition();
     TEST_ASSERT_TRUE(next.has_value());
