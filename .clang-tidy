@@ -8,3 +8,21 @@ SystemHeaders: false
 
 
 FormatStyle: none
+
+CheckOptions:
+  readability-identifier-naming.ClassCase: CamelCase
+
+  readability-identifier-naming.FunctionCase: camelBack
+
+  readability-identifier-naming.VariableCase: camelBack
+
+  readability-identifier-naming.ParameterCase: camelBack
+
+  readability-identifier-naming.PrivateMemberCase: camelBack
+  readability-identifier-naming.PrivateMemberPrefix: _
+
+  readability-identifier-naming.GlobalConstantCase: UPPER_CASE
+  readability-identifier-naming.LocalConstantCase: camelBack
+
+  readability-identifier-naming.EnumCase: CamelCase
+  readability-identifier-naming.EnumConstantCase: CamelCase
