@@ -1,55 +1,55 @@
 # Этап 6. Интеграция transport в приложение
 
-Статус: запланировано. Зависит от этапов 1–5.
-
-## Задача
-
-Собрать новый путь в `main.cpp`, удалить старые параллельные вызовы и обеспечить
-безопасные переходы Off/Internal/External, program-storage modal и USB I/O.
+Статус: реализовано. Зависит от этапов 1–5.
 
 ## Реализация
 
-1. Ввести на main core один `TransportController`/coordinator с явным
-   `MidiDispatcher`. Dispatcher — единственный владелец очереди и USB sink: он
-   принимает опубликованные internal ticks или USB realtime events, первым в
-   каждом проходе `loop()` открывает текущий tick, выпускает все due-пакеты и
-   обслуживает процентные phase deadlines между ticks. Только после этого
-   `Sequencer` пополняет очередь событиями на будущий горизонт. Он не отправляет
-   MIDI и не извлекает пакеты из очереди.
-2. Удалить из loop одновременное использование `Sequencer::update`,
-   `MidiClockTransmitter::emitDueClocks` и прямых `midiSendNoteOn/Off` как
-   независимых планировщиков. После миграции старые классы удалить либо сузить до
-   адаптеров; не оставлять неиспользуемый второй источник clock.
-3. При смене режима атомарно для main loop: отменить pending deadlines, закрыть
-   активную ноту по правилу, сбросить неактивный источник и начать новый источник
-   с определённой фазой. `Internal → Off/External` отправляет `Stop` только если
-   outgoing internal MIDI session был активен.
-4. При открытии program storage modal остановить transport тем же контроллером и
-   запретить любые LittleFS операции, пока transport ещё running. При закрытии не
-   возобновлять transport самовольно без явного пользовательского/external события.
-5. Оставить обработку кнопок, storage и UI вне realtime-критического участка.
-   Проверить, что получение нескольких USB пакетов в одном loop сохраняет их
-   timestamped порядок.
-6. Start — единственное bootstrap-исключение: coordinator просит секвенсор
-   предварительно поставить горизонт, включающий tick 0, до первого обслуживания
-   этого tick dispatcher'ом. Во всех остальных проходах сначала работает
-   dispatcher, затем только пополнение будущих событий.
-7. Reset coordinator выполняет строго как `queue.clear()`, затем `sequencer.stop()`
-   с отправкой возвращённого actual Note Off, затем `sequencer.start()` и bootstrap
-   tick 0. Отдельного `Sequencer::reset()` нет.
+`TransportController` координирует режимы, reset и источники tick. Внутренний
+`MidiDispatcher` — единственный владелец `MidiEventQueue` consumption, сравнения tick/phase
+deadlines и USB-MIDI output. `Sequencer` только ставит события на two-tick horizon.
+
+## Фактический порядок loop
+
+1. `UsbMidiRealtimeReceiver` передаёт входные realtime-сообщения контроллеру.
+2. `MidiDispatcher` принимает опубликованные internal ticks, обрабатывает due phase deadlines и
+   отправляет пакеты.
+3. `Sequencer::scheduleThrough` пополняет будущий two-tick horizon.
+4. Обычный input/UI/storage код остаётся вне realtime-участка. После input
+   `PicoInternalTickAlarm` синхронизируется с состоянием контроллера.
+
+Для Internal dispatcher отправляет `FA`, затем на каждом tick `F8`, затем queued phase-zero
+Off/On. Off использует internal alarm только для sequencer и не отправляет transport realtime.
+External не отправляет outgoing realtime bytes.
+
+## Переходы
+
+`ToggleTransport` теперь достигает `TransportController` из `AppInputCoordinator`: stopped
+всегда Start, running всегда Stop; local Continue отсутствует. Stop/reset очищает queue, вызывает
+`Sequencer::stop`, а dispatcher ровно один раз отправляет возвращённый actual Note Off. `FC`
+отправляется только для active Internal output session.
+
+External Start ставит tick 0, но ждёт первого F8 с measured period до note output; incoming F8
+не echo. External Continue продолжает на следующем F8 без reset/retrigger. Loss очищает pending
+state и actual note, остаётся stopped/lost; relock сам не запускает playback. Смена режима
+безопасно останавливает старый путь и не запускает новый автоматически. Открытие storage modal
+синхронно останавливает transport перед LittleFS работой.
+
+## Удалённый production path
+
+`main.cpp` больше не использует `MidiClockTransmitter`, `midi_step_boundary`, direct
+`midiSendNoteOn/Off`, `noteSent` или `lastNoteSent`. Legacy engine headers остаются только для
+существующих native compatibility tests и не вызываются production firmware.
 
 ## Проверки
 
-Сквозные native-тесты контроллера: dispatcher первым в loop, заполнение только
-будущего горизонта, bootstrap Start, все режимы, live switch, modal, Start/Stop,
-external loss, очередь и deadline. Firmware build обязателен. На устройстве
-проверить отсутствие двойного `F8`, двойных Note Off, stuck-notes и старого clock
-после перехода режима.
+Native tests покрывают dispatcher order, phase deadline, Internal Start/F8/note order, external
+Start period gate/no echo, local Toggle, mode switch и external loss Note Off. Выполнен
+`make verify` (`format-check`, `tidy`, 210 native tests и firmware build). Tidy reports existing
+repository warnings but exits successfully.
+
+На устройстве проверить отсутствие double `F8`, double Note Off, stuck-notes и старого clock
+после mode switch, а также timing alarm при длительной USB/LVGL нагрузке.
 
 ## Вне объёма
 
-Новые UI-экраны и другие MIDI-протоколы.
-
-## Передача результата
-
-Указать удалённые legacy-paths, новый порядок loop и device-проверки.
+Swing, новые UI-экраны и другие MIDI-протоколы.

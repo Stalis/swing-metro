@@ -1,8 +1,8 @@
 #pragma once
 
-#include "engine/midi_clock_transmitter.h"
 #include "engine/midi_realtime_event.h"
 #include "engine/midi_usb_packet.h"
+#include "engine/transport_controller.h"
 
 #include <Adafruit_TinyUSB.h>
 
@@ -10,12 +10,11 @@
 
 namespace SwingMetro {
 
-class UsbMidiRealTimeSink final : public MidiRealTimeSink {
+class UsbMidiPacketSink final : public MidiPacketSink {
   public:
-    explicit UsbMidiRealTimeSink(Adafruit_USBD_MIDI& midi) noexcept : midi_{midi} {}
+    explicit UsbMidiPacketSink(Adafruit_USBD_MIDI& midi) noexcept : midi_{midi} {}
 
-    auto send(std::uint8_t status) -> void override {
-        const auto packet = usbMidiRealTimePacket(status);
+    auto send(const MidiUsbPacket& packet) -> void override {
         (void)midi_.writePacket(packet.data());
     }
 

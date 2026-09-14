@@ -3,6 +3,7 @@
 #include "app_contexts.h"
 #include "app_event_handler.h"
 #include "components/ui_view_model.h"
+#include "engine/transport_controller.h"
 #include "main_display_context.h"
 #include "program/program_storage_controller.h"
 
@@ -21,9 +22,9 @@ class AppInputCoordinator {
 
   public:
     AppInputCoordinator(AppEventHandler& handler, Sequencer& sequencer,
-                        MidiClockSettings& midiClock,
+                        MidiClockSettings& midiClock, TransportController* transport = nullptr,
                         ProgramStorageController* programStorage = nullptr)
-        : handler_{handler}, sequencer_{sequencer}, midiClock_{midiClock},
+        : handler_{handler}, sequencer_{sequencer}, midiClock_{midiClock}, transport_{transport},
           programStorage_{programStorage}, shiftContext_{selectedStep_} {
         (void)router_.addContext(globalContext_);
         (void)router_.addContext(mainContext_);
@@ -65,7 +66,9 @@ class AppInputCoordinator {
                 (void)sequencer_.adjustStepVelocity(*selectedStep_, adjust->delta);
             }
         } else if (std::holds_alternative<ToggleTransport>(event)) {
-            if (midiClock_.mode() != MidiClockMode::External) {
+            if (transport_ != nullptr) {
+                transport_->toggle(nowUs);
+            } else if (midiClock_.mode() != MidiClockMode::External) {
                 sequencer_.toggleRunning(nowUs);
             }
         } else if (std::holds_alternative<ActivateShift>(event)) {
@@ -82,7 +85,11 @@ class AppInputCoordinator {
                 contextChanged = closeMidiClockSettings();
             }
         } else if (const auto* apply = std::get_if<ApplyMidiClockMode>(&event)) {
-            midiClock_.apply(apply->mode);
+            if (transport_ != nullptr) {
+                transport_->applyMode(apply->mode);
+            } else {
+                midiClock_.apply(apply->mode);
+            }
         } else if (std::holds_alternative<OpenProgramStorage>(event)) {
             contextChanged = openProgramStorage();
         } else if (const auto* select = std::get_if<SelectProgramStorageAction>(&event)) {
@@ -320,6 +327,7 @@ class AppInputCoordinator {
     AppEventHandler& handler_;
     Sequencer& sequencer_;
     MidiClockSettings& midiClock_;
+    TransportController* transport_;
     ProgramStorageController* programStorage_;
     std::optional<std::uint8_t> selectedStep_;
     GlobalContext globalContext_;
