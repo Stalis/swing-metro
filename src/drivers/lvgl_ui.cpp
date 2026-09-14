@@ -1,6 +1,6 @@
 #include "lvgl_ui.h"
 
-void LVGL_Ui::setup() {
+void LvglUi::setup() {
     // Init Display
     if (!_gfx.begin()) {
         Serial.println("gfx->begin() failed!");
@@ -59,9 +59,9 @@ void LVGL_Ui::setup() {
     lv_screen_load(_mainScreen);
 }
 
-void LVGL_Ui::loop() { lv_timer_handler(); }
+void LvglUi::loop() { lv_timer_handler(); }
 
-void LVGL_Ui::readViewModel(const UiViewModel& viewModel) {
+void LvglUi::readViewModel(const UiViewModel& viewModel) {
     const auto values = viewModel.read();
     setTempo(values.tempo);
     setSwing(values.swing);
@@ -101,17 +101,17 @@ void LVGL_Ui::readViewModel(const UiViewModel& viewModel) {
                            values.programStorageSlot, values.programStorageStatus);
 }
 
-void LVGL_Ui::setTempo(uint8_t value) { lv_subject_set_int(&_tempoSubject, value); }
-void LVGL_Ui::setSwing(uint8_t value) { lv_subject_set_int(&_swingSubject, value); }
-void LVGL_Ui::setVolume(uint8_t value) { lv_subject_set_int(&_volumeSubject, value); }
+void LvglUi::setTempo(uint8_t value) { lv_subject_set_int(&_tempoSubject, value); }
+void LvglUi::setSwing(uint8_t value) { lv_subject_set_int(&_swingSubject, value); }
+void LvglUi::setVolume(uint8_t value) { lv_subject_set_int(&_volumeSubject, value); }
 
-void LVGL_Ui::setSteps(std::bitset<SEQUENCER_STEPS_COUNT> stepsState, uint8_t activeStep) {
+void LvglUi::setSteps(std::bitset<SEQUENCER_STEPS_COUNT> stepsState, uint8_t activeStep) {
     lv_subject_set_int(&_sequencerStepsSubject,
                        stepsState.to_ulong() | (static_cast<uint16_t>(activeStep) << 16));
 }
 
-void LVGL_Ui::flush(lv_display_t* display, const lv_area_t* area, uint8_t* pixels) {
-    auto& self = *static_cast<LVGL_Ui*>(lv_display_get_user_data(display));
+void LvglUi::flush(lv_display_t* display, const lv_area_t* area, uint8_t* pixels) {
+    auto& self = *static_cast<LvglUi*>(lv_display_get_user_data(display));
     self._gfx.draw16bitRGBBitmap(static_cast<int16_t>(area->x1), static_cast<int16_t>(area->y1),
                                  reinterpret_cast<uint16_t*>(pixels),
                                  static_cast<int16_t>(lv_area_get_width(area)),
@@ -119,9 +119,10 @@ void LVGL_Ui::flush(lv_display_t* display, const lv_area_t* area, uint8_t* pixel
     lv_display_flush_ready(display);
 }
 
-void LVGL_Ui::initMainScreen() {
+void LvglUi::initMainScreen() {
     _mainScreen = lv_obj_create(nullptr);
 
+    lv_obj_set_style_text_font(_mainScreen, &lv_font_montserrat_12, 0);
     lv_obj_set_style_bg_color(_mainScreen, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(_mainScreen, LV_OPA_COVER, 0);
 
@@ -151,7 +152,7 @@ void LVGL_Ui::initMainScreen() {
     lv_subject_add_observer(&_sequencerStepsSubject, onStepsChanged, this);
 }
 
-void LVGL_Ui::setExternalClock(SwingMetro::ExternalMidiClockStatus status, uint8_t tempo) {
+void LvglUi::setExternalClock(SwingMetro::ExternalMidiClockStatus status, uint8_t tempo) {
     if (status == _displayedExternalClockStatus && tempo == _displayedExternalTempo) {
         return;
     }
@@ -167,7 +168,7 @@ void LVGL_Ui::setExternalClock(SwingMetro::ExternalMidiClockStatus status, uint8
     }
 }
 
-void LVGL_Ui::initStepSettingsScreen() {
+void LvglUi::initStepSettingsScreen() {
     constexpr int16_t velocityLabelY = 80;
     _stepSettingsScreen = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(_stepSettingsScreen, lv_color_black(), 0);
@@ -189,7 +190,7 @@ void LVGL_Ui::initStepSettingsScreen() {
     lv_label_set_text(_selectedVelocityLabel, "Velocity: 127");
 }
 
-void LVGL_Ui::initMidiClockModal() {
+void LvglUi::initMidiClockModal() {
     _midiClockModal = lv_obj_create(lv_layer_top());
     lv_obj_set_size(_midiClockModal, 112, 132);
     lv_obj_align(_midiClockModal, LV_ALIGN_CENTER, 0, 0);
@@ -220,8 +221,8 @@ void LVGL_Ui::initMidiClockModal() {
     lv_obj_add_flag(_midiClockModal, LV_OBJ_FLAG_HIDDEN);
 }
 
-void LVGL_Ui::setMidiClockModal(bool open, SwingMetro::MidiClockMode active,
-                                SwingMetro::MidiClockMode preview) {
+void LvglUi::setMidiClockModal(bool open, SwingMetro::MidiClockMode active,
+                               SwingMetro::MidiClockMode preview) {
     const bool visibilityChanged = open != _midiClockModalVisible;
     if (visibilityChanged) {
         _midiClockModalVisible = open;
@@ -252,7 +253,7 @@ void LVGL_Ui::setMidiClockModal(bool open, SwingMetro::MidiClockMode active,
     }
 }
 
-void LVGL_Ui::initProgramStorageModal() {
+void LvglUi::initProgramStorageModal() {
     _programStorageModal = lv_obj_create(lv_layer_top());
     lv_obj_set_size(_programStorageModal, 112, 100);
     lv_obj_align(_programStorageModal, LV_ALIGN_CENTER, 0, 0);
@@ -268,11 +269,11 @@ void LVGL_Ui::initProgramStorageModal() {
     lv_obj_align(_programStorageValueLabel, LV_ALIGN_CENTER, 0, 12);
     lv_obj_set_style_text_color(_programStorageValueLabel, lv_color_white(), 0);
 
-    static constexpr const char* ACTION_NAMES[] = {"Save", "Load"};
+    static constexpr const char* actionNames[] = {"Save", "Load"};
     for (uint8_t index = 0; index < _programStorageActionLabels.size(); ++index) {
         auto* label = lv_label_create(_programStorageModal);
         _programStorageActionLabels[index] = label;
-        lv_label_set_text(label, ACTION_NAMES[index]);
+        lv_label_set_text(label, actionNames[index]);
         lv_obj_set_width(label, 92);
         lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_color(label, lv_color_white(), 0);
@@ -282,9 +283,9 @@ void LVGL_Ui::initProgramStorageModal() {
     lv_obj_add_flag(_programStorageModal, LV_OBJ_FLAG_HIDDEN);
 }
 
-void LVGL_Ui::setProgramStorageModal(SwingMetro::ProgramStorageModalState state,
-                                     SwingMetro::ProgramStorageAction action, uint8_t slot,
-                                     SwingMetro::ProgramStoreStatus status) {
+void LvglUi::setProgramStorageModal(SwingMetro::ProgramStorageModalState state,
+                                    SwingMetro::ProgramStorageAction action, uint8_t slot,
+                                    SwingMetro::ProgramStoreStatus status) {
     if (state == _displayedProgramStorageState && action == _displayedProgramStorageAction &&
         slot == _displayedProgramStorageSlot && status == _displayedProgramStorageStatus) {
         return;
@@ -338,12 +339,12 @@ void LVGL_Ui::setProgramStorageModal(SwingMetro::ProgramStorageModalState state,
     }
 }
 
-void LVGL_Ui::drawSequencerSteps() {
+void LvglUi::drawSequencerSteps() {
     auto rawValue = static_cast<uint32_t>(lv_subject_get_int(&_sequencerStepsSubject));
     drawSequencerSteps(rawValue);
 }
 
-void LVGL_Ui::drawSequencerSteps(uint32_t rawValue) {
+void LvglUi::drawSequencerSteps(uint32_t rawValue) {
     constexpr int16_t stepSize = 9;
     constexpr int16_t firstStepY = 105;
 
@@ -384,13 +385,13 @@ void LVGL_Ui::drawSequencerSteps(uint32_t rawValue) {
     }
 }
 
-void LVGL_Ui::onMainScreenLoaded(lv_event_t* event) {
-    auto& self = *static_cast<LVGL_Ui*>(lv_event_get_user_data(event));
+void LvglUi::onMainScreenLoaded(lv_event_t* event) {
+    auto& self = *static_cast<LvglUi*>(lv_event_get_user_data(event));
     self.drawSequencerSteps();
 }
 
-void LVGL_Ui::onStepsChanged(lv_observer_t* observer, lv_subject_t* subject) {
-    auto& self = *static_cast<LVGL_Ui*>(lv_observer_get_user_data(observer));
+void LvglUi::onStepsChanged(lv_observer_t* observer, lv_subject_t* subject) {
+    auto& self = *static_cast<LvglUi*>(lv_observer_get_user_data(observer));
     auto rawValue = static_cast<uint32_t>(lv_subject_get_int(subject));
     self.drawSequencerSteps(rawValue);
 }

@@ -85,13 +85,13 @@ class WrongResultContext {
 class MissingHandleContext {};
 
 static_assert(
-    ContextInput::Detail::isCompatibleContextV<ConfigurableContext, TestInputEvent, TestResult>);
+    ContextInput::Detail::IS_COMPATIBLE_CONTEXT_V<ConfigurableContext, TestInputEvent, TestResult>);
 static_assert(
-    ContextInput::Detail::isCompatibleContextV<AlternateContext, TestInputEvent, TestResult>);
+    ContextInput::Detail::IS_COMPATIBLE_CONTEXT_V<AlternateContext, TestInputEvent, TestResult>);
 static_assert(
-    !ContextInput::Detail::isCompatibleContextV<WrongResultContext, TestInputEvent, TestResult>);
-static_assert(
-    !ContextInput::Detail::isCompatibleContextV<MissingHandleContext, TestInputEvent, TestResult>);
+    !ContextInput::Detail::IS_COMPATIBLE_CONTEXT_V<WrongResultContext, TestInputEvent, TestResult>);
+static_assert(!ContextInput::Detail::IS_COMPATIBLE_CONTEXT_V<MissingHandleContext, TestInputEvent,
+                                                             TestResult>);
 
 struct MoveOnlyEvent {
     explicit MoveOnlyEvent(std::int8_t delta) : delta{delta} {}

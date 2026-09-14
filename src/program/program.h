@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/midi_clock_mode.h"
+#include "engine/transport.h"
 
 #include <array>
 #include <cstddef>
@@ -13,8 +14,9 @@ constexpr std::uint8_t PROGRAM_DEFAULT_TEMPO = 120;
 constexpr std::uint8_t PROGRAM_MIN_TEMPO = 40;
 constexpr std::uint8_t PROGRAM_MAX_TEMPO = 240;
 constexpr std::uint8_t PROGRAM_DEFAULT_SWING = 50;
-constexpr std::uint8_t PROGRAM_MIN_SWING = 50;
-constexpr std::uint8_t PROGRAM_MAX_SWING = 100;
+constexpr std::uint8_t PROGRAM_MIN_SWING = SWING_MIN_VALUE;
+constexpr std::uint8_t PROGRAM_MAX_SWING = SWING_MAX_VALUE;
+constexpr std::uint8_t PROGRAM_LEGACY_MAX_SWING = 100;
 constexpr std::uint8_t PROGRAM_DEFAULT_VOLUME = 100;
 constexpr std::uint8_t PROGRAM_MIN_VOLUME = 0;
 constexpr std::uint8_t PROGRAM_MAX_VOLUME = 100;

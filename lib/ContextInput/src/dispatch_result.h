@@ -31,31 +31,31 @@ class DispatchResult {
         return DispatchResult{std::move(event)};
     }
 
-    [[nodiscard]] constexpr auto status() const noexcept -> DispatchStatus { return status_; }
+    [[nodiscard]] constexpr auto status() const noexcept -> DispatchStatus { return _status; }
 
-    [[nodiscard]] constexpr auto hasEvent() const noexcept -> bool { return event_.has_value(); }
+    [[nodiscard]] constexpr auto hasEvent() const noexcept -> bool { return _event.has_value(); }
 
     constexpr auto event() noexcept -> TOutputEvent& {
         assert(hasEvent());
-        return *event_;
+        return *_event;
     }
 
     constexpr auto event() const noexcept -> const TOutputEvent& {
         assert(hasEvent());
-        return *event_;
+        return *_event;
     }
 
   private:
-    explicit constexpr DispatchResult(DispatchStatus status) noexcept : status_{status} {
+    explicit constexpr DispatchResult(DispatchStatus status) noexcept : _status{status} {
         assert(status != DispatchStatus::Emitted);
     }
 
     explicit constexpr DispatchResult(TOutputEvent event) noexcept(
         std::is_nothrow_move_constructible_v<TOutputEvent>)
-        : status_{DispatchStatus::Emitted}, event_{std::move(event)} {}
+        : _status{DispatchStatus::Emitted}, _event{std::move(event)} {}
 
-    DispatchStatus status_;
-    std::optional<TOutputEvent> event_;
+    DispatchStatus _status;
+    std::optional<TOutputEvent> _event;
 };
 
 } // namespace ContextInput

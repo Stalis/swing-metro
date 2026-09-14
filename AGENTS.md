@@ -19,5 +19,5 @@ PlatformIO/Arduino firmware for the Raspberry Pi Pico 2 W (`rpipico2`, Earle Phi
 
 ## C++ style
 
-- Use `_paramName` for private fields, `CAPS_CASE` for constants and `constexpr`, `PascalCase` for types, and `camelCase` for all other identifiers. This is based on the code through `0457cecb3070251dc585b7c9e52938bceb94ff4b`.
+- Identifier naming is defined by the repository `.clang-tidy` configuration. This is based on the code through `0457cecb3070251dc585b7c9e52938bceb94ff4b`.
 - Format with the repository `.clang-format` (LLVM-derived: four spaces, attached braces, 100 columns).

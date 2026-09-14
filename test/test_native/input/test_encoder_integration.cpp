@@ -20,7 +20,7 @@ struct IntegrationState {
     Counter<std::uint8_t> swing{{.step = 1,
                                  .value = 50,
                                  .minValue = 50,
-                                 .maxValue = 100,
+                                 .maxValue = SwingMetro::SWING_MAX_VALUE,
                                  .overflowBehavior = CounterOverflowBehavior::Clamp}};
     Counter<std::uint8_t> volume{{.step = 1,
                                   .value = 100,

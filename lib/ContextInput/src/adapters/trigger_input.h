@@ -14,22 +14,22 @@ class TriggerInputAdapter {
 
   public:
     explicit constexpr TriggerInputAdapter(const TSourceId& source, bool initialState = false)
-        : source_{source}, active_{initialState} {}
+        : _source{source}, _active{initialState} {}
 
     [[nodiscard]] auto set(bool active) -> std::optional<InputEvent<TSourceId>> {
-        if (active_ == active) {
+        if (_active == active) {
             return std::nullopt;
         }
 
-        active_ = active;
-        return InputEvent<TSourceId>{source_, TriggerInput{active}};
+        _active = active;
+        return InputEvent<TSourceId>{_source, TriggerInput{active}};
     }
 
-    [[nodiscard]] constexpr auto isActive() const noexcept -> bool { return active_; }
+    [[nodiscard]] constexpr auto isActive() const noexcept -> bool { return _active; }
 
   private:
-    TSourceId source_;
-    bool active_;
+    TSourceId _source;
+    bool _active;
 };
 
 } // namespace ContextInput

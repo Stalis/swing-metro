@@ -35,7 +35,7 @@ struct IsCompatibleContext<
                    TResult> {};
 
 template <typename TContext, typename TInputEvent, typename TResult>
-inline constexpr bool isCompatibleContextV =
+inline constexpr bool IS_COMPATIBLE_CONTEXT_V =
     IsCompatibleContext<TContext, TInputEvent, TResult>::value;
 
 } // namespace Detail
@@ -72,8 +72,8 @@ class Router {
     template <typename TContext>
     static auto invokeContext(void* context, const TInputEvent& event) -> Result;
 
-    std::array<ContextRef, Capacity> contexts_{};
-    std::size_t size_ = 0;
+    std::array<ContextRef, Capacity> _contexts{};
+    std::size_t _size = 0;
 };
 
 } // namespace ContextInput

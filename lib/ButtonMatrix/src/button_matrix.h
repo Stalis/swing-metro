@@ -6,7 +6,7 @@
 
 template <int INPUT_PINS, int OUTPUT_PINS>
 struct DefaultButtonIds {
-    static constexpr std::array<uint8_t, INPUT_PINS * OUTPUT_PINS> values = [] {
+    static constexpr std::array<uint8_t, INPUT_PINS * OUTPUT_PINS> VALUES = [] {
         std::array<uint8_t, INPUT_PINS * OUTPUT_PINS> ids{};
         for (uint8_t index = 0; index < ids.size(); ++index) {
             ids[index] = index;
@@ -34,12 +34,12 @@ class ButtonMatrix {
     [[nodiscard]] bool isButtonHolding(int number) const;
     [[nodiscard]] bool isButtonJustReleased(int input, int output) const;
     [[nodiscard]] bool isButtonJustReleased(int number) const;
-    // TButtonIds::values maps physical indices to application IDs.
+    // TButtonIds::VALUES maps physical indices to application IDs.
     [[nodiscard]] constexpr uint8_t getButtonId(int input, int output) const {
-        return TButtonIds::values[input * OUTPUT_PINS + output];
+        return TButtonIds::VALUES[input * OUTPUT_PINS + output];
     }
     [[nodiscard]] constexpr uint8_t getButtonId(int number) const {
-        return TButtonIds::values[number];
+        return TButtonIds::VALUES[number];
     }
 
     [[nodiscard]] constexpr size_t getInputCount() const { return INPUT_PINS; }

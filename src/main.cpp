@@ -1,9 +1,9 @@
 #include "components/ui_view_model.h"
 #include "drivers/littlefs_program_storage.h"
 #include "drivers/lvgl_ui.h"
+#include "drivers/pico_internal_tick_alarm.h"
 #include "drivers/usb_midi_adapter.h"
-#include "engine/midi_clock_transmitter.h"
-#include "engine/midi_step_boundary.h"
+#include "engine/transport_controller.h"
 #include "input/app_event_handler.h"
 #include "input/app_input.h"
 #include "input/app_input_coordinator.h"
@@ -28,14 +28,14 @@
 #include <utils/counter.h>
 
 Adafruit_USBD_MIDI usbMidi;
-SwingMetro::UsbMidiRealTimeSink midiClockSink{usbMidi};
 SwingMetro::UsbMidiRealtimeReceiver midiClockReceiver{usbMidi};
 
 Sequencer mainSequencer;
 SwingMetro::MidiClockSettings midiClockSettings;
-SwingMetro::MidiClockTransmitter midiClockTransmitter;
-SwingMetro::ExternalMidiClock externalMidiClock;
-SwingMetro::MidiClockMode previousMidiClockMode = SwingMetro::MidiClockMode::Off;
+SwingMetro::UsbMidiPacketSink midiSink{usbMidi};
+SwingMetro::InternalTickSource internalTicks;
+SwingMetro::PicoInternalTickAlarm internalTickAlarm{internalTicks};
+SwingMetro::TransportController transportController{mainSequencer, midiClockSettings, midiSink};
 SwingMetro::LittleFsProgramStorage programStorageBackend;
 SwingMetro::ProgramSlotStore programSlotStore{programStorageBackend};
 
@@ -59,7 +59,7 @@ SwingMetro::StepButtonInputs stepButtonInputs;
 void tempoEncoderHandler(EncoderDirection direction);
 void tempoEncoderSwitchHandler();
 void tempoEncoderSwitchReleaseHandler();
-constexpr EncoderSettings tempoEncoderSettings{
+constexpr EncoderSettings TEMPO_ENCODER_SETTINGS{
     .pinA = 16,
     .pinB = 17,
     .pinSwitch = 18,
@@ -67,7 +67,7 @@ constexpr EncoderSettings tempoEncoderSettings{
     .switchHandler = tempoEncoderSwitchHandler,
     .switchReleaseHandler = tempoEncoderSwitchReleaseHandler,
 };
-Encoder tempoEncoder(tempoEncoderSettings);
+Encoder tempoEncoder(TEMPO_ENCODER_SETTINGS);
 Counter<uint8_t> tempoCounter({.step = 1,
                                .value = 120,
                                .minValue = 40,
@@ -75,23 +75,23 @@ Counter<uint8_t> tempoCounter({.step = 1,
                                .overflowBehavior = CounterOverflowBehavior::Clamp});
 
 void swingEncoderHandler(EncoderDirection direction);
-constexpr EncoderSettings swingEncoderSettings{
+constexpr EncoderSettings SWING_ENCODER_SETTINGS{
     .pinA = 19,
     .pinB = 20,
     .pinSwitch = 21,
     .handler = swingEncoderHandler,
 };
-Encoder swingEncoder(swingEncoderSettings);
+Encoder swingEncoder(SWING_ENCODER_SETTINGS);
 Counter<uint8_t> swingCounter({.step = 1,
                                .value = 50,
                                .minValue = 50,
-                               .maxValue = 100,
+                               .maxValue = SwingMetro::SWING_MAX_VALUE,
                                .overflowBehavior = CounterOverflowBehavior::Clamp});
 
 void volumeEncoderHandler(EncoderDirection direction);
 void volumeEncoderSwitchHandler();
 void volumeEncoderSwitchReleaseHandler();
-constexpr EncoderSettings volumeEncoderSettings{
+constexpr EncoderSettings VOLUME_ENCODER_SETTINGS{
     .pinA = 22,
     .pinB = 26,
     .pinSwitch = 27,
@@ -99,7 +99,7 @@ constexpr EncoderSettings volumeEncoderSettings{
     .switchHandler = volumeEncoderSwitchHandler,
     .switchReleaseHandler = volumeEncoderSwitchReleaseHandler,
 };
-Encoder volumeEncoder(volumeEncoderSettings);
+Encoder volumeEncoder(VOLUME_ENCODER_SETTINGS);
 Counter<uint8_t> volumeCounter({.step = 1,
                                 .value = 100,
                                 .minValue = 0,
@@ -115,7 +115,8 @@ SwingMetro::AppEventHandler appEventHandler{{
 SwingMetro::ProgramStorageController programStorageController{
     programSlotStore, tempoCounter, swingCounter, volumeCounter, mainSequencer, midiClockSettings};
 SwingMetro::AppInputCoordinator<INPUT_CONTEXT_CAPACITY> appInputCoordinator{
-    appEventHandler, mainSequencer, midiClockSettings, &programStorageController};
+    appEventHandler, mainSequencer, midiClockSettings, &transportController,
+    &programStorageController};
 ContextInput::ButtonInputAdapter<SwingMetro::InputId> tempoSwitchInput{{
     SwingMetro::InputId::TempoSwitch,
     500,
@@ -125,10 +126,10 @@ ContextInput::ButtonInputAdapter<SwingMetro::InputId> volumeSwitchInput{{
     500,
 }};
 
-constexpr const auto updatables = std::tie(tempoEncoder, swingEncoder, volumeEncoder);
+constexpr const auto UPDATABLES = std::tie(tempoEncoder, swingEncoder, volumeEncoder);
 UiViewModel uiViewModel;
-bool noteSent = false;
-uint8_t lastNoteSent = 0;
+bool internalAlarmActive = false;
+uint8_t internalAlarmBpm = 0;
 
 template <typename TAdapter>
 void handleEncoderDirection(const TAdapter& adapter, EncoderDirection direction) {
@@ -175,40 +176,27 @@ void volumeEncoderSwitchReleaseHandler() {
     handleButtonBatch(volumeSwitchInput.onReleased(millis()));
 }
 
-constexpr uint8_t MIDI_CHANNEL_1 = 0;
-
-void midiSendNoteOn(uint8_t note, uint8_t velocity) {
-    const uint8_t packet[4] = {
-        0x09, // MIDI command: Note on
-        static_cast<uint8_t>(MIDI_CHANNEL_1 | 0x90),
-        note,
-        velocity,
-    };
-    usbMidi.writePacket(packet);
-}
-
-void midiSendNoteOff(uint8_t note) {
-    const uint8_t packet[4] = {
-        0x08, // MIDI command: Note off
-        static_cast<uint8_t>(MIDI_CHANNEL_1 | 0x80),
-        note,
-        0,
-    };
-    usbMidi.writePacket(packet);
-}
-
 void handleProgramStorageEvent(const SwingMetro::AppEvent& event) {
     if (std::holds_alternative<SwingMetro::OpenProgramStorage>(event) &&
         appInputCoordinator.isProgramStorageModalOpen()) {
-        if (noteSent) {
-            midiSendNoteOff(lastNoteSent);
-            noteSent = false;
-        }
-        mainSequencer.stop();
-        externalMidiClock.reset();
+        transportController.openStorage();
     } else if (std::holds_alternative<SwingMetro::CloseProgramStorage>(event)) {
-        mainSequencer.stop();
-        externalMidiClock.reset();
+        transportController.closeStorage();
+    }
+}
+
+void syncInternalAlarm() {
+    const bool shouldRun = transportController.usesInternalTiming();
+    if (shouldRun && !internalAlarmActive) {
+        internalTickAlarm.start(mainSequencer.getBpm());
+        internalAlarmActive = true;
+        internalAlarmBpm = mainSequencer.getBpm();
+    } else if (!shouldRun && internalAlarmActive) {
+        internalTickAlarm.stop();
+        internalAlarmActive = false;
+    } else if (shouldRun && internalAlarmBpm != mainSequencer.getBpm()) {
+        internalTickAlarm.setBpm(mainSequencer.getBpm());
+        internalAlarmBpm = mainSequencer.getBpm();
     }
 }
 
@@ -246,6 +234,12 @@ void setup() {
 }
 
 void loop() {
+    const auto nowUs = micros();
+    midiClockReceiver.poll([&](const SwingMetro::MidiRealtimeEvent& event) {
+        transportController.handleExternal(event);
+    });
+    transportController.process(nowUs, internalTicks.ticks());
+
     buttonMatrix.readButtons();
     const auto now = millis();
 
@@ -262,43 +256,17 @@ void loop() {
 
     buttonMatrix.update();
 
-    std::apply([](auto&... objects) { (objects.update(), ...); }, updatables);
+    std::apply([](auto&... objects) { (objects.update(), ...); }, UPDATABLES);
     handleButtonBatch(tempoSwitchInput.update(millis()));
     handleButtonBatch(volumeSwitchInput.update(millis()));
 
-    const auto nowUs = micros();
-    const auto midiClockMode = midiClockSettings.mode();
-    if (midiClockMode != previousMidiClockMode) {
-        externalMidiClock.reset();
-        previousMidiClockMode = midiClockMode;
-    }
-    if (appInputCoordinator.isProgramStorageModalOpen()) {
-        midiClockReceiver.poll([](const SwingMetro::MidiRealtimeEvent&) {});
-        externalMidiClock.reset();
-        (void)midiClockTransmitter.transition(nowUs, mainSequencer.getBpm(), midiClockMode, false,
-                                              midiClockSink);
-    } else if (midiClockMode == SwingMetro::MidiClockMode::External) {
-        const auto processExternal = [&](const SwingMetro::ExternalMidiClockResult& result) {
-            SwingMetro::processExternalMidiClock(mainSequencer, result, noteSent, lastNoteSent,
-                                                 midiSendNoteOff, midiSendNoteOn);
-        };
-        midiClockReceiver.poll([&](const SwingMetro::MidiRealtimeEvent& event) {
-            processExternal(externalMidiClock.handle(event));
-        });
-        processExternal(externalMidiClock.update(nowUs));
-        (void)midiClockTransmitter.transition(nowUs, mainSequencer.getBpm(), midiClockMode,
-                                              mainSequencer.isRunning(), midiClockSink);
-    } else {
-        (void)SwingMetro::processMidiStepBoundary(mainSequencer, nowUs, midiClockMode,
-                                                  midiClockTransmitter, midiClockSink, noteSent,
-                                                  lastNoteSent, midiSendNoteOff, midiSendNoteOn);
-    }
+    syncInternalAlarm();
 
     UiSettings settings{tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue(),
                         mainSequencer.getDisplayStepIndex().value_or(UINT8_MAX),
                         mainSequencer.getStepsEnabled()};
-    settings.externalClockStatus = externalMidiClock.status();
-    settings.externalTempo = externalMidiClock.bpm();
+    settings.externalClockStatus = transportController.externalStatus();
+    settings.externalTempo = transportController.externalBpm();
     uiViewModel.publish(appInputCoordinator.decorateUiSettings(settings));
     appInputCoordinator.processProgramStorage();
     if (!appInputCoordinator.isProgramStorageModalOpen()) {
@@ -311,11 +279,11 @@ void loop() {
  *
  */
 
-LVGL_Ui ui_provider{};
+LvglUi uiProvider{};
 
-void setup1() { ui_provider.setup(); }
+void setup1() { uiProvider.setup(); }
 
 void loop1() {
-    ui_provider.loop();
-    ui_provider.readViewModel(uiViewModel);
+    uiProvider.loop();
+    uiProvider.readViewModel(uiViewModel);
 }

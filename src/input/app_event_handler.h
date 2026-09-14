@@ -27,10 +27,10 @@ class AppEventHandler {
     auto handle(const AdjustVolume& event) -> void;
     auto handle(const ToggleStep& event) -> void;
 
-    Counter<std::uint8_t>& tempo_;
-    Counter<std::uint8_t>& swing_;
-    Counter<std::uint8_t>& volume_;
-    Sequencer& sequencer_;
+    Counter<std::uint8_t>& _tempo;
+    Counter<std::uint8_t>& _swing;
+    Counter<std::uint8_t>& _volume;
+    Sequencer& _sequencer;
 };
 
 } // namespace SwingMetro

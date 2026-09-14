@@ -27,27 +27,27 @@ class EventBatch {
         (appendUnchecked(std::forward<TRestEvents>(restEvents)), ...);
     }
 
-    [[nodiscard]] constexpr auto empty() const noexcept -> bool { return size_ == 0; }
+    [[nodiscard]] constexpr auto empty() const noexcept -> bool { return _size == 0; }
 
-    [[nodiscard]] constexpr auto size() const noexcept -> std::size_t { return size_; }
+    [[nodiscard]] constexpr auto size() const noexcept -> std::size_t { return _size; }
 
     [[nodiscard]] static constexpr auto capacity() noexcept -> std::size_t { return Capacity; }
 
     [[nodiscard]] auto operator[](std::size_t index) const -> const TEvent& {
         // The occupied prefix is contiguous, so index < size() guarantees a value.
         // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-        return *events_[index];
+        return *_events[index];
     }
 
   private:
     template <typename TEventValue>
     auto appendUnchecked(TEventValue&& event) -> void {
-        events_[size_].emplace(std::forward<TEventValue>(event));
-        ++size_;
+        _events[_size].emplace(std::forward<TEventValue>(event));
+        ++_size;
     }
 
-    std::array<std::optional<TEvent>, Capacity> events_{};
-    std::size_t size_ = 0;
+    std::array<std::optional<TEvent>, Capacity> _events{};
+    std::size_t _size = 0;
 };
 
 } // namespace ContextInput

@@ -18,7 +18,7 @@ struct TestState {
     Counter<std::uint8_t> swing{{.step = 1,
                                  .value = 50,
                                  .minValue = 50,
-                                 .maxValue = 100,
+                                 .maxValue = SwingMetro::SWING_MAX_VALUE,
                                  .overflowBehavior = CounterOverflowBehavior::Clamp}};
     Counter<std::uint8_t> volume{{.step = 1,
                                   .value = 100,
@@ -55,6 +55,7 @@ void test_app_handler_changes_only_swing() {
     TEST_ASSERT_EQUAL_UINT8(54, state.swing.getValue());
     TEST_ASSERT_EQUAL_UINT8(100, state.volume.getValue());
     TEST_ASSERT_EQUAL_UINT8(120, state.sequencer.getBpm());
+    TEST_ASSERT_EQUAL_UINT8(54, state.sequencer.getSwing());
 }
 
 void test_app_handler_changes_only_volume() {
@@ -99,7 +100,8 @@ void test_app_handler_preserves_counter_clamps() {
 
     TEST_ASSERT_EQUAL_UINT8(112, state.tempo.getValue());
     TEST_ASSERT_EQUAL_UINT8(112, state.sequencer.getBpm());
-    TEST_ASSERT_EQUAL_UINT8(100, state.swing.getValue());
+    TEST_ASSERT_EQUAL_UINT8(90, state.swing.getValue());
+    TEST_ASSERT_EQUAL_UINT8(90, state.sequencer.getSwing());
     TEST_ASSERT_EQUAL_UINT8(100, state.volume.getValue());
 
     state.handler.handle(SwingMetro::AppEvent{SwingMetro::AdjustTempo{-128}});

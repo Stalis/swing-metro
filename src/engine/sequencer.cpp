@@ -21,6 +21,10 @@ Sequencer::Sequencer()
 
 uint8_t Sequencer::getBpm() const { return _bpm; }
 
+void Sequencer::setSwing(uint8_t swing) { _swing = SwingMetro::clampSwingValue(swing); }
+
+uint8_t Sequencer::getSwing() const { return _swing; }
+
 const std::array<SequencerStep, STEPS_COUNT>& Sequencer::steps() const { return _steps; }
 
 void Sequencer::setSteps(const std::array<SequencerStep, STEPS_COUNT>& steps) { _steps = steps; }
@@ -95,7 +99,13 @@ bool Sequencer::adjustStepVelocity(StepIndex index, int8_t delta) {
 
 bool Sequencer::isRunning() const { return _running; }
 
-void Sequencer::stop() { _running = false; }
+std::optional<MIDI_Note> Sequencer::stop() {
+    _running = false;
+    const auto actual = _actualSoundingNote;
+    _actualSoundingNote.reset();
+    _projectedSoundingNote.reset();
+    return actual;
+}
 
 void Sequencer::toggleRunning(uint32_t micros) {
     _running = !_running;
@@ -105,11 +115,70 @@ void Sequencer::toggleRunning(uint32_t micros) {
 }
 
 uint32_t Sequencer::getStepPeriodUs() const {
-    constexpr uint32_t MICROSECONDS_PER_MINUTE = 60'000'000;
-    constexpr uint8_t STEPS_PER_QUARTER = 4;
+    constexpr uint32_t microsecondsPerMinute = 60'000'000;
+    constexpr uint8_t stepsPerQuarter = 4;
 
-    return MICROSECONDS_PER_MINUTE / (static_cast<uint32_t>(_bpm) * STEPS_PER_QUARTER);
+    return microsecondsPerMinute / (static_cast<uint32_t>(_bpm) * stepsPerQuarter);
 }
+
+void Sequencer::start() {
+    _running = true;
+    _currentStepIndex = 0;
+    _hasCurrentStep = false;
+    _actualSoundingNote.reset();
+    _projectedSoundingNote.reset();
+    _nextBoundaryTick = 0;
+}
+
+void Sequencer::continuePlayback() { _running = true; }
+
+SwingMetro::MidiEventQueueEnqueueResult
+Sequencer::scheduleThrough(SwingMetro::TransportPosition position,
+                           SwingMetro::MidiEventQueue& queue) {
+    if (!_running) {
+        return SwingMetro::MidiEventQueueEnqueueResult::Ok;
+    }
+    const auto horizon = position.tick + SCHEDULING_LOOKAHEAD_TICKS;
+    while (_nextBoundaryTick <= horizon) {
+        const auto stepIndex = static_cast<StepIndex>(
+            (_nextBoundaryTick / SwingMetro::TICKS_PER_SIXTEENTH) % STEPS_COUNT);
+        const auto& step = _steps[stepIndex];
+        std::array<SwingMetro::MidiEventRequest, 2> requests{};
+        std::size_t count = 0;
+        if (_projectedSoundingNote.has_value()) {
+            requests[count++] = {{_nextBoundaryTick, 0}, {0x08, 0x80, *_projectedSoundingNote, 0}};
+        }
+        std::optional<MIDI_Note> projected;
+        if (step.isEnabled) {
+            projected = step.note;
+            requests[count++] = {{_nextBoundaryTick, SwingMetro::swingPhase(stepIndex, _swing)},
+                                 {0x09, 0x90, step.note, step.velocity}};
+        }
+        const auto result = queue.enqueueBatch(requests, count);
+        if (result != SwingMetro::MidiEventQueueEnqueueResult::Ok) {
+            return result;
+        }
+        _projectedSoundingNote = projected;
+        _nextBoundaryTick += SwingMetro::TICKS_PER_SIXTEENTH;
+    }
+    return SwingMetro::MidiEventQueueEnqueueResult::Ok;
+}
+
+void Sequencer::notifyBoundaryReached(SwingMetro::TransportTick tick) {
+    _currentStepIndex =
+        static_cast<StepIndex>((tick / SwingMetro::TICKS_PER_SIXTEENTH) % STEPS_COUNT);
+    _hasCurrentStep = true;
+}
+
+void Sequencer::notifyNoteOnSent(MIDI_Note note) { _actualSoundingNote = note; }
+
+void Sequencer::notifyNoteOffSent(MIDI_Note note) {
+    if (_actualSoundingNote == note) {
+        _actualSoundingNote.reset();
+    }
+}
+
+std::optional<MIDI_Note> Sequencer::actualSoundingNote() const { return _actualSoundingNote; }
 
 void Sequencer::sync(uint32_t micros) {
     _lastStepAt = micros - _stepPeriodUs;
@@ -133,14 +202,13 @@ bool Sequencer::update(uint32_t micros) {
 }
 
 void Sequencer::externalStart() {
-    _running = true;
+    start();
     _currentStepIndex = STEPS_COUNT - 1;
-    _hasCurrentStep = false;
 }
 
-void Sequencer::externalContinue() { _running = true; }
+void Sequencer::externalContinue() { continuePlayback(); }
 
-void Sequencer::externalStop() { _running = false; }
+void Sequencer::externalStop() { (void)stop(); }
 
 bool Sequencer::advanceExternal() {
     if (!_running) {

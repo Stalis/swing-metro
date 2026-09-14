@@ -55,7 +55,7 @@ class Encoder {
     bool _aBuf = false;
     bool _bBuf = false;
 
-    static const std::uint8_t _targetSteps = 4;
+    static const std::uint8_t _TARGET_STEPS = 4;
     std::uint8_t _accumulatedSteps = 0;
     EncoderDirection _lastDirection = EncoderDirection::Undefined;
     EncoderState _currentState;

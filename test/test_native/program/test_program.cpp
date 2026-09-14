@@ -34,7 +34,7 @@ void testProgramDefaultsAreValid() {
 
 void testCaptureProgramReadsAllRuntimeOwners() {
     auto tempo = makeCounter(180, 40, 240);
-    auto swing = makeCounter(75, 50, 100);
+    auto swing = makeCounter(75, 50, 90);
     auto volume = makeCounter(25, 0, 100);
     Sequencer sequencer;
     auto steps = sequencer.steps();
@@ -61,7 +61,7 @@ void testCaptureProgramReadsAllRuntimeOwners() {
 
 void testApplyProgramReplacesAllPersistedRuntimeState() {
     auto tempo = makeCounter(120, 40, 240);
-    auto swing = makeCounter(50, 50, 100);
+    auto swing = makeCounter(50, 50, 90);
     auto volume = makeCounter(100, 0, 100);
     Sequencer sequencer;
     SwingMetro::MidiClockSettings midiClock;
@@ -79,6 +79,7 @@ void testApplyProgramReplacesAllPersistedRuntimeState() {
     TEST_ASSERT_EQUAL_UINT8(66, swing.getValue());
     TEST_ASSERT_EQUAL_UINT8(33, volume.getValue());
     TEST_ASSERT_EQUAL_UINT8(200, sequencer.getBpm());
+    TEST_ASSERT_EQUAL_UINT8(66, sequencer.getSwing());
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::Internal),
                             static_cast<std::uint8_t>(midiClock.mode()));
     const auto& steps = sequencer.steps();
@@ -93,7 +94,7 @@ void testApplyProgramReplacesAllPersistedRuntimeState() {
 
 void testApplyProgramRejectsInvalidProgramWithoutChanges() {
     auto tempo = makeCounter(120, 40, 240);
-    auto swing = makeCounter(50, 50, 100);
+    auto swing = makeCounter(50, 50, 90);
     auto volume = makeCounter(100, 0, 100);
     Sequencer sequencer;
     SwingMetro::MidiClockSettings midiClock;
@@ -110,6 +111,20 @@ void testApplyProgramRejectsInvalidProgramWithoutChanges() {
                             static_cast<std::uint8_t>(midiClock.mode()));
 }
 
+void testApplyProgramClampsLegacySwing() {
+    auto tempo = makeCounter(120, 40, 240);
+    auto swing = makeCounter(50, 50, 90);
+    auto volume = makeCounter(100, 0, 100);
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings midiClock;
+    SwingMetro::Program legacy;
+    legacy.swing = 100;
+
+    TEST_ASSERT_TRUE(SwingMetro::applyProgram(legacy, tempo, swing, volume, sequencer, midiClock));
+    TEST_ASSERT_EQUAL_UINT8(90, swing.getValue());
+    TEST_ASSERT_EQUAL_UINT8(90, sequencer.getSwing());
+}
+
 } // namespace
 
 void testProgramMain() {
@@ -117,4 +132,5 @@ void testProgramMain() {
     RUN_TEST(testCaptureProgramReadsAllRuntimeOwners);
     RUN_TEST(testApplyProgramReplacesAllPersistedRuntimeState);
     RUN_TEST(testApplyProgramRejectsInvalidProgramWithoutChanges);
+    RUN_TEST(testApplyProgramClampsLegacySwing);
 }
