@@ -31,20 +31,17 @@ SPSC-очереди в критической секции alarm получае�
 ModeSwitch или Storage. Перезапуск также очищает оставшиеся старые записи с явно
 переданной причиной до синхронной публикации нового первого тика.
 
-## Время callback и граница шага 1.4
+## Время callback после шага 1.4
 
-При постановке alarm драйвер один раз получает относительную цель
-`make_timeout_time_us(delayUs)`, сохраняет её младшие 32 бита и передаёт ту же цель
-в `add_alarm_at()`. Callback один раз получает фактическое время и передаёт в
-`InternalTickSource::onAlarm(scheduledDeadlineUs, actualCallbackAtUs)` оба значения.
-Следующая цель всё ещё вычисляется относительно предыдущего callback, поэтому это
-не вводит абсолютную музыкальную сетку шага 1.4.
+Драйвер передаёт `InternalTickAlarmRequest` с generation и назначенной modulo-`2^32`
+целью. Он преобразует её в ближайшую будущую 64-bit Pico boot-time цель, проверяет id
+callback и не допускает синхронный reentrant callback при постановке alarm.
 
-В `TransportTickRecord::timestampUs` остаётся фактическое время callback. Поэтому
-`maxInternalTickProcessingLatenessUs` шага 1.2 продолжает измерять задержку между
-callback и обработкой основным циклом, а `maxCallbackLatenessUs` отдельно показывает
-опоздание самого callback. Переход к абсолютному расписанию, catch-up и политика
-просроченных deadline остаются задачей шага 1.4.
+`TransportTickRecord::timestampUs` — назначенное время музыкальной сетки. Поэтому
+`maxInternalTickProcessingLatenessUs` шага 1.2 измеряет задержку main loop от
+запланированного тика, а `maxCallbackLatenessUs` отдельно показывает задержку IRQ.
+`staleAlarmCallbacks`, `missedScheduledTargets` и ошибки arm различают устаревший
+запрос, пропущенные цели и отказ hardware alarm.
 
 Интервалы и lateness используют modulo-`2^32` арифметику и сравнение только на
 строгом горизонте `< 2^31` мкс. Неопределённая или слишком далёкая пара не попадает
@@ -61,9 +58,9 @@ version нечётная или изменилась. Consumer-счётчики 
 snapshot. Таким образом, multi-writer seqlock между IRQ и consumer не используется.
 
 В IRQ выполняются только ограниченное число атомарных операций, вычисления
-максимумов, одна попытка публикации и относительная постановка следующего alarm.
-Там нет печати, выделения памяти, блокирующего вывода или retry-цикла. Retry находится
-только в snapshot API вне IRQ.
+максимумов, одна попытка публикации и постановка следующей абсолютной цели. Там нет
+печати, выделения памяти, блокирующего вывода или retry-цикла. Retry находится только
+в snapshot API вне IRQ.
 
 ## Инварианты
 
@@ -93,22 +90,23 @@ snapshot. Таким образом, multi-writer seqlock между IRQ и cons
 - Шесть накопленных records дают четыре pop/F8 и два budget discard.
 - Stop, mode switch и storage относят по две записи к своей причине и не увеличивают
   F8 attempts.
-- Deadlines `1000, 2000, 3000` и callback `1010, 2050, 3020` дают максимум
-  фактического callback interval `1040` мкс и lateness `50` мкс.
-- Отдельно проверены wrap-around, переустановка baseline на горизонте `2^31` и после
-  нового Start.
+- Последовательные grid callback с lateness `10` и `50` мкс подтверждают, что
+  callback interval использует фактические времена, а lateness — назначенный
+  deadline.
+- Stale callback также входит в физический callback interval, но не в lateness
+  актуального deadline; отдельно проверены wrap-around и переустановка baseline на
+  горизонте `2^31`.
 
 Native-тесты проверяют аппаратно-независимое сообщение об arm failure. Реальный
-отрицательный результат `add_alarm_at()` и точность Pico alarm требуют аппаратного
+неположительный результат `add_alarm_at()` и точность Pico alarm требуют аппаратного
 прогона; firmware build проверяет интеграцию с Pico SDK.
 
 ## Проверки
 
-- `make test`: 227/227 native-тестов пройдено.
+- `make test`: 233/233 native-теста пройдены после шага 1.4.
 - `make verify`: пройдены format-check, clang-tidy, native-тесты и сборка `rpipico2`.
 - Аппаратный прогон не выполнялся.
 
 ## Вне объёма
 
-USB acceptance/retry, гистограммы и вывод статистики. Исправление относительного
-расписания alarm выполняется в шаге 1.4.
+USB acceptance/retry, гистограммы и вывод статистики остаются вне шага.

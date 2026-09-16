@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 
 #include "timestamp.h"
@@ -18,6 +20,13 @@ enum class InternalTickDiscardReason : std::uint8_t {
     Storage,
 };
 
+struct InternalTickAlarmRequest {
+    std::uint32_t generation = 0;
+    std::uint32_t deadlineUs = 0;
+
+    [[nodiscard]] constexpr auto valid() const noexcept -> bool { return generation != 0; }
+};
+
 struct InternalTickDiagnostics {
     std::uint32_t alarmCallbackInvocations = 0;
     std::uint32_t synchronousStartPublicationAttempts = 0;
@@ -27,6 +36,10 @@ struct InternalTickDiagnostics {
     std::uint32_t modeSwitchDiscards = 0;
     std::uint32_t storageDiscards = 0;
     std::uint32_t alarmArmFailures = 0;
+    std::uint32_t staleAlarmCallbacks = 0;
+    std::uint32_t staleAlarmArmFailures = 0;
+    std::uint32_t missedScheduledTargets = 0;
+    std::uint32_t outOfHorizonAlarmCallbacks = 0;
     std::uint32_t maxActualCallbackIntervalUs = 0;
     std::uint32_t maxCallbackLatenessUs = 0;
 };
@@ -50,11 +63,13 @@ class InternalTickSource {
                InternalTickDiscardReason discardReason = InternalTickDiscardReason::Stop) noexcept
         -> std::uint32_t {
         beginDiagnosticsUpdate();
+        nextGeneration();
         _active = true;
         setBpm(bpm);
         _haveCallbackTimestamp = false;
         addDiscards(discardReason, _ticks.discard());
         const auto periodUs = nextPeriodUs();
+        _nextDeadlineUs = timestampUs + periodUs;
         addOne(_diagnostics.synchronousStartPublicationAttempts);
         publish({timestampUs, periodUs});
         endDiagnosticsUpdate();
@@ -65,6 +80,7 @@ class InternalTickSource {
         -> void {
         beginDiagnosticsUpdate();
         _active = false;
+        nextGeneration();
         addDiscards(discardReason, _ticks.discard());
         endDiagnosticsUpdate();
     }
@@ -74,25 +90,70 @@ class InternalTickSource {
         _fractionalUs = 0;
     }
 
-    [[nodiscard]] auto onAlarm(std::uint32_t scheduledDeadlineUs,
+    [[nodiscard]] auto setBpmAt(std::uint8_t bpm, std::uint32_t appliedAtUs) noexcept
+        -> std::uint32_t {
+        beginDiagnosticsUpdate();
+        setBpm(bpm);
+        if (_active) {
+            nextGeneration();
+            const auto periodUs = nextPeriodUs();
+            _nextDeadlineUs = appliedAtUs + periodUs;
+            endDiagnosticsUpdate();
+            return periodUs;
+        }
+        endDiagnosticsUpdate();
+        return 0;
+    }
+
+    [[nodiscard]] auto alarmRequest() const noexcept -> InternalTickAlarmRequest {
+        return _active ? InternalTickAlarmRequest{_generation, _nextDeadlineUs}
+                       : InternalTickAlarmRequest{};
+    }
+
+    [[nodiscard]] auto onAlarm(InternalTickAlarmRequest request,
                                std::uint32_t actualCallbackAtUs) noexcept -> std::uint32_t {
         beginDiagnosticsUpdate();
         addOne(_diagnostics.alarmCallbackInvocations);
-        updateCallbackTiming(scheduledDeadlineUs, actualCallbackAtUs);
-        if (!_active) {
+        updateCallbackInterval(actualCallbackAtUs);
+        if (!_active || request.generation != _generation ||
+            request.deadlineUs != _nextDeadlineUs) {
+            addOne(_diagnostics.staleAlarmCallbacks);
             endDiagnosticsUpdate();
             return 0;
         }
+        if (!timestampReached(actualCallbackAtUs, request.deadlineUs)) {
+            // An early or >= 2^31-us callback cannot be ordered against this grid.
+            addOne(_diagnostics.outOfHorizonAlarmCallbacks);
+            _active = false;
+            nextGeneration();
+            endDiagnosticsUpdate();
+            return 0;
+        }
+        updateCallbackLateness(request.deadlineUs, actualCallbackAtUs);
         const auto periodUs = nextPeriodUs();
-        publish({actualCallbackAtUs, periodUs});
+        publish({request.deadlineUs, periodUs});
+        _nextDeadlineUs += periodUs;
+
+        const auto elapsedUs = actualCallbackAtUs - _nextDeadlineUs;
+        if (timestampReached(actualCallbackAtUs, _nextDeadlineUs)) {
+            const auto skipped = duePeriods(elapsedUs);
+            addCount(_diagnostics.missedScheduledTargets, skipped);
+            advancePeriods(skipped);
+        }
         endDiagnosticsUpdate();
         return periodUs;
     }
 
     // Called by the Pico driver while holding its producer critical section.
-    auto onAlarmArmFailure() noexcept -> void {
+    auto onAlarmArmFailure(InternalTickAlarmRequest request) noexcept -> void {
         beginDiagnosticsUpdate();
         addOne(_diagnostics.alarmArmFailures);
+        if (_active && request.generation == _generation && request.deadlineUs == _nextDeadlineUs) {
+            _active = false;
+            nextGeneration();
+        } else {
+            addOne(_diagnostics.staleAlarmArmFailures);
+        }
         endDiagnosticsUpdate();
     }
 
@@ -122,6 +183,10 @@ class InternalTickSource {
         std::atomic<std::uint32_t> modeSwitchDiscards{0};
         std::atomic<std::uint32_t> storageDiscards{0};
         std::atomic<std::uint32_t> alarmArmFailures{0};
+        std::atomic<std::uint32_t> staleAlarmCallbacks{0};
+        std::atomic<std::uint32_t> staleAlarmArmFailures{0};
+        std::atomic<std::uint32_t> missedScheduledTargets{0};
+        std::atomic<std::uint32_t> outOfHorizonAlarmCallbacks{0};
         std::atomic<std::uint32_t> maxActualCallbackIntervalUs{0};
         std::atomic<std::uint32_t> maxCallbackLatenessUs{0};
     };
@@ -177,14 +242,17 @@ class InternalTickSource {
         }
     }
 
-    auto updateCallbackTiming(std::uint32_t scheduledDeadlineUs,
-                              std::uint32_t actualCallbackAtUs) noexcept -> void {
+    auto updateCallbackInterval(std::uint32_t actualCallbackAtUs) noexcept -> void {
         if (_haveCallbackTimestamp && timestampReached(actualCallbackAtUs, _lastCallbackAtUs)) {
             updateMaximum(_diagnostics.maxActualCallbackIntervalUs,
                           actualCallbackAtUs - _lastCallbackAtUs);
         }
         _lastCallbackAtUs = actualCallbackAtUs;
         _haveCallbackTimestamp = true;
+    }
+
+    auto updateCallbackLateness(std::uint32_t scheduledDeadlineUs,
+                                std::uint32_t actualCallbackAtUs) noexcept -> void {
         if (timestampReached(actualCallbackAtUs, scheduledDeadlineUs)) {
             updateMaximum(_diagnostics.maxCallbackLatenessUs,
                           actualCallbackAtUs - scheduledDeadlineUs);
@@ -200,8 +268,41 @@ class InternalTickSource {
                 _diagnostics.modeSwitchDiscards.load(std::memory_order_relaxed),
                 _diagnostics.storageDiscards.load(std::memory_order_relaxed),
                 _diagnostics.alarmArmFailures.load(std::memory_order_relaxed),
+                _diagnostics.staleAlarmCallbacks.load(std::memory_order_relaxed),
+                _diagnostics.staleAlarmArmFailures.load(std::memory_order_relaxed),
+                _diagnostics.missedScheduledTargets.load(std::memory_order_relaxed),
+                _diagnostics.outOfHorizonAlarmCallbacks.load(std::memory_order_relaxed),
                 _diagnostics.maxActualCallbackIntervalUs.load(std::memory_order_relaxed),
                 _diagnostics.maxCallbackLatenessUs.load(std::memory_order_relaxed)};
+    }
+
+    auto nextGeneration() noexcept -> void {
+        ++_generation;
+        if (_generation == 0) {
+            ++_generation;
+        }
+    }
+
+    [[nodiscard]] auto duePeriods(std::uint32_t elapsedUs) const noexcept -> std::uint32_t {
+        // _nextDeadlineUs is itself due. Count it plus every following rational-grid
+        // target at or before actualCallbackAtUs, including exact equality.
+        const auto denominator = static_cast<std::uint64_t>(_bpm) * PPQN;
+        const auto numerator =
+            (static_cast<std::uint64_t>(elapsedUs) + 1U) * denominator - 1U - _fractionalUs;
+        return static_cast<std::uint32_t>(numerator / MICROSECONDS_PER_MINUTE) + 1U;
+    }
+
+    auto advancePeriods(std::uint32_t count) noexcept -> void {
+        if (count == 0) {
+            return;
+        }
+        const auto denominator = static_cast<std::uint64_t>(_bpm) * PPQN;
+        // Advance count rational periods in one bounded operation while preserving
+        // the same residue sequence as repeated nextPeriodUs() calls.
+        const auto total =
+            static_cast<std::uint64_t>(count) * MICROSECONDS_PER_MINUTE + _fractionalUs;
+        _nextDeadlineUs += static_cast<std::uint32_t>(total / denominator);
+        _fractionalUs = static_cast<std::uint32_t>(total % denominator);
     }
 
     [[nodiscard]] auto nextPeriodUs() noexcept -> std::uint32_t {
@@ -217,8 +318,10 @@ class InternalTickSource {
     std::atomic<std::uint32_t> _diagnosticsVersion{0};
     AtomicDiagnostics _diagnostics;
     bool _active = false;
+    std::uint32_t _generation = 0;
     std::uint8_t _bpm = MIN_BPM;
     std::uint32_t _fractionalUs = 0;
+    std::uint32_t _nextDeadlineUs = 0;
     std::uint32_t _lastCallbackAtUs = 0;
     bool _haveCallbackTimestamp = false;
 };

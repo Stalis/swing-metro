@@ -255,8 +255,9 @@ void test_internal_tick_pipeline_balances_start_callbacks_and_clock_attempts() {
     (void)source.start(0, 120);
     controller.process(0, source.ticks());
     for (std::uint32_t tick = 1; tick <= 3; ++tick) {
-        (void)source.onAlarm(tick * 1'000, tick * 1'000);
-        controller.process(tick * 1'000, source.ticks());
+        const auto request = source.alarmRequest();
+        (void)source.onAlarm(request, request.deadlineUs);
+        controller.process(request.deadlineUs, source.ticks());
     }
 
     const auto diagnostics = controller.pipelineDiagnostics(source);
@@ -265,6 +266,26 @@ void test_internal_tick_pipeline_balances_start_callbacks_and_clock_attempts() {
     TEST_ASSERT_EQUAL_UINT32(4, diagnostics.producer.successfulPublications);
     TEST_ASSERT_EQUAL_UINT32(4, diagnostics.successfulConsumerPops);
     TEST_ASSERT_EQUAL_UINT32(4, diagnostics.outgoingInternalClockAttempts);
+}
+
+void test_internal_source_uses_scheduled_timestamp_for_f8_lateness() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickSource source;
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal);
+    controller.toggle(0);
+    (void)source.start(0, 120);
+    controller.process(0, source.ticks());
+    const auto request = source.alarmRequest();
+    (void)source.onAlarm(request, request.deadlineUs + 10);
+    controller.process(request.deadlineUs + 125, source.ticks());
+
+    TEST_ASSERT_EQUAL_UINT32(125, controller.diagnostics().maxInternalTickProcessingLatenessUs);
+    TEST_ASSERT_EQUAL_UINT32(125, controller.diagnostics().maxClockAttemptLatenessUs);
+    TEST_ASSERT_EQUAL_HEX8(0xF8, sink.packets[sink.count - 1][1]);
 }
 
 void test_internal_tick_pipeline_discards_budget_and_state_changes_without_clock() {
@@ -278,7 +299,8 @@ void test_internal_tick_pipeline_discards_budget_and_state_changes_without_clock
     controller.toggle(0);
     (void)source.start(0, 120);
     for (std::uint32_t tick = 1; tick <= 5; ++tick) {
-        (void)source.onAlarm(tick, tick);
+        const auto request = source.alarmRequest();
+        (void)source.onAlarm(request, request.deadlineUs);
     }
     controller.process(100, source.ticks());
     auto diagnostics = controller.pipelineDiagnostics(source);
@@ -286,14 +308,16 @@ void test_internal_tick_pipeline_discards_budget_and_state_changes_without_clock
     TEST_ASSERT_EQUAL_UINT32(2, diagnostics.budgetDiscards);
     TEST_ASSERT_EQUAL_UINT32(4, diagnostics.outgoingInternalClockAttempts);
 
-    (void)source.onAlarm(101, 101);
+    auto request = source.alarmRequest();
+    (void)source.onAlarm(request, request.deadlineUs);
     controller.toggle(101);
     source.stop(controller.internalTickDiscardReason());
     TEST_ASSERT_EQUAL_UINT32(1, controller.pipelineDiagnostics(source).producer.stopDiscards);
 
     controller.toggle(102);
     (void)source.start(102, 120);
-    (void)source.onAlarm(103, 103);
+    request = source.alarmRequest();
+    (void)source.onAlarm(request, request.deadlineUs);
     controller.applyMode(SwingMetro::MidiClockMode::External);
     source.stop(controller.internalTickDiscardReason());
     TEST_ASSERT_EQUAL_UINT32(2, controller.pipelineDiagnostics(source).producer.modeSwitchDiscards);
@@ -301,7 +325,8 @@ void test_internal_tick_pipeline_discards_budget_and_state_changes_without_clock
     controller.applyMode(SwingMetro::MidiClockMode::Internal);
     controller.toggle(104);
     (void)source.start(104, 120);
-    (void)source.onAlarm(105, 105);
+    request = source.alarmRequest();
+    (void)source.onAlarm(request, request.deadlineUs);
     controller.openStorage();
     source.stop(controller.internalTickDiscardReason());
     diagnostics = controller.pipelineDiagnostics(source);
@@ -676,6 +701,7 @@ void test_transport_controller_main() {
     RUN_TEST(test_display_step_changes_at_boundary_not_while_scheduling);
     RUN_TEST(test_internal_catch_up_is_bounded_and_reported);
     RUN_TEST(test_internal_tick_pipeline_balances_start_callbacks_and_clock_attempts);
+    RUN_TEST(test_internal_source_uses_scheduled_timestamp_for_f8_lateness);
     RUN_TEST(test_internal_tick_pipeline_discards_budget_and_state_changes_without_clock);
     RUN_TEST(test_capacity_schedule_failure_stops_once_and_clears_queue);
     RUN_TEST(test_tick_quota_schedule_failure_stops_once_and_clears_queue);

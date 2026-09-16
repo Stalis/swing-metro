@@ -26,12 +26,12 @@ class PicoInternalTickAlarm {
 
   private:
     static auto alarmCallback(alarm_id_t id, void* userData) -> int64_t;
-    auto arm(std::uint32_t delayUs) noexcept -> void;
+    auto arm(InternalTickAlarmRequest request) noexcept -> void;
 
     InternalTickSource& _source;
     critical_section_t _criticalSection{};
     alarm_id_t _alarmId = 0;
-    std::uint32_t _scheduledDeadlineUs = 0;
+    InternalTickAlarmRequest _request{};
     bool _alarmArmed = false;
     bool _active = false;
 };
