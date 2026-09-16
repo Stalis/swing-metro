@@ -235,7 +235,7 @@ void setup() {
 
 void loop() {
     midiClockReceiver.poll([&](const SwingMetro::MidiRealtimeEvent& event) {
-        transportController.handleExternal(event);
+        transportController.handleExternal(event, micros());
     });
     transportController.process(micros(), internalTicks.ticks());
 

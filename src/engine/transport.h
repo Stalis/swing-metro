@@ -14,6 +14,13 @@ constexpr TransportPhase PHASE_MAX = UINT16_MAX;
 constexpr std::uint8_t SWING_MIN_VALUE = 50;
 constexpr std::uint8_t SWING_MAX_VALUE = 90;
 
+[[nodiscard]] constexpr auto phaseOffsetUs(TransportPhase phase, std::uint32_t periodUs) noexcept
+    -> std::uint32_t {
+    constexpr auto phaseCount = static_cast<std::uint32_t>(PHASE_MAX) + 1U;
+    return static_cast<std::uint32_t>(
+        (static_cast<std::uint64_t>(phase) * periodUs + phaseCount - 1U) / phaseCount);
+}
+
 struct TransportPosition {
     TransportTick tick = 0;
     TransportPhase phase = 0;

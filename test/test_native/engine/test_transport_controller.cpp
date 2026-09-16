@@ -24,21 +24,27 @@ auto event(SwingMetro::MidiRealtimeEventType type, std::uint32_t timestampUs)
 
 void enableFirstStep(Sequencer& sequencer) { sequencer.toggleStep(0); }
 
+void handleExternal(SwingMetro::TransportController& controller,
+                    SwingMetro::MidiRealtimeEventType type, std::uint32_t timestampUs) {
+    controller.handleExternal(event(type, timestampUs), timestampUs);
+}
+
 void test_dispatcher_sends_tick_before_phase_zero_and_due_phase() {
     Sequencer sequencer;
     SwingMetro::MidiEventQueue queue;
     SwingMetro::Transport transport;
     Sink sink;
-    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink};
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
                       queue.enqueue({0, SwingMetro::phaseFromPercent(50)}, {0x09, 0x90, 60, 100}));
 
     dispatcher.start(true);
-    dispatcher.consumeTick({1'000, 20'000}, true);
+    dispatcher.consumeTick({1'000, 20'000}, true, 1'000);
     TEST_ASSERT_EQUAL_UINT32(2, sink.count);
     TEST_ASSERT_EQUAL_HEX8(0xFA, sink.packets[0][1]);
     TEST_ASSERT_EQUAL_HEX8(0xF8, sink.packets[1][1]);
-    dispatcher.dispatchDue(11'000);
+    dispatcher.dispatchDue(11'000, 11'000);
     TEST_ASSERT_EQUAL_UINT32(3, sink.count);
     TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[2][1]);
 }
@@ -70,11 +76,11 @@ void test_external_start_waits_for_measured_tick_and_never_echoes_clock() {
     SwingMetro::InternalTickStore<> ticks;
 
     controller.applyMode(SwingMetro::MidiClockMode::External);
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Start, 0));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 1'000));
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Start, 0);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 1'000);
     controller.process(1'000, ticks);
     TEST_ASSERT_EQUAL_UINT32(0, sink.count);
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 21'833));
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 21'833);
     TEST_ASSERT_EQUAL_UINT32(1, sink.count);
     TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[0][1]);
 }
@@ -87,11 +93,11 @@ void test_repeated_external_start_stops_sounding_note_before_reset() {
     SwingMetro::TransportController controller{sequencer, settings, sink};
 
     controller.applyMode(SwingMetro::MidiClockMode::External);
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Start, 0));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 1'000));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 21'833));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Start, 22'000));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 42'833));
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Start, 0);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 1'000);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 21'833);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Start, 22'000);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 42'833);
 
     TEST_ASSERT_EQUAL_UINT32(3, sink.count);
     TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[0][1]);
@@ -115,9 +121,9 @@ void test_stop_switch_and_loss_send_one_note_off_without_realtime_leak() {
     controller.applyMode(SwingMetro::MidiClockMode::External);
     TEST_ASSERT_EQUAL_HEX8(0x80, sink.packets[3][1]);
     TEST_ASSERT_EQUAL_HEX8(0xFC, sink.packets[4][1]);
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Start, 30'000));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 31'000));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 51'833));
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Start, 30'000);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 31'000);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 51'833);
     controller.process(51'833 + SwingMetro::ExternalMidiClock::CLOCK_LOSS_TIMEOUT_US, ticks);
     TEST_ASSERT_EQUAL_UINT32(7, sink.count);
     TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[5][1]);
@@ -147,12 +153,12 @@ void test_external_continue_waits_for_next_tick_without_retriggering() {
     SwingMetro::TransportController controller{sequencer, settings, sink};
 
     controller.applyMode(SwingMetro::MidiClockMode::External);
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Start, 0));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 1'000));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 21'833));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Stop, 22'000));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Continue, 23'000));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 42'666));
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Start, 0);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 1'000);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 21'833);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Stop, 22'000);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Continue, 23'000);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 42'666);
     TEST_ASSERT_TRUE(sequencer.isRunning());
     TEST_ASSERT_EQUAL_UINT32(2, sink.count);
     TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[0][1]);
@@ -168,17 +174,17 @@ void test_external_loss_relocks_with_one_clock_before_continue() {
     SwingMetro::InternalTickStore<> ticks;
 
     controller.applyMode(SwingMetro::MidiClockMode::External);
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Start, 0));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 1'000));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 21'833));
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Start, 0);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 1'000);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 21'833);
     controller.process(21'833 + SwingMetro::ExternalMidiClock::CLOCK_LOSS_TIMEOUT_US, ticks);
     TEST_ASSERT_FALSE(sequencer.isRunning());
 
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 300'000));
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 300'000);
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ExternalMidiClockStatus::Locked),
                             static_cast<std::uint8_t>(controller.externalStatus()));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Continue, 300'001));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 320'833));
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Continue, 300'001);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 320'833);
     controller.process(320'833, ticks);
 
     TEST_ASSERT_TRUE(sequencer.isRunning());
@@ -231,7 +237,7 @@ void test_internal_catch_up_is_bounded_and_reported() {
     }
     controller.process(100, ticks);
 
-    TEST_ASSERT_EQUAL_UINT32(4, controller.diagnostics().lateTicks);
+    TEST_ASSERT_EQUAL_UINT32(99, controller.diagnostics().maxInternalTickProcessingLatenessUs);
     TEST_ASSERT_EQUAL_UINT32(1, controller.diagnostics().droppedTicks);
     TEST_ASSERT_EQUAL_UINT32(5, sink.count);
     TEST_ASSERT_EQUAL_HEX8(0xF8, sink.packets[4][1]);
@@ -378,19 +384,20 @@ void test_period_changes_retime_deadline_without_changing_queue_position() {
     SwingMetro::MidiEventQueue queue;
     SwingMetro::Transport transport;
     Sink sink;
-    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink};
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
     const auto phase = SwingMetro::phaseFromPercent(75);
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
                       queue.enqueue({1, phase}, {0x09, 0x90, 60, 100}));
 
     dispatcher.start(false);
-    dispatcher.consumeTick({1'000, 20'000}, false);
-    dispatcher.consumeTick({21'000, 40'000}, false);
+    dispatcher.consumeTick({1'000, 20'000}, false, 1'000);
+    dispatcher.consumeTick({21'000, 40'000}, false, 21'000);
     TEST_ASSERT_EQUAL_UINT64(1, queue.nextPosition()->tick);
     TEST_ASSERT_EQUAL_UINT16(phase, queue.nextPosition()->phase);
-    dispatcher.dispatchDue(50'999);
+    dispatcher.dispatchDue(50'999, 50'999);
     TEST_ASSERT_EQUAL_UINT32(0, sink.count);
-    dispatcher.dispatchDue(51'000);
+    dispatcher.dispatchDue(51'000, 51'000);
     TEST_ASSERT_EQUAL_UINT32(1, sink.count);
     TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[0][1]);
 }
@@ -400,20 +407,21 @@ void test_dispatcher_does_not_send_phase_before_tick_start_or_deadline() {
     SwingMetro::MidiEventQueue queue;
     SwingMetro::Transport transport;
     Sink sink;
-    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink};
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
     const auto phase = SwingMetro::phaseFromPercent(75);
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
                       queue.enqueue({0, phase}, {0x09, 0x90, 60, 100}));
 
     dispatcher.start(false);
-    dispatcher.consumeTick({100'010, 20'000}, false);
-    dispatcher.dispatchDue(100'000);
+    dispatcher.consumeTick({100'010, 20'000}, false, 100'010);
+    dispatcher.dispatchDue(100'000, 100'000);
     TEST_ASSERT_EQUAL_UINT32(0, sink.count);
-    dispatcher.dispatchDue(100'010);
+    dispatcher.dispatchDue(100'010, 100'010);
     TEST_ASSERT_EQUAL_UINT32(0, sink.count);
-    dispatcher.dispatchDue(115'009);
+    dispatcher.dispatchDue(115'009, 115'009);
     TEST_ASSERT_EQUAL_UINT32(0, sink.count);
-    dispatcher.dispatchDue(115'010);
+    dispatcher.dispatchDue(115'010, 115'010);
     TEST_ASSERT_EQUAL_UINT32(1, sink.count);
     TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[0][1]);
 }
@@ -423,16 +431,17 @@ void test_dispatcher_sends_phase_after_timestamp_wrap() {
     SwingMetro::MidiEventQueue queue;
     SwingMetro::Transport transport;
     Sink sink;
-    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink};
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
     const auto phase = SwingMetro::phaseFromPercent(75);
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
                       queue.enqueue({0, phase}, {0x09, 0x90, 60, 100}));
 
     dispatcher.start(false);
-    dispatcher.consumeTick({UINT32_MAX - 9'999, 20'000}, false);
-    dispatcher.dispatchDue(4'999);
+    dispatcher.consumeTick({UINT32_MAX - 9'999, 20'000}, false, UINT32_MAX - 9'999);
+    dispatcher.dispatchDue(4'999, 4'999);
     TEST_ASSERT_EQUAL_UINT32(0, sink.count);
-    dispatcher.dispatchDue(5'000);
+    dispatcher.dispatchDue(5'000, 5'000);
     TEST_ASSERT_EQUAL_UINT32(1, sink.count);
 }
 
@@ -467,16 +476,124 @@ void test_external_tick_newer_than_process_timestamp_waits_for_deadline() {
     const auto phase = SwingMetro::phaseFromPercent(75);
 
     controller.applyMode(SwingMetro::MidiClockMode::External);
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Start, 0));
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Start, 0);
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
                       queue.enqueue({0, phase}, {0x09, 0x90, 62, 100}));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 80'010));
-    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 100'010));
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 80'010);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 100'010);
     controller.process(100'000, ticks);
     TEST_ASSERT_EQUAL_UINT32(0, sink.count);
     controller.process(115'010, ticks);
     TEST_ASSERT_EQUAL_UINT32(1, sink.count);
     TEST_ASSERT_EQUAL_UINT8(62, sink.packets[0][2]);
+}
+
+void test_service_interval_measures_all_process_calls_without_resetting_baseline() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickStore<> ticks;
+
+    controller.process(1'000, ticks);
+    TEST_ASSERT_EQUAL_UINT32(0, controller.diagnostics().maxServiceIntervalUs);
+    controller.toggle(0);
+    controller.toggle(0);
+    controller.process(1'100, ticks);
+    controller.openStorage();
+    controller.process(1'500, ticks);
+    TEST_ASSERT_EQUAL_UINT32(400, controller.diagnostics().maxServiceIntervalUs);
+}
+
+void test_tick_processing_lateness_uses_local_observations() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickStore<> ticks;
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal);
+    controller.toggle(0);
+    TEST_ASSERT_TRUE(ticks.publish({1'000, 20'000}));
+    controller.process(1'125, ticks);
+    TEST_ASSERT_EQUAL_UINT32(125, controller.diagnostics().maxInternalTickProcessingLatenessUs);
+    TEST_ASSERT_EQUAL_UINT32(125, controller.diagnostics().maxClockAttemptLatenessUs);
+
+    controller.applyMode(SwingMetro::MidiClockMode::External);
+    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Start, 30'000), 30'000);
+    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 31'000), 31'000);
+    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 51'000), 51'125);
+    TEST_ASSERT_EQUAL_UINT32(125, controller.diagnostics().maxExternalTickProcessingLatenessUs);
+}
+
+void test_queued_event_attempt_lateness_uses_ceil_phase_deadline() {
+    const auto phase = SwingMetro::phaseFromPercent(75);
+    TEST_ASSERT_EQUAL_UINT32(15'000, SwingMetro::phaseOffsetUs(phase, 20'000));
+    TEST_ASSERT_EQUAL_UINT32(1, SwingMetro::phaseOffsetUs(1, 20'000));
+
+    for (const auto attemptAtUs : {15'999U, 16'000U, 16'025U}) {
+        Sequencer sequencer;
+        SwingMetro::MidiEventQueue queue;
+        SwingMetro::Transport transport;
+        Sink sink;
+        SwingMetro::TransportDiagnostics diagnostics;
+        SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+        TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                          queue.enqueue({0, phase}, {0x09, 0x90, 60, 100}));
+
+        dispatcher.start(false);
+        dispatcher.consumeTick({1'000, 20'000}, false, 1'000);
+        dispatcher.dispatchDue(attemptAtUs, attemptAtUs);
+        TEST_ASSERT_EQUAL_UINT32(attemptAtUs == 16'025U ? 25 : 0,
+                                 diagnostics.maxQueuedEventAttemptLatenessUs);
+    }
+}
+
+void test_attempt_lateness_classifies_queued_clock_and_wraps() {
+    const auto phase = SwingMetro::phaseFromPercent(75);
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, phase}, SwingMetro::usbMidiRealTimePacket(0xF8)));
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, phase}, {0x09, 0x90, 60, 100}));
+
+    dispatcher.start(false);
+    dispatcher.consumeTick({UINT32_MAX - 9'999, 20'000}, false, UINT32_MAX - 9'999);
+    dispatcher.dispatchDue(5'025, 5'025);
+    TEST_ASSERT_EQUAL_UINT32(2, sink.count);
+    TEST_ASSERT_EQUAL_HEX8(0xF8, sink.packets[0][1]);
+    TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[1][1]);
+    TEST_ASSERT_EQUAL_UINT32(25, diagnostics.maxClockAttemptLatenessUs);
+    TEST_ASSERT_EQUAL_UINT32(25, diagnostics.maxQueuedEventAttemptLatenessUs);
+}
+
+void test_service_and_tick_lateness_wrap_and_rebaseline_at_horizon() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickStore<> ticks;
+
+    controller.process(UINT32_MAX - 100, ticks);
+    controller.process(50, ticks);
+    TEST_ASSERT_EQUAL_UINT32(151, controller.diagnostics().maxServiceIntervalUs);
+
+    const auto antipodal = 50U + SwingMetro::TIMESTAMP_COMPARISON_HORIZON_US;
+    controller.process(antipodal, ticks);
+    controller.process(antipodal + 25U, ticks);
+    TEST_ASSERT_EQUAL_UINT32(151, controller.diagnostics().maxServiceIntervalUs);
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal);
+    controller.toggle(0);
+    TEST_ASSERT_TRUE(ticks.publish({UINT32_MAX - 50, 20'000}));
+    controller.process(75, ticks);
+    TEST_ASSERT_EQUAL_UINT32(126, controller.diagnostics().maxInternalTickProcessingLatenessUs);
+    TEST_ASSERT_EQUAL_UINT32(126, controller.diagnostics().maxClockAttemptLatenessUs);
 }
 
 } // namespace
@@ -502,4 +619,9 @@ void test_transport_controller_main() {
     RUN_TEST(test_dispatcher_sends_phase_after_timestamp_wrap);
     RUN_TEST(test_internal_tick_newer_than_process_timestamp_waits_for_deadline);
     RUN_TEST(test_external_tick_newer_than_process_timestamp_waits_for_deadline);
+    RUN_TEST(test_service_interval_measures_all_process_calls_without_resetting_baseline);
+    RUN_TEST(test_tick_processing_lateness_uses_local_observations);
+    RUN_TEST(test_queued_event_attempt_lateness_uses_ceil_phase_deadline);
+    RUN_TEST(test_attempt_lateness_classifies_queued_clock_and_wraps);
+    RUN_TEST(test_service_and_tick_lateness_wrap_and_rebaseline_at_horizon);
 }
