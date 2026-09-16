@@ -6,6 +6,7 @@
 #include "midi_event_queue.h"
 #include "midi_usb_packet.h"
 #include "sequencer.h"
+#include "timestamp.h"
 #include "transport.h"
 
 #include <cstdint>
@@ -62,6 +63,9 @@ class MidiDispatcher {
 
     auto dispatchDue(std::uint32_t nowUs) -> void {
         if (!_haveTick || !_transport.snapshot().running) {
+            return;
+        }
+        if (!timestampReached(nowUs, _tickStartUs)) {
             return;
         }
         const auto elapsed = nowUs - _tickStartUs;
@@ -187,7 +191,7 @@ class TransportController {
             std::uint8_t processed = 0;
             while (processed < MAX_INTERNAL_TICKS_PER_PASS && ticks.pop(record)) {
                 _diagnostics.lateTicks +=
-                    static_cast<std::uint32_t>(isDue(nowUs, record.timestampUs));
+                    static_cast<std::uint32_t>(timestampReached(nowUs, record.timestampUs));
                 _dispatcher.consumeTick(record, _settings.mode() == MidiClockMode::Internal);
                 ++processed;
             }
@@ -228,11 +232,6 @@ class TransportController {
             MidiEventQueueEnqueueResult::Ok) {
             stop();
         }
-    }
-
-    [[nodiscard]] static auto isDue(std::uint32_t nowUs, std::uint32_t timestampUs) noexcept
-        -> bool {
-        return static_cast<std::int32_t>(nowUs - timestampUs) >= 0;
     }
 
     auto stop(bool resetExternal = true) -> void {

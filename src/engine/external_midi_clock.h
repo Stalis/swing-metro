@@ -1,6 +1,7 @@
 #pragma once
 
 #include "midi_realtime_event.h"
+#include "timestamp.h"
 #include "transport_tick.h"
 
 #include <cstdint>
@@ -69,9 +70,7 @@ class ExternalMidiClock {
     }
 
     auto update(std::uint32_t nowUs) noexcept -> ExternalMidiClockResult {
-        if (_haveClock &&
-            static_cast<std::int32_t>(nowUs - _lastClockAtUs) >=
-                static_cast<std::int32_t>(CLOCK_LOSS_TIMEOUT_US) &&
+        if (_haveClock && timestampReached(nowUs, _lastClockAtUs + CLOCK_LOSS_TIMEOUT_US) &&
             _status != ExternalMidiClockStatus::Lost) {
             _status = ExternalMidiClockStatus::Lost;
             const bool wasRunning = _running;

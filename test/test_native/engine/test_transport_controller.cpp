@@ -395,6 +395,90 @@ void test_period_changes_retime_deadline_without_changing_queue_position() {
     TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[0][1]);
 }
 
+void test_dispatcher_does_not_send_phase_before_tick_start_or_deadline() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink};
+    const auto phase = SwingMetro::phaseFromPercent(75);
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, phase}, {0x09, 0x90, 60, 100}));
+
+    dispatcher.start(false);
+    dispatcher.consumeTick({100'010, 20'000}, false);
+    dispatcher.dispatchDue(100'000);
+    TEST_ASSERT_EQUAL_UINT32(0, sink.count);
+    dispatcher.dispatchDue(100'010);
+    TEST_ASSERT_EQUAL_UINT32(0, sink.count);
+    dispatcher.dispatchDue(115'009);
+    TEST_ASSERT_EQUAL_UINT32(0, sink.count);
+    dispatcher.dispatchDue(115'010);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.count);
+    TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[0][1]);
+}
+
+void test_dispatcher_sends_phase_after_timestamp_wrap() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink};
+    const auto phase = SwingMetro::phaseFromPercent(75);
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, phase}, {0x09, 0x90, 60, 100}));
+
+    dispatcher.start(false);
+    dispatcher.consumeTick({UINT32_MAX - 9'999, 20'000}, false);
+    dispatcher.dispatchDue(4'999);
+    TEST_ASSERT_EQUAL_UINT32(0, sink.count);
+    dispatcher.dispatchDue(5'000);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.count);
+}
+
+void test_internal_tick_newer_than_process_timestamp_waits_for_deadline() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::TransportController controller{sequencer, settings, sink, queue};
+    SwingMetro::InternalTickStore<> ticks;
+    const auto phase = SwingMetro::phaseFromPercent(75);
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal);
+    controller.toggle(0);
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, phase}, {0x09, 0x90, 61, 100}));
+    TEST_ASSERT_TRUE(ticks.publish({100'010, 20'000}));
+    controller.process(100'000, ticks);
+    TEST_ASSERT_EQUAL_UINT32(2, sink.count);
+    controller.process(115'010, ticks);
+    TEST_ASSERT_EQUAL_UINT32(3, sink.count);
+    TEST_ASSERT_EQUAL_UINT8(61, sink.packets[2][2]);
+}
+
+void test_external_tick_newer_than_process_timestamp_waits_for_deadline() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::TransportController controller{sequencer, settings, sink, queue};
+    SwingMetro::InternalTickStore<> ticks;
+    const auto phase = SwingMetro::phaseFromPercent(75);
+
+    controller.applyMode(SwingMetro::MidiClockMode::External);
+    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Start, 0));
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, phase}, {0x09, 0x90, 62, 100}));
+    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 80'010));
+    controller.handleExternal(event(SwingMetro::MidiRealtimeEventType::Clock, 100'010));
+    controller.process(100'000, ticks);
+    TEST_ASSERT_EQUAL_UINT32(0, sink.count);
+    controller.process(115'010, ticks);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.count);
+    TEST_ASSERT_EQUAL_UINT8(62, sink.packets[0][2]);
+}
+
 } // namespace
 
 void test_transport_controller_main() {
@@ -414,4 +498,8 @@ void test_transport_controller_main() {
     RUN_TEST(test_stop_before_delayed_on_does_not_send_an_off);
     RUN_TEST(test_stop_after_delayed_on_sends_its_actual_off);
     RUN_TEST(test_period_changes_retime_deadline_without_changing_queue_position);
+    RUN_TEST(test_dispatcher_does_not_send_phase_before_tick_start_or_deadline);
+    RUN_TEST(test_dispatcher_sends_phase_after_timestamp_wrap);
+    RUN_TEST(test_internal_tick_newer_than_process_timestamp_waits_for_deadline);
+    RUN_TEST(test_external_tick_newer_than_process_timestamp_waits_for_deadline);
 }

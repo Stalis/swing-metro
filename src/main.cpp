@@ -234,11 +234,10 @@ void setup() {
 }
 
 void loop() {
-    const auto nowUs = micros();
     midiClockReceiver.poll([&](const SwingMetro::MidiRealtimeEvent& event) {
         transportController.handleExternal(event);
     });
-    transportController.process(nowUs, internalTicks.ticks());
+    transportController.process(micros(), internalTicks.ticks());
 
     buttonMatrix.readButtons();
     const auto now = millis();
