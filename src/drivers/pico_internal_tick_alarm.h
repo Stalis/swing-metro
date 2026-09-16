@@ -17,8 +17,11 @@ class PicoInternalTickAlarm {
 
     ~PicoInternalTickAlarm() { stop(); }
 
-    auto start(std::uint8_t bpm) noexcept -> void;
-    auto stop() noexcept -> void;
+    auto start(std::uint8_t bpm,
+               InternalTickDiscardReason discardReason = InternalTickDiscardReason::Stop) noexcept
+        -> void;
+    auto stop(InternalTickDiscardReason discardReason = InternalTickDiscardReason::Stop) noexcept
+        -> void;
     auto setBpm(std::uint8_t bpm) noexcept -> void;
 
   private:
@@ -28,6 +31,8 @@ class PicoInternalTickAlarm {
     InternalTickSource& _source;
     critical_section_t _criticalSection{};
     alarm_id_t _alarmId = 0;
+    std::uint32_t _scheduledDeadlineUs = 0;
+    bool _alarmArmed = false;
     bool _active = false;
 };
 

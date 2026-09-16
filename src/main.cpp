@@ -188,11 +188,12 @@ void handleProgramStorageEvent(const SwingMetro::AppEvent& event) {
 void syncInternalAlarm() {
     const bool shouldRun = transportController.usesInternalTiming();
     if (shouldRun && !internalAlarmActive) {
-        internalTickAlarm.start(mainSequencer.getBpm());
+        internalTickAlarm.start(mainSequencer.getBpm(),
+                                transportController.internalTickDiscardReason());
         internalAlarmActive = true;
         internalAlarmBpm = mainSequencer.getBpm();
     } else if (!shouldRun && internalAlarmActive) {
-        internalTickAlarm.stop();
+        internalTickAlarm.stop(transportController.internalTickDiscardReason());
         internalAlarmActive = false;
     } else if (shouldRun && internalAlarmBpm != mainSequencer.getBpm()) {
         internalTickAlarm.setBpm(mainSequencer.getBpm());

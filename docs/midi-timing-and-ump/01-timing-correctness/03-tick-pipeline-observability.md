@@ -1,100 +1,114 @@
 # Шаг 1.3. Наблюдаемость пути тиков
 
-Статус: запланировано. Зависит от шага 1.2.
+Статус: выполнено. Зависит от шага 1.2.
 
 ## Цель
 
 Сделать путь внутреннего тика от аппаратного callback до попытки отправки Clock
 проверяемым по раздельным счётчикам и задержкам, не утяжеляя IRQ.
 
-## Контекст текущей реализации
+## Реализованная модель
 
-Путь внутреннего тика:
+`InternalTickDiagnostics` описывает producer-часть пути:
 
-`PicoInternalTickAlarm::alarmCallback()` → `InternalTickSource::onAlarm()` →
-`TransportTickStore::publish()` → `TransportController::process()`/`pop()` →
-`MidiDispatcher::consumeTick()` → `MidiPacketSink::send(F8)`.
+- вызовы alarm callback;
+- попытки синхронной публикации первого тика при Start;
+- успешные и неуспешные публикации;
+- discard при Stop, смене clock mode и открытии storage;
+- ошибки постановки alarm;
+- максимальный интервал между фактическими callback;
+- максимальное опоздание callback относительно deadline текущего alarm.
 
-`TransportTickStore` — single-producer/single-consumer кольцо на atomics. `publish()`
-возвращает `false` при заполнении и увеличивает `overflowCount()`. В
-`InternalTickSource::onAlarm()` результат публикации сейчас отбрасывается.
-`TransportController` извлекает не более `MAX_INTERNAL_TICKS_PER_PASS == 4`, затем
-discard-ит остаток. Существующий `droppedTicks` учитывает этот discard, но не обязан
-совпадать с overflow producer-а.
+`TransportDiagnostics` сохраняет метрики шага 1.2 и дополнительно считает успешные
+consumer pop и прямые попытки исходящего internal F8. `droppedTicks` по-прежнему
+означает только остаток, отброшенный после лимита
+`MAX_INTERNAL_TICKS_PER_PASS == 4`. `TickPipelineDiagnostics` объединяет согласованный
+producer snapshot с этими полями, принадлежащими ядру 0.
 
-Alarm callback вызывает `time_us_32()` и повторно ставит alarm. Текущая очередь
-хранит timestamp callback и период, но не назначенное время alarm, поэтому по ней
-нельзя отличить поздний callback от поздней обработки основным циклом.
+`InternalTickDiscardReason` передаётся из `TransportController` через
+`syncInternalAlarm()` в `PicoInternalTickAlarm::start()`/`stop()`. Поэтому очистка
+SPSC-очереди в критической секции alarm получает ровно одну причину: Stop,
+ModeSwitch или Storage. Перезапуск также очищает оставшиеся старые записи с явно
+переданной причиной до синхронной публикации нового первого тика.
 
-## Требуемая модель счётчиков
+## Время callback и граница шага 1.4
 
-Раздельно учитывать как минимум:
+При постановке alarm драйвер один раз получает относительную цель
+`make_timeout_time_us(delayUs)`, сохраняет её младшие 32 бита и передаёт ту же цель
+в `add_alarm_at()`. Callback один раз получает фактическое время и передаёт в
+`InternalTickSource::onAlarm(scheduledDeadlineUs, actualCallbackAtUs)` оба значения.
+Следующая цель всё ещё вычисляется относительно предыдущего callback, поэтому это
+не вводит абсолютную музыкальную сетку шага 1.4.
 
-- вызовы callback;
-- синхронные публикации первого тика при Start;
-- успешные публикации тика;
-- отказы публикации/overflow;
-- успешные извлечения consumer-ом;
-- явный discard из-за бюджета, остановки, смены режима или storage;
-- попытки отправки исходящего Clock;
-- ошибки постановки следующего alarm.
+В `TransportTickRecord::timestampUs` остаётся фактическое время callback. Поэтому
+`maxInternalTickProcessingLatenessUs` шага 1.2 продолжает измерять задержку между
+callback и обработкой основным циклом, а `maxCallbackLatenessUs` отдельно показывает
+опоздание самого callback. Переход к абсолютному расписанию, catch-up и политика
+просроченных deadline остаются задачей шага 1.4.
 
-Причины discard, которые нужны для расследования, нельзя объединять в один счётчик,
-если после этого невозможно восстановить баланс. Для согласованного интервала должно
-быть возможно объяснить каждый callback и каждый опубликованный тик.
+Интервалы и lateness используют modulo-`2^32` арифметику и сравнение только на
+строгом горизонте `< 2^31` мкс. Неопределённая или слишком далёкая пара не попадает
+в максимум и переустанавливает baseline. Start также переустанавливает callback
+baseline, чтобы пауза транспорта не считалась интервалом callback.
 
-Требуемые максимумы:
+## Согласованный snapshot и стоимость IRQ
 
-- интервал между последовательными callback;
-- lateness callback относительно назначенного alarm deadline;
-- задержка обработки относительно timestamp тика (использовать определение шага 1.2).
+Producer изменяется одним писателем за раз под существующей critical section
+`PicoInternalTickAlarm`. Перед группой изменений version становится нечётной, после
+неё — чётной. `InternalTickSource::diagnostics()` на ядре 0 повторяет чтение, если
+version нечётная или изменилась. Consumer-счётчики не входят в этот seqlock: ими
+владеет ядро 0, а `pipelineDiagnostics()` добавляет их после устойчивого producer
+snapshot. Таким образом, multi-writer seqlock между IRQ и consumer не используется.
 
-## Работа
+В IRQ выполняются только ограниченное число атомарных операций, вычисления
+максимумов, одна попытка публикации и относительная постановка следующего alarm.
+Там нет печати, выделения памяти, блокирующего вывода или retry-цикла. Retry находится
+только в snapshot API вне IRQ.
 
-1. Определить компактную diagnostics-структуру для producer/IRQ и безопасный способ
-   получить согласованный snapshot на ядре 0. Простое чтение отдельных атомиков не
-   называть согласованным снимком, если значения могут относиться к разным callback.
-2. Передать в alarm/source назначенный deadline и фактическое время callback так,
-   чтобы измерять callback lateness. Выбрать поля записи тика, не смешивающие эти
-   два времени.
-3. Учитывать результат `publish()` без печати, блокировки, выделения памяти и
-   неограниченных циклов в IRQ.
-4. На consumer-стороне разделить pop, budget discard и discard по состоянию.
-5. Учитывать попытки F8 в точке вызова sink. До этапа 2 это именно попытки, не
-   подтверждённое принятие USB-стеком.
-6. Определить инварианты счётчиков для спокойного прогона, overflow и discard.
-   Учесть, что snapshot, снятый во время callback, может требовать retry/versioning
-   или краткой критической секции вне IRQ.
-7. Не добавлять вывод статистики в callback или MIDI path. Достаточно API snapshot,
-   доступного тестам и будущему механизму выгрузки.
+## Инварианты
+
+Для snapshot без конкурентного изменения очереди и до насыщения счётчиков:
+
+- `successfulPublications = successfulConsumerPops + budgetDiscards +
+  stopDiscards + modeSwitchDiscards + storageDiscards + queuedRecords`;
+- потерянная при overflow запись увеличивает callback и failed publication, но не
+  pop, discard или Clock attempt;
+- в спокойном internal-прогоне после Start и N callback:
+  `successfulPublications = successfulConsumerPops =
+  outgoingInternalClockAttempts = N + 1`, а callback count равен N;
+- каждый извлечённый record учитывается как pop до передачи dispatcher;
+- outgoing internal Clock учитывается непосредственно перед `sink.send(F8)` и пока
+  означает попытку, а не принятие USB-стеком;
+- каждый очищенный опубликованный record получает одну причину discard.
+
+Счётчики насыщаются на `UINT32_MAX`, чтобы переполнение не превращало накопленное
+значение в ноль. Встроенный `TransportTickStore::overflowCount()` сохранён и должен
+совпадать с failed publications producer-а для текущего единственного publisher.
 
 ## Детерминированные проверки
 
-- После одной синхронной Start-публикации и N своевременных callback при достаточной
-  очереди: publications = pops = Clock attempts = N + 1; callbacks = N; overflow и
-  discard равны нулю.
-- Заполненная очередь: callback учитывается, publication failure и overflow растут,
-  pop и Clock attempt не растут для потерянного тика.
-- Больше четырёх накопленных тиков: четыре pop/Clock attempt, остаток учитывается как
-  budget discard согласно зафиксированной политике.
-- Stop/mode switch/storage очищают очередь и относят каждый discard к правильной
-  причине без отправки F8.
-- Назначенные callback `1000, 2000, 3000`, фактические `1010, 2050, 3020` дают
-  максимальный callback interval и lateness согласно определениям, включая
-  wrap-around.
-- Симулированный отказ постановки alarm отражается в диагностике и не создаёт
-  ложной публикации.
+- Start и три callback дают четыре публикации, четыре pop и четыре F8 attempt.
+- Заполненное кольцо даёт один callback publication failure/overflow, а сообщение об
+  arm failure не создаёт дополнительной записи.
+- Шесть накопленных records дают четыре pop/F8 и два budget discard.
+- Stop, mode switch и storage относят по две записи к своей причине и не увеличивают
+  F8 attempts.
+- Deadlines `1000, 2000, 3000` и callback `1010, 2050, 3020` дают максимум
+  фактического callback interval `1040` мкс и lateness `50` мкс.
+- Отдельно проверены wrap-around, переустановка baseline на горизонте `2^31` и после
+  нового Start.
 
-## Готовность шага
+Native-тесты проверяют аппаратно-независимое сообщение об arm failure. Реальный
+отрицательный результат `add_alarm_at()` и точность Pico alarm требуют аппаратного
+прогона; firmware build проверяет интеграцию с Pico SDK.
 
-- По snapshot можно локализовать исчезновение тика между callback, publish, pop и
-  Clock attempt.
-- Счётчики не теряют смысл при одновременной работе IRQ и основного цикла.
-- Стоимость IRQ-инструментации ограничена и описана.
-- Все инварианты проверены native-тестами там, где нет зависимости от Pico SDK.
-- Выполнен `make verify`.
+## Проверки
+
+- `make test`: 227/227 native-тестов пройдено.
+- `make verify`: пройдены format-check, clang-tidy, native-тесты и сборка `rpipico2`.
+- Аппаратный прогон не выполнялся.
 
 ## Вне объёма
 
 USB acceptance/retry, гистограммы и вывод статистики. Исправление относительного
-расписания alarm выполняется в шаге 1.4 после появления измерений.
+расписания alarm выполняется в шаге 1.4.

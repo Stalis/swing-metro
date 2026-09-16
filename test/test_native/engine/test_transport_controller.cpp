@@ -243,6 +243,72 @@ void test_internal_catch_up_is_bounded_and_reported() {
     TEST_ASSERT_EQUAL_HEX8(0xF8, sink.packets[4][1]);
 }
 
+void test_internal_tick_pipeline_balances_start_callbacks_and_clock_attempts() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickSource source;
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal);
+    controller.toggle(0);
+    (void)source.start(0, 120);
+    controller.process(0, source.ticks());
+    for (std::uint32_t tick = 1; tick <= 3; ++tick) {
+        (void)source.onAlarm(tick * 1'000, tick * 1'000);
+        controller.process(tick * 1'000, source.ticks());
+    }
+
+    const auto diagnostics = controller.pipelineDiagnostics(source);
+    TEST_ASSERT_EQUAL_UINT32(3, diagnostics.producer.alarmCallbackInvocations);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.producer.synchronousStartPublicationAttempts);
+    TEST_ASSERT_EQUAL_UINT32(4, diagnostics.producer.successfulPublications);
+    TEST_ASSERT_EQUAL_UINT32(4, diagnostics.successfulConsumerPops);
+    TEST_ASSERT_EQUAL_UINT32(4, diagnostics.outgoingInternalClockAttempts);
+}
+
+void test_internal_tick_pipeline_discards_budget_and_state_changes_without_clock() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickSource source;
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal);
+    controller.toggle(0);
+    (void)source.start(0, 120);
+    for (std::uint32_t tick = 1; tick <= 5; ++tick) {
+        (void)source.onAlarm(tick, tick);
+    }
+    controller.process(100, source.ticks());
+    auto diagnostics = controller.pipelineDiagnostics(source);
+    TEST_ASSERT_EQUAL_UINT32(4, diagnostics.successfulConsumerPops);
+    TEST_ASSERT_EQUAL_UINT32(2, diagnostics.budgetDiscards);
+    TEST_ASSERT_EQUAL_UINT32(4, diagnostics.outgoingInternalClockAttempts);
+
+    (void)source.onAlarm(101, 101);
+    controller.toggle(101);
+    source.stop(controller.internalTickDiscardReason());
+    TEST_ASSERT_EQUAL_UINT32(1, controller.pipelineDiagnostics(source).producer.stopDiscards);
+
+    controller.toggle(102);
+    (void)source.start(102, 120);
+    (void)source.onAlarm(103, 103);
+    controller.applyMode(SwingMetro::MidiClockMode::External);
+    source.stop(controller.internalTickDiscardReason());
+    TEST_ASSERT_EQUAL_UINT32(2, controller.pipelineDiagnostics(source).producer.modeSwitchDiscards);
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal);
+    controller.toggle(104);
+    (void)source.start(104, 120);
+    (void)source.onAlarm(105, 105);
+    controller.openStorage();
+    source.stop(controller.internalTickDiscardReason());
+    diagnostics = controller.pipelineDiagnostics(source);
+    TEST_ASSERT_EQUAL_UINT32(2, diagnostics.producer.storageDiscards);
+    TEST_ASSERT_EQUAL_UINT32(4, diagnostics.outgoingInternalClockAttempts);
+}
+
 void test_capacity_schedule_failure_stops_once_and_clears_queue() {
     Sequencer sequencer;
     enableFirstStep(sequencer);
@@ -609,6 +675,8 @@ void test_transport_controller_main() {
     RUN_TEST(test_external_loss_relocks_with_one_clock_before_continue);
     RUN_TEST(test_display_step_changes_at_boundary_not_while_scheduling);
     RUN_TEST(test_internal_catch_up_is_bounded_and_reported);
+    RUN_TEST(test_internal_tick_pipeline_balances_start_callbacks_and_clock_attempts);
+    RUN_TEST(test_internal_tick_pipeline_discards_budget_and_state_changes_without_clock);
     RUN_TEST(test_capacity_schedule_failure_stops_once_and_clears_queue);
     RUN_TEST(test_tick_quota_schedule_failure_stops_once_and_clears_queue);
     RUN_TEST(test_swing_orders_clock_off_then_delayed_on);

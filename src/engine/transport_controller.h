@@ -30,6 +30,16 @@ struct TransportDiagnostics {
     std::uint32_t maxQueuedEventAttemptLatenessUs = 0;
     // Number of internal tick records discarded after the per-pass processing budget.
     std::uint32_t droppedTicks = 0;
+    std::uint32_t successfulInternalTickPops = 0;
+    std::uint32_t outgoingInternalClockAttempts = 0;
+};
+
+struct TickPipelineDiagnostics {
+    // This is a coherent producer snapshot followed by core-0-owned consumer fields.
+    InternalTickDiagnostics producer;
+    std::uint32_t successfulConsumerPops = 0;
+    std::uint32_t budgetDiscards = 0;
+    std::uint32_t outgoingInternalClockAttempts = 0;
 };
 
 class MidiDispatcher {
@@ -100,6 +110,7 @@ class MidiDispatcher {
         _haveTick = true;
         _sequencer.notifyBoundaryReached(_transport.position().tick);
         if (emitClock) {
+            addOne(_diagnostics.outgoingInternalClockAttempts);
             _sink.send(usbMidiRealTimePacket(0xF8));
             updateLateness(_diagnostics.maxClockAttemptLatenessUs, attemptAtUs, record.timestampUs);
         }
@@ -118,6 +129,12 @@ class MidiDispatcher {
             if (latenessUs > maximum) {
                 maximum = latenessUs;
             }
+        }
+    }
+
+    static auto addOne(std::uint32_t& counter) noexcept -> void {
+        if (counter != UINT32_MAX) {
+            ++counter;
         }
     }
 
@@ -178,14 +195,14 @@ class TransportController {
         if (mode == _settings.mode()) {
             return;
         }
-        stop();
+        stop(InternalTickDiscardReason::ModeSwitch);
         _external.reset();
         _settings.apply(mode);
     }
 
     auto openStorage() -> void {
         _storageOpen = true;
-        stop();
+        stop(InternalTickDiscardReason::Storage);
     }
 
     auto closeStorage() noexcept -> void { _storageOpen = false; }
@@ -203,7 +220,7 @@ class TransportController {
             _dispatcher.continuePlayback();
         }
         if (result.stopped) {
-            stop(false);
+            stop(InternalTickDiscardReason::Stop, false);
         } else if (result.tick) {
             updateTickLateness(_diagnostics.maxExternalTickProcessingLatenessUs, observedAtUs,
                                result.tickRecord.timestampUs);
@@ -221,6 +238,7 @@ class TransportController {
             TransportTickRecord record;
             std::uint8_t processed = 0;
             while (processed < MAX_INTERNAL_TICKS_PER_PASS && ticks.pop(record)) {
+                addOne(_diagnostics.successfulInternalTickPops);
                 updateTickLateness(_diagnostics.maxInternalTickProcessingLatenessUs, nowUs,
                                    record.timestampUs);
                 _dispatcher.consumeTick(record, _settings.mode() == MidiClockMode::Internal, nowUs);
@@ -235,7 +253,7 @@ class TransportController {
         if (_settings.mode() == MidiClockMode::External) {
             const auto result = _external.update(nowUs);
             if (result.stopped) {
-                stop(false);
+                stop(InternalTickDiscardReason::Stop, false);
             }
         }
     }
@@ -246,8 +264,22 @@ class TransportController {
     }
     [[nodiscard]] auto externalBpm() const noexcept -> std::uint8_t { return _external.bpm(); }
     [[nodiscard]] auto diagnostics() const noexcept -> TransportDiagnostics { return _diagnostics; }
+    [[nodiscard]] auto pipelineDiagnostics(const InternalTickSource& source) const noexcept
+        -> TickPipelineDiagnostics {
+        return {source.diagnostics(), _diagnostics.successfulInternalTickPops,
+                _diagnostics.droppedTicks, _diagnostics.outgoingInternalClockAttempts};
+    }
+    [[nodiscard]] auto internalTickDiscardReason() const noexcept -> InternalTickDiscardReason {
+        return _internalTickDiscardReason;
+    }
 
   private:
+    static auto addOne(std::uint32_t& counter) noexcept -> void {
+        if (counter != UINT32_MAX) {
+            ++counter;
+        }
+    }
+
     static auto updateTickLateness(std::uint32_t& maximum, std::uint32_t observedAtUs,
                                    std::uint32_t timestampUs) noexcept -> void {
         if (timestampReached(observedAtUs, timestampUs)) {
@@ -283,6 +315,7 @@ class TransportController {
         _sequencer.start();
         _dispatcher.start(_settings.mode() == MidiClockMode::Internal);
         _internalTiming = !waitForExternalTick;
+        _internalTickDiscardReason = InternalTickDiscardReason::Stop;
         schedule();
     }
 
@@ -293,11 +326,13 @@ class TransportController {
         }
     }
 
-    auto stop(bool resetExternal = true) -> void {
+    auto stop(InternalTickDiscardReason discardReason = InternalTickDiscardReason::Stop,
+              bool resetExternal = true) -> void {
         _queue.clear();
         const auto note = _sequencer.stop();
         _dispatcher.stop(note);
         _internalTiming = false;
+        _internalTickDiscardReason = discardReason;
         if (resetExternal) {
             _external.reset();
         }
@@ -313,6 +348,7 @@ class TransportController {
     MidiDispatcher _dispatcher;
     bool _internalTiming = false;
     bool _storageOpen = false;
+    InternalTickDiscardReason _internalTickDiscardReason = InternalTickDiscardReason::Stop;
     std::uint32_t _lastServiceAtUs = 0;
     bool _haveServiceTimestamp = false;
     static constexpr std::uint8_t MAX_INTERNAL_TICKS_PER_PASS = 4;
