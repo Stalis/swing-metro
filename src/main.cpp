@@ -130,6 +130,79 @@ constexpr const auto UPDATABLES = std::tie(tempoEncoder, swingEncoder, volumeEnc
 UiViewModel uiViewModel;
 bool internalAlarmActive = false;
 uint8_t internalAlarmBpm = 0;
+bool diagnosticsHeaderPrinted = false;
+
+void exportInternalTimingDiagnostics() {
+    const auto diagnostics = transportController.pipelineDiagnostics(internalTicks);
+    const auto& producer = diagnostics.producer;
+    const auto transport = transportController.diagnostics();
+
+    if (!diagnosticsHeaderPrinted) {
+        Serial.println(
+            F("swing_metro_diagnostics,alarm_callback_invocations,"
+              "synchronous_start_publication_attempts,successful_publications,"
+              "failed_publications,tick_queue_overflows,stop_discards,mode_switch_discards,"
+              "storage_discards,alarm_arm_failures,stale_alarm_callbacks,"
+              "stale_alarm_arm_failures,missed_scheduled_targets,"
+              "out_of_horizon_alarm_callbacks,max_actual_callback_interval_us,"
+              "max_callback_lateness_us,successful_consumer_pops,budget_discards,"
+              "outgoing_internal_f8_attempts,max_service_interval_us,"
+              "max_internal_tick_processing_lateness_us,"
+              "max_external_tick_processing_lateness_us,max_f8_attempt_lateness_us,"
+              "max_queued_event_attempt_lateness_us"));
+        diagnosticsHeaderPrinted = true;
+    }
+
+    Serial.print(F("swing_metro_diagnostics,"));
+    const auto print = [](std::uint32_t value) { Serial.print(value); };
+    const auto separator = []() { Serial.print(','); };
+    print(producer.alarmCallbackInvocations);
+    separator();
+    print(producer.synchronousStartPublicationAttempts);
+    separator();
+    print(producer.successfulPublications);
+    separator();
+    print(producer.failedPublications);
+    separator();
+    print(producer.failedPublications);
+    separator();
+    print(producer.stopDiscards);
+    separator();
+    print(producer.modeSwitchDiscards);
+    separator();
+    print(producer.storageDiscards);
+    separator();
+    print(producer.alarmArmFailures);
+    separator();
+    print(producer.staleAlarmCallbacks);
+    separator();
+    print(producer.staleAlarmArmFailures);
+    separator();
+    print(producer.missedScheduledTargets);
+    separator();
+    print(producer.outOfHorizonAlarmCallbacks);
+    separator();
+    print(producer.maxActualCallbackIntervalUs);
+    separator();
+    print(producer.maxCallbackLatenessUs);
+    separator();
+    print(diagnostics.successfulConsumerPops);
+    separator();
+    print(diagnostics.budgetDiscards);
+    separator();
+    print(diagnostics.outgoingInternalClockAttempts);
+    separator();
+    print(transport.maxServiceIntervalUs);
+    separator();
+    print(transport.maxInternalTickProcessingLatenessUs);
+    separator();
+    print(transport.maxExternalTickProcessingLatenessUs);
+    separator();
+    print(transport.maxClockAttemptLatenessUs);
+    separator();
+    print(transport.maxQueuedEventAttemptLatenessUs);
+    Serial.println();
+}
 
 template <typename TAdapter>
 void handleEncoderDirection(const TAdapter& adapter, EncoderDirection direction) {
@@ -195,6 +268,7 @@ void syncInternalAlarm() {
     } else if (!shouldRun && internalAlarmActive) {
         internalTickAlarm.stop(transportController.internalTickDiscardReason());
         internalAlarmActive = false;
+        exportInternalTimingDiagnostics();
     } else if (shouldRun && internalAlarmBpm != mainSequencer.getBpm()) {
         internalTickAlarm.setBpm(mainSequencer.getBpm());
         internalAlarmBpm = mainSequencer.getBpm();
@@ -202,6 +276,8 @@ void syncInternalAlarm() {
 }
 
 void setup() {
+
+    Serial.begin(115200);
 
     // USB setup
     if (!TinyUSBDevice.isInitialized()) {
