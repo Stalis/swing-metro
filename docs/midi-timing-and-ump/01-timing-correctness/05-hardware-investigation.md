@@ -1,6 +1,7 @@
 # Шаг 1.5. Аппаратное расследование и baseline
 
-Статус: ожидает аппаратных прогонов. Зависит от шагов 1.1–1.4.
+Статус: причина free-провалов локализована и исправлена; ожидается повторный A/B.
+Зависит от шагов 1.1–1.4.
 
 ## Цель
 
@@ -158,6 +159,39 @@ Clock burst.
 - Попытку F8 не называть принятием USB-стеком. Ровный GPIO до USB при провале host
   capture — основание для следующей гипотезы, а не доказательство причины.
 
+### Free-прогон до исправления consumer race
+
+Прогон firmware `3306729` сохранён в `data/midi-stage-1-5-free.mmon` и
+`data/midi-stage-1-5-free-diagnostics.csv`. Диагностика относится ко всему run, но
+MIDI Monitor сохранил только последние 10 000 сообщений (`maxMessageCount = 10000`),
+поэтому `.mmon` содержит хвост длительностью 277,5766 с, а не весь run.
+
+Firmware snapshot:
+
+- 19 319 alarm callbacks и одна synchronous Start publication;
+- 19 320 successful publications, ноль publication overflow/arm failure/missed
+  target/stale/out-of-horizon;
+- max callback interval 36 775 мкс, max callback lateness 14 мкс;
+- 19 201 consumer pops и F8 attempts, 119 `budgetDiscards`;
+- max service interval 618 мкс, max tick/F8 lateness 324 мкс, max event lateness
+  182 мкс;
+- quiescent balance проходит: `19320 == 19201 + 119`.
+
+В сохранённом host-хвосте 7 498 Clock: 51 интервал около двух периодов и один
+интервал 110,288 мс около трёх периодов. Это ровно 53 пропущенных периода. Сырой
+drift относительно сетки 68 BPM равен 1 949,430 мс; после вычитания этих 53 периодов
+остаётся 0,901 мс. Медиана Clock interval 36 761,542 мкс, среднее без длинных
+интервалов 36 764,930 мкс. Между каждой парой соседних Note On остаётся ровно шесть
+записанных Clock; Clock → Note On: медиана 266,750 мкс, максимум 2 722,500 мкс.
+
+Alarm, producer overflow и main-loop stall исключаются измерениями. Причина находится
+в `TransportController::process()`: после выхода из tick-pop loop при пустой очереди
+код безусловно вызывал `ticks.discard()`. Callback мог опубликовать новый tick между
+неудачным `pop()` и `discard()`, после чего свежий tick удалялся и ошибочно считался
+budget discard. Исправление выполняет discard только когда обработаны все четыре
+разрешённых за pass тика, то есть бюджет действительно исчерпан. Нужен повторный
+free-прогон на исправленной firmware, затем сопоставимый loaded-прогон.
+
 Шаблон таблицы до/после:
 
 | Run | Load | Duration s | Clock count | Double intervals (count/max/ordinals) | Drift us | Max service us | Max callback interval/lateness us | Max tick/F8/event lateness us | Overflow | Budget discard | Stop/mode/storage discard | Consumer pops | F8 attempts | Balance | Decision |
@@ -191,15 +225,11 @@ pio device monitor -e rpipico2
 
 ## Pending Hardware
 
-16 сентября 2026 года `pio device list` на машине выполнения не обнаружил Pico/CDC:
-доступны только системные `/dev/cu.wlan-debug`, `/dev/cu.debug-console` и
-`/dev/cu.Bluetooth-Incoming-Port`. Поэтому firmware не загружалась, аппаратные A и B
-прогоны, host MIDI capture и возможные GPIO/logic-analyzer измерения не выполнены.
-
-Чтобы снять блокировку, подключить Pico 2 W к фиксированному USB cable/hub, повторить
-`pio device list`, загрузить firmware командой выше и выполнить A, B и transition
-checks по протоколу этого документа, сохранив CDC CSV и host captures. До этого нет
-заявленных hardware results, локализованной причины или завершения stage 1.
+17 сентября 2026 года получен free-прогон firmware `3306729`, который локализовал
+consumer race. После сборки и загрузки исправленной firmware нужно заново выполнить
+free A и loaded B с одинаковой длительностью 234,63 с и лимитом MIDI Monitor не менее
+10 000 сообщений. Затем выполнить transition checks и сохранить отдельные CDC CSV и
+host captures. До повторного A/B нет подтверждения исправления и завершения stage 1.
 
 ## Вне объёма
 

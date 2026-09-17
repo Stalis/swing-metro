@@ -288,6 +288,24 @@ void test_internal_source_uses_scheduled_timestamp_for_f8_lateness() {
     TEST_ASSERT_EQUAL_HEX8(0xF8, sink.packets[sink.count - 1][1]);
 }
 
+void test_internal_tick_pipeline_does_not_discard_below_processing_budget() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickSource source;
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal);
+    controller.toggle(0);
+    (void)source.start(0, 120);
+    controller.process(0, source.ticks());
+
+    const auto diagnostics = controller.pipelineDiagnostics(source);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.successfulConsumerPops);
+    TEST_ASSERT_EQUAL_UINT32(0, diagnostics.budgetDiscards);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.outgoingInternalClockAttempts);
+}
+
 void test_internal_tick_pipeline_discards_budget_and_state_changes_without_clock() {
     Sequencer sequencer;
     SwingMetro::MidiClockSettings settings;
@@ -702,6 +720,7 @@ void test_transport_controller_main() {
     RUN_TEST(test_internal_catch_up_is_bounded_and_reported);
     RUN_TEST(test_internal_tick_pipeline_balances_start_callbacks_and_clock_attempts);
     RUN_TEST(test_internal_source_uses_scheduled_timestamp_for_f8_lateness);
+    RUN_TEST(test_internal_tick_pipeline_does_not_discard_below_processing_budget);
     RUN_TEST(test_internal_tick_pipeline_discards_budget_and_state_changes_without_clock);
     RUN_TEST(test_capacity_schedule_failure_stops_once_and_clears_queue);
     RUN_TEST(test_tick_quota_schedule_failure_stops_once_and_clears_queue);

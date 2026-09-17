@@ -244,7 +244,11 @@ class TransportController {
                 _dispatcher.consumeTick(record, _settings.mode() == MidiClockMode::Internal, nowUs);
                 ++processed;
             }
-            addDroppedTicks(ticks.discard());
+            // Discard only after exhausting the per-pass budget. If the loop observed an empty
+            // queue, an IRQ may publish immediately afterwards; leave that tick for the next pass.
+            if (processed == MAX_INTERNAL_TICKS_PER_PASS) {
+                addDroppedTicks(ticks.discard());
+            }
         } else {
             (void)ticks.discard();
         }
