@@ -1,6 +1,8 @@
 # Шаг 1.5. Аппаратное расследование и baseline
 
-Статус: причина free-провалов локализована и исправлена; ожидается повторный A/B.
+Статус: повторный free-прогон показал, что условный discard не устранил потери;
+исправление заменено политикой без discard backlog-а. Ожидается один free-прогон на
+изменённой firmware.
 Зависит от шагов 1.1–1.4.
 
 ## Цель
@@ -37,7 +39,8 @@
 - dispatcher не отправляет phase-события, если `nowUs` раньше начала тика;
 - известны max service interval, tick processing latency и event attempt lateness;
 - есть согласованные счётчики callback, publish, overflow, pop, discard и Clock
-  attempt, callback interval/lateness и ошибки постановки alarm;
+  attempt, callback interval/lateness, ошибки постановки alarm, backlog после budget
+  и длительность `process()`;
 - alarm следует абсолютной сетке и имеет bounded overdue policy.
 
 `Serial` инициализируется как CDC на 115200 бод. После каждого перехода internal
@@ -46,17 +49,26 @@ timing из active в inactive `syncInternalAlarm()` сначала вызыва
 печатает snapshot на main core. Во время internal timing, IRQ и MIDI send path печати
 нет. Header печатается один раз за boot, затем одна data-строка на такой Stop.
 
-CSV schema, в порядке колонок:
+CSV schema v2, в порядке колонок:
 
 ```text
-swing_metro_diagnostics,alarm_callback_invocations,synchronous_start_publication_attempts,successful_publications,failed_publications,tick_queue_overflows,stop_discards,mode_switch_discards,storage_discards,alarm_arm_failures,stale_alarm_callbacks,stale_alarm_arm_failures,missed_scheduled_targets,out_of_horizon_alarm_callbacks,max_actual_callback_interval_us,max_callback_lateness_us,successful_consumer_pops,budget_discards,outgoing_internal_f8_attempts,max_service_interval_us,max_internal_tick_processing_lateness_us,max_external_tick_processing_lateness_us,max_f8_attempt_lateness_us,max_queued_event_attempt_lateness_us
+swing_metro_diagnostics_v2,alarm_callback_invocations,synchronous_start_publication_attempts,successful_publications,failed_publications,tick_queue_overflows,stop_discards,mode_switch_discards,storage_discards,alarm_arm_failures,stale_alarm_callbacks,stale_alarm_arm_failures,missed_scheduled_targets,out_of_horizon_alarm_callbacks,max_actual_callback_interval_us,max_callback_lateness_us,successful_consumer_pops,budget_discards,outgoing_internal_f8_attempts,max_service_interval_us,max_internal_tick_processing_lateness_us,max_external_tick_processing_lateness_us,max_f8_attempt_lateness_us,max_queued_event_attempt_lateness_us,max_internal_ticks_popped_per_process_pass,internal_tick_budget_reached_passes,max_remaining_internal_ticks_after_budget_pass,max_process_duration_us
 ```
 
-Каждая data-строка начинается с `swing_metro_diagnostics` и содержит значения в том
-же порядке. `failed_publications` и `tick_queue_overflows` обозначают один и тот же
+Каждая data-строка начинается с `swing_metro_diagnostics_v2` и содержит значения в том
+же порядке; v1 и v2 не смешивать в одной таблице. `failed_publications` и
+`tick_queue_overflows` обозначают один и тот же
 случай: producer не смог записать в полный tick queue, поэтому их значения должны
 совпадать. `outgoing_internal_f8_attempts` и значения lateness относятся к попыткам
 вызвать USB MIDI sink, не к принятию USB-стеком или доставке host.
+
+`budget_discards` сохранён для сравнения старых запусков, но active internal path v2
+не должен его увеличивать: backlog остаётся для следующего `process()` pass.
+`max_remaining_internal_ticks_after_budget_pass` — consumer-side snapshot сразу после
+pass с четырьмя pop; producer может опубликовать следующий tick сразу после снимка.
+`max_process_duration_us` измеряет только вызов `TransportController::process()` по
+двум timestamp, переданным main core, и не меняет смысл `max_service_interval_us`.
+В internal output mode `outgoing_internal_f8_attempts == successful_consumer_pops`.
 
 Все counters cumulative с boot. Перед каждым измеряемым прогоном нужно reboot Pico;
 не сравнивать строки, полученные после нескольких запусков без reboot.
@@ -133,10 +145,12 @@ host-интервала с порядком Clock attempt и суммарным�
 2. **Overflow producer-а:** `failed_publications`/`tick_queue_overflows` растёт.
    Устранить переполнение producer queue в границах этапа 1.
 3. **Задержка main loop:** publication успешны, но растут
-   `max_service_interval_us` и `max_internal_tick_processing_lateness_us`; затем
-   возможен `budget_discards`.
-4. **Ограничение consumer-а:** `successful_consumer_pops` и `budget_discards`
-   показывают накопление более четырёх тиков. Исправлять consumer/service path этапа 1.
+   `max_service_interval_us` и `max_internal_tick_processing_lateness_us`; в v2 это
+   увеличивает lateness/backlog, но не `budget_discards`.
+4. **Ограничение consumer-а:** `internal_tick_budget_reached_passes` и
+   `max_remaining_internal_ticks_after_budget_pass` показывают накопление более четырёх
+   тиков. В v2 backlog не отбрасывается; оценивать его вместе с
+   `max_process_duration_us` и lateness, не по `budget_discards`.
 5. **После Clock attempt:** balance проходит, alarm/producer/consumer counters не
    объясняют пропуск и Clock attempts по ordinal ровные, но длинный интервал есть
    только в host capture. Передать в этап 2 конкретную гипотезу USB
@@ -188,16 +202,34 @@ Alarm, producer overflow и main-loop stall исключаются измере�
 в `TransportController::process()`: после выхода из tick-pop loop при пустой очереди
 код безусловно вызывал `ticks.discard()`. Callback мог опубликовать новый tick между
 неудачным `pop()` и `discard()`, после чего свежий tick удалялся и ошибочно считался
-budget discard. Исправление выполняет discard только когда обработаны все четыре
-разрешённых за pass тика, то есть бюджет действительно исчерпан. Нужен повторный
-free-прогон на исправленной firmware, затем сопоставимый loaded-прогон.
+budget discard.
+
+### Free-прогон после условного discard
+
+Firmware `e729b92`, полный run 243,858 с, internal clock 68 BPM. Proven facts:
+
+- 6 633 successful publications, 6 602 consumer pops и 6 602 F8 attempts;
+- 31 `budgetDiscards` и ровно 31 double host Clock interval;
+- producer overflow, explicit stop/mode/storage discard равны нулю;
+- max service interval 650 мкс, callback lateness 18 мкс, tick/F8 lateness 306 мкс.
+
+Это подтверждает, что условный active-path discard остаётся источником потерь: разница
+между publications и pops ровно равна `budgetDiscards` и числу double intervals.
+Непосредственная причина, почему budget достигался при малом service interval, всё ещё
+не объяснена aggregate snapshot-ом: он не даёт ordinal backlog-а. Не приписывать эти
+31 apparent budget hit конкретному callback или host-интервалу.
+
+Новая политика сохраняет предел четырёх обработанных tick за один `process()` pass,
+но никогда не отбрасывает остаток active queue. Цена — backlog может временно
+сохраниться и увеличить processing lateness; v2 измеряет его observed depth, число
+budget-limited passes, максимум pops/pass и duration `process()`. Stop, mode switch и
+storage по-прежнему явно drain/discard producer queue.
 
 Шаблон таблицы до/после:
 
-| Run | Load | Duration s | Clock count | Double intervals (count/max/ordinals) | Drift us | Max service us | Max callback interval/lateness us | Max tick/F8/event lateness us | Overflow | Budget discard | Stop/mode/storage discard | Consumer pops | F8 attempts | Balance | Decision |
-| --- | --- | ---: | ---: | --- | ---: | ---: | --- | --- | ---: | ---: | --- | ---: | ---: | --- | --- |
-| A | none |  |  |  |  |  |  |  |  |  |  |  |  | pass/fail |  |
-| B | written interaction only |  |  |  |  |  |  |  |  |  |  |  |  | pass/fail |  |
+| Run | Load | Duration s | Clock count | Double intervals (count/max/ordinals) | Drift us | Max service/process us | Max callback interval/lateness us | Max tick/F8/event lateness us | Max pops/pass | Budget passes/remaining depth | Overflow/budget/explicit discard | Consumer pops/F8 attempts | Balance | Decision |
+| --- | --- | ---: | ---: | --- | ---: | --- | --- | --- | ---: | --- | --- | --- | --- | --- |
+| A | none |  |  |  |  |  |  |  |  |  |  |  | pass/fail |  |
 
 Команды проверки:
 
@@ -213,7 +245,7 @@ pio device monitor -e rpipico2
 
 ## Готовность шага
 
-- Выполнены сопоставимые free и loaded прогоны либо явно записана недоступность
+- Выполнен указанный в Pending Hardware free-прогон либо явно записана недоступность
   устройства/инструментов и оставшиеся команды/условия.
 - Для двойных интервалов определён участок пути, где возникает потеря/задержка, и
   подтверждённая причина исправлена в границах этапа 1.
@@ -225,11 +257,12 @@ pio device monitor -e rpipico2
 
 ## Pending Hardware
 
-17 сентября 2026 года получен free-прогон firmware `3306729`, который локализовал
-consumer race. После сборки и загрузки исправленной firmware нужно заново выполнить
-free A и loaded B с одинаковой длительностью 234,63 с и лимитом MIDI Monitor не менее
-10 000 сообщений. Затем выполнить transition checks и сохранить отдельные CDC CSV и
-host captures. До повторного A/B нет подтверждения исправления и завершения stage 1.
+Нужен ровно один free-прогон на firmware с schema v2 и no-discard backlog policy:
+internal clock, 68 BPM, swing 50, без interaction, не менее 243,858 с, с лимитом MIDI
+Monitor не менее 10 000 сообщений. Сохранить один CDC CSV v2 после Stop и host capture.
+Проверить zero `budget_discards`, balance, равенство F8 attempts и consumer pops, а
+также double Clock intervals и новые backlog/process maxima. До этого прогона hardware
+validation нового исправления не заявляется.
 
 ## Вне объёма
 

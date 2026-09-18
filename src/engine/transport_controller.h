@@ -10,7 +10,6 @@
 #include "transport.h"
 
 #include <cstdint>
-#include <limits>
 #include <optional>
 
 namespace SwingMetro {
@@ -28,10 +27,14 @@ struct TransportDiagnostics {
     std::uint32_t maxExternalTickProcessingLatenessUs = 0;
     std::uint32_t maxClockAttemptLatenessUs = 0;
     std::uint32_t maxQueuedEventAttemptLatenessUs = 0;
-    // Number of internal tick records discarded after the per-pass processing budget.
+    // Historical count of internal tick records discarded after the per-pass processing budget.
     std::uint32_t droppedTicks = 0;
     std::uint32_t successfulInternalTickPops = 0;
     std::uint32_t outgoingInternalClockAttempts = 0;
+    std::uint32_t maxInternalTicksPoppedPerProcessPass = 0;
+    std::uint32_t internalTickBudgetReachedPasses = 0;
+    std::uint32_t maxRemainingInternalTicksAfterBudgetPass = 0;
+    std::uint32_t maxProcessDurationUs = 0;
 };
 
 struct TickPipelineDiagnostics {
@@ -244,10 +247,10 @@ class TransportController {
                 _dispatcher.consumeTick(record, _settings.mode() == MidiClockMode::Internal, nowUs);
                 ++processed;
             }
-            // Discard only after exhausting the per-pass budget. If the loop observed an empty
-            // queue, an IRQ may publish immediately afterwards; leave that tick for the next pass.
+            updateMaximum(_diagnostics.maxInternalTicksPoppedPerProcessPass, processed);
             if (processed == MAX_INTERNAL_TICKS_PER_PASS) {
-                addDroppedTicks(ticks.discard());
+                addOne(_diagnostics.internalTickBudgetReachedPasses);
+                updateMaximum(_diagnostics.maxRemainingInternalTicksAfterBudgetPass, ticks.size());
             }
         } else {
             (void)ticks.discard();
@@ -259,6 +262,14 @@ class TransportController {
             if (result.stopped) {
                 stop(InternalTickDiscardReason::Stop, false);
             }
+        }
+    }
+
+    // Call immediately after process() with a timestamp from the hardware-independent caller.
+    auto recordProcessDuration(std::uint32_t startedAtUs, std::uint32_t completedAtUs) noexcept
+        -> void {
+        if (timestampReached(completedAtUs, startedAtUs)) {
+            updateMaximum(_diagnostics.maxProcessDurationUs, completedAtUs - startedAtUs);
         }
     }
 
@@ -294,6 +305,12 @@ class TransportController {
         }
     }
 
+    static auto updateMaximum(std::uint32_t& maximum, std::uint32_t value) noexcept -> void {
+        if (value > maximum) {
+            maximum = value;
+        }
+    }
+
     auto updateServiceInterval(std::uint32_t nowUs) noexcept -> void {
         if (_haveServiceTimestamp && timestampReached(nowUs, _lastServiceAtUs)) {
             const auto intervalUs = nowUs - _lastServiceAtUs;
@@ -303,13 +320,6 @@ class TransportController {
         }
         _lastServiceAtUs = nowUs;
         _haveServiceTimestamp = true;
-    }
-
-    auto addDroppedTicks(std::size_t count) noexcept -> void {
-        const auto remaining =
-            std::numeric_limits<std::uint32_t>::max() - _diagnostics.droppedTicks;
-        _diagnostics.droppedTicks +=
-            count > remaining ? remaining : static_cast<std::uint32_t>(count);
     }
 
     auto start(bool waitForExternalTick) -> void {

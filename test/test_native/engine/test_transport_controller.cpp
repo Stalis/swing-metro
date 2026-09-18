@@ -223,24 +223,38 @@ void test_display_step_changes_at_boundary_not_while_scheduling() {
     TEST_ASSERT_EQUAL_UINT8(61, *sequencer.actualSoundingNote());
 }
 
-void test_internal_catch_up_is_bounded_and_reported() {
+void test_internal_backlog_is_bounded_per_pass_and_retained() {
     Sequencer sequencer;
     SwingMetro::MidiClockSettings settings;
     Sink sink;
     SwingMetro::TransportController controller{sequencer, settings, sink};
-    SwingMetro::InternalTickStore<> ticks;
+    SwingMetro::InternalTickSource source;
 
     controller.applyMode(SwingMetro::MidiClockMode::Internal);
     controller.toggle(0);
-    for (std::uint32_t timestamp = 1; timestamp <= 5; ++timestamp) {
-        TEST_ASSERT_TRUE(ticks.publish({timestamp, 1'000}));
+    (void)source.start(0, 120);
+    for (std::uint32_t tick = 0; tick < 5; ++tick) {
+        const auto request = source.alarmRequest();
+        (void)source.onAlarm(request, request.deadlineUs);
     }
-    controller.process(100, ticks);
+    controller.process(100, source.ticks());
 
-    TEST_ASSERT_EQUAL_UINT32(99, controller.diagnostics().maxInternalTickProcessingLatenessUs);
-    TEST_ASSERT_EQUAL_UINT32(1, controller.diagnostics().droppedTicks);
+    auto diagnostics = controller.pipelineDiagnostics(source);
+    TEST_ASSERT_EQUAL_UINT32(4, diagnostics.successfulConsumerPops);
+    TEST_ASSERT_EQUAL_UINT32(0, diagnostics.budgetDiscards);
+    TEST_ASSERT_EQUAL_UINT32(4, diagnostics.outgoingInternalClockAttempts);
+    TEST_ASSERT_EQUAL_UINT32(4, controller.diagnostics().maxInternalTicksPoppedPerProcessPass);
+    TEST_ASSERT_EQUAL_UINT32(1, controller.diagnostics().internalTickBudgetReachedPasses);
+    TEST_ASSERT_EQUAL_UINT32(2, controller.diagnostics().maxRemainingInternalTicksAfterBudgetPass);
     TEST_ASSERT_EQUAL_UINT32(5, sink.count);
     TEST_ASSERT_EQUAL_HEX8(0xF8, sink.packets[4][1]);
+
+    controller.process(101, source.ticks());
+    diagnostics = controller.pipelineDiagnostics(source);
+    TEST_ASSERT_EQUAL_UINT32(6, diagnostics.successfulConsumerPops);
+    TEST_ASSERT_EQUAL_UINT32(0, diagnostics.budgetDiscards);
+    TEST_ASSERT_EQUAL_UINT32(6, diagnostics.outgoingInternalClockAttempts);
+    TEST_ASSERT_EQUAL_UINT32(7, sink.count);
 }
 
 void test_internal_tick_pipeline_balances_start_callbacks_and_clock_attempts() {
@@ -306,7 +320,7 @@ void test_internal_tick_pipeline_does_not_discard_below_processing_budget() {
     TEST_ASSERT_EQUAL_UINT32(1, diagnostics.outgoingInternalClockAttempts);
 }
 
-void test_internal_tick_pipeline_discards_budget_and_state_changes_without_clock() {
+void test_internal_tick_backlog_spans_multiple_passes_without_loss_or_duplicates() {
     Sequencer sequencer;
     SwingMetro::MidiClockSettings settings;
     Sink sink;
@@ -316,40 +330,85 @@ void test_internal_tick_pipeline_discards_budget_and_state_changes_without_clock
     controller.applyMode(SwingMetro::MidiClockMode::Internal);
     controller.toggle(0);
     (void)source.start(0, 120);
-    for (std::uint32_t tick = 1; tick <= 5; ++tick) {
+    for (std::uint32_t tick = 0; tick < 12; ++tick) {
         const auto request = source.alarmRequest();
         (void)source.onAlarm(request, request.deadlineUs);
     }
-    controller.process(100, source.ticks());
-    auto diagnostics = controller.pipelineDiagnostics(source);
-    TEST_ASSERT_EQUAL_UINT32(4, diagnostics.successfulConsumerPops);
-    TEST_ASSERT_EQUAL_UINT32(2, diagnostics.budgetDiscards);
-    TEST_ASSERT_EQUAL_UINT32(4, diagnostics.outgoingInternalClockAttempts);
+    for (std::uint32_t pass = 0; pass < 4; ++pass) {
+        controller.process(100 + pass, source.ticks());
+    }
+    const auto diagnostics = controller.pipelineDiagnostics(source);
+    TEST_ASSERT_EQUAL_UINT32(13, diagnostics.successfulConsumerPops);
+    TEST_ASSERT_EQUAL_UINT32(0, diagnostics.budgetDiscards);
+    TEST_ASSERT_EQUAL_UINT32(13, diagnostics.outgoingInternalClockAttempts);
+    TEST_ASSERT_EQUAL_UINT32(13, source.diagnostics().successfulPublications);
+    TEST_ASSERT_EQUAL_UINT32(4, controller.diagnostics().maxInternalTicksPoppedPerProcessPass);
+    TEST_ASSERT_EQUAL_UINT32(3, controller.diagnostics().internalTickBudgetReachedPasses);
+    TEST_ASSERT_EQUAL_UINT32(9, controller.diagnostics().maxRemainingInternalTicksAfterBudgetPass);
+    TEST_ASSERT_EQUAL_UINT32(14, sink.count);
+}
 
-    auto request = source.alarmRequest();
-    (void)source.onAlarm(request, request.deadlineUs);
+void test_internal_tick_published_after_empty_pass_is_retained() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickStore<> ticks;
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal);
+    controller.toggle(0);
+    controller.process(0, ticks);
+    TEST_ASSERT_TRUE(ticks.publish({1, 1'000}));
+    controller.process(1, ticks);
+    TEST_ASSERT_EQUAL_UINT32(1, controller.diagnostics().successfulInternalTickPops);
+    TEST_ASSERT_EQUAL_UINT32(2, sink.count);
+    TEST_ASSERT_EQUAL_HEX8(0xF8, sink.packets[1][1]);
+}
+
+void test_internal_tick_state_changes_discard_without_clock() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickSource source;
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal);
+    controller.toggle(0);
+    (void)source.start(0, 120);
+
     controller.toggle(101);
     source.stop(controller.internalTickDiscardReason());
     TEST_ASSERT_EQUAL_UINT32(1, controller.pipelineDiagnostics(source).producer.stopDiscards);
 
     controller.toggle(102);
     (void)source.start(102, 120);
-    request = source.alarmRequest();
-    (void)source.onAlarm(request, request.deadlineUs);
     controller.applyMode(SwingMetro::MidiClockMode::External);
     source.stop(controller.internalTickDiscardReason());
-    TEST_ASSERT_EQUAL_UINT32(2, controller.pipelineDiagnostics(source).producer.modeSwitchDiscards);
+    TEST_ASSERT_EQUAL_UINT32(1, controller.pipelineDiagnostics(source).producer.modeSwitchDiscards);
 
     controller.applyMode(SwingMetro::MidiClockMode::Internal);
     controller.toggle(104);
     (void)source.start(104, 120);
-    request = source.alarmRequest();
-    (void)source.onAlarm(request, request.deadlineUs);
     controller.openStorage();
     source.stop(controller.internalTickDiscardReason());
-    diagnostics = controller.pipelineDiagnostics(source);
-    TEST_ASSERT_EQUAL_UINT32(2, diagnostics.producer.storageDiscards);
-    TEST_ASSERT_EQUAL_UINT32(4, diagnostics.outgoingInternalClockAttempts);
+    const auto diagnostics = controller.pipelineDiagnostics(source);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.producer.storageDiscards);
+    TEST_ASSERT_EQUAL_UINT32(0, diagnostics.outgoingInternalClockAttempts);
+}
+
+void test_process_duration_is_recorded_separately_from_service_interval() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickStore<> ticks;
+
+    controller.process(1'000, ticks);
+    controller.recordProcessDuration(1'000, 1'025);
+    controller.process(2'000, ticks);
+    controller.recordProcessDuration(2'000, 2'010);
+    TEST_ASSERT_EQUAL_UINT32(1'000, controller.diagnostics().maxServiceIntervalUs);
+    TEST_ASSERT_EQUAL_UINT32(25, controller.diagnostics().maxProcessDurationUs);
 }
 
 void test_capacity_schedule_failure_stops_once_and_clears_queue() {
@@ -717,11 +776,13 @@ void test_transport_controller_main() {
     RUN_TEST(test_external_continue_waits_for_next_tick_without_retriggering);
     RUN_TEST(test_external_loss_relocks_with_one_clock_before_continue);
     RUN_TEST(test_display_step_changes_at_boundary_not_while_scheduling);
-    RUN_TEST(test_internal_catch_up_is_bounded_and_reported);
+    RUN_TEST(test_internal_backlog_is_bounded_per_pass_and_retained);
     RUN_TEST(test_internal_tick_pipeline_balances_start_callbacks_and_clock_attempts);
     RUN_TEST(test_internal_source_uses_scheduled_timestamp_for_f8_lateness);
     RUN_TEST(test_internal_tick_pipeline_does_not_discard_below_processing_budget);
-    RUN_TEST(test_internal_tick_pipeline_discards_budget_and_state_changes_without_clock);
+    RUN_TEST(test_internal_tick_backlog_spans_multiple_passes_without_loss_or_duplicates);
+    RUN_TEST(test_internal_tick_published_after_empty_pass_is_retained);
+    RUN_TEST(test_internal_tick_state_changes_discard_without_clock);
     RUN_TEST(test_capacity_schedule_failure_stops_once_and_clears_queue);
     RUN_TEST(test_tick_quota_schedule_failure_stops_once_and_clears_queue);
     RUN_TEST(test_swing_orders_clock_off_then_delayed_on);
@@ -737,4 +798,5 @@ void test_transport_controller_main() {
     RUN_TEST(test_queued_event_attempt_lateness_uses_ceil_phase_deadline);
     RUN_TEST(test_attempt_lateness_classifies_queued_clock_and_wraps);
     RUN_TEST(test_service_and_tick_lateness_wrap_and_rebaseline_at_horizon);
+    RUN_TEST(test_process_duration_is_recorded_separately_from_service_interval);
 }

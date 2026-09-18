@@ -48,6 +48,13 @@ class TransportTickStore {
         return count;
     }
 
+    // Consumer-side snapshot; a concurrent producer may publish immediately afterwards.
+    [[nodiscard]] auto size() const noexcept -> std::size_t {
+        const auto read = _read.load(std::memory_order_relaxed);
+        const auto write = _write.load(std::memory_order_acquire);
+        return write >= read ? write - read : Capacity - read + write;
+    }
+
     [[nodiscard]] auto overflowCount() const noexcept -> std::uint32_t {
         return _overflowCount.load(std::memory_order_relaxed);
     }

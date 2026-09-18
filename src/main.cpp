@@ -139,7 +139,7 @@ void exportInternalTimingDiagnostics() {
 
     if (!diagnosticsHeaderPrinted) {
         Serial.println(
-            F("swing_metro_diagnostics,alarm_callback_invocations,"
+            F("swing_metro_diagnostics_v2,alarm_callback_invocations,"
               "synchronous_start_publication_attempts,successful_publications,"
               "failed_publications,tick_queue_overflows,stop_discards,mode_switch_discards,"
               "storage_discards,alarm_arm_failures,stale_alarm_callbacks,"
@@ -149,11 +149,13 @@ void exportInternalTimingDiagnostics() {
               "outgoing_internal_f8_attempts,max_service_interval_us,"
               "max_internal_tick_processing_lateness_us,"
               "max_external_tick_processing_lateness_us,max_f8_attempt_lateness_us,"
-              "max_queued_event_attempt_lateness_us"));
+              "max_queued_event_attempt_lateness_us,max_internal_ticks_popped_per_process_pass,"
+              "internal_tick_budget_reached_passes,"
+              "max_remaining_internal_ticks_after_budget_pass,max_process_duration_us"));
         diagnosticsHeaderPrinted = true;
     }
 
-    Serial.print(F("swing_metro_diagnostics,"));
+    Serial.print(F("swing_metro_diagnostics_v2,"));
     const auto print = [](std::uint32_t value) { Serial.print(value); };
     const auto separator = []() { Serial.print(','); };
     print(producer.alarmCallbackInvocations);
@@ -201,6 +203,14 @@ void exportInternalTimingDiagnostics() {
     print(transport.maxClockAttemptLatenessUs);
     separator();
     print(transport.maxQueuedEventAttemptLatenessUs);
+    separator();
+    print(transport.maxInternalTicksPoppedPerProcessPass);
+    separator();
+    print(transport.internalTickBudgetReachedPasses);
+    separator();
+    print(transport.maxRemainingInternalTicksAfterBudgetPass);
+    separator();
+    print(transport.maxProcessDurationUs);
     Serial.println();
 }
 
@@ -314,7 +324,9 @@ void loop() {
     midiClockReceiver.poll([&](const SwingMetro::MidiRealtimeEvent& event) {
         transportController.handleExternal(event, micros());
     });
-    transportController.process(micros(), internalTicks.ticks());
+    const auto processStartedAtUs = micros();
+    transportController.process(processStartedAtUs, internalTicks.ticks());
+    transportController.recordProcessDuration(processStartedAtUs, micros());
 
     buttonMatrix.readButtons();
     const auto now = millis();
