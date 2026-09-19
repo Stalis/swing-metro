@@ -19,6 +19,7 @@
 #include "../test/test_native/input/test_encoder_integration.h"
 #include "../test/test_native/input/test_main_display_context.h"
 #include "../test/test_native/input/test_midi_clock_settings_context.h"
+#include "../test/test_native/input/test_serial_run_command.h"
 #include "../test/test_native/input/test_step_button_integration.h"
 #include "../test/test_native/program/test_program.h"
 #include "../test/test_native/program/test_program_codec.h"
@@ -57,6 +58,7 @@ int main() {
     test_trigger_input_adapter_main();
     test_main_display_context_main();
     test_midi_clock_settings_context_main();
+    test_serial_run_command_main();
     test_app_event_handler_main();
     test_app_input_coordinator_main();
     test_encoder_integration_main();

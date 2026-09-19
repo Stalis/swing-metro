@@ -8,6 +8,7 @@
 #include "input/app_input.h"
 #include "input/app_input_coordinator.h"
 #include "input/pad_button_ids.h"
+#include "input/serial_run_command.h"
 #include "input/step_button_inputs.h"
 #include "program/program_slot_store.h"
 #include "program/program_storage_controller.h"
@@ -131,6 +132,11 @@ UiViewModel uiViewModel;
 bool internalAlarmActive = false;
 uint8_t internalAlarmBpm = 0;
 bool diagnosticsHeaderPrinted = false;
+SwingMetro::SerialRunCommandParser serialRunCommandParser;
+bool serialRunActive = false;
+bool serialRunCompletionPending = false;
+std::uint32_t serialRunStartedAtMs = 0;
+std::uint32_t serialRunDurationMs = 0;
 
 void exportInternalTimingDiagnostics() {
     const auto diagnostics = transportController.pipelineDiagnostics(internalTicks);
@@ -225,6 +231,57 @@ void handleEncoderDirection(const TAdapter& adapter, EncoderDirection direction)
 }
 
 void handleProgramStorageEvent(const SwingMetro::AppEvent& event);
+
+void pollSerialRunCommand() {
+    if (serialRunActive || transportController.usesInternalTiming()) {
+        return;
+    }
+    while (Serial.available() > 0) {
+        const auto result = serialRunCommandParser.push(static_cast<char>(Serial.read()));
+        if (result.status == SwingMetro::SerialRunCommandStatus::Pending) {
+            continue;
+        }
+        if (result.status == SwingMetro::SerialRunCommandStatus::Invalid ||
+            mainSequencer.isRunning()) {
+            Serial.println(F("swing_metro_control_v1,error,expected RUN <ms> <bpm> <swing>"));
+            continue;
+        }
+
+        tempoCounter.setValue(result.command.bpm);
+        swingCounter.setValue(result.command.swing);
+        mainSequencer.setBpm(tempoCounter.getValue());
+        mainSequencer.setSwing(swingCounter.getValue());
+        transportController.applyMode(SwingMetro::MidiClockMode::Internal);
+        Serial.print(F("swing_metro_control_v1,run_started,"));
+        Serial.print(result.command.durationMs);
+        Serial.print(',');
+        Serial.print(result.command.bpm);
+        Serial.print(',');
+        Serial.println(result.command.swing);
+        Serial.flush();
+        serialRunStartedAtMs = millis();
+        serialRunDurationMs = result.command.durationMs;
+        serialRunActive = true;
+        transportController.toggle(micros());
+        return;
+    }
+}
+
+void updateSerialRun() {
+    if (!serialRunActive) {
+        return;
+    }
+    if (!transportController.usesInternalTiming()) {
+        serialRunActive = false;
+        serialRunCompletionPending = true;
+        return;
+    }
+    if (millis() - serialRunStartedAtMs >= serialRunDurationMs) {
+        transportController.toggle(micros());
+        serialRunActive = false;
+        serialRunCompletionPending = true;
+    }
+}
 
 void handleButtonBatch(const SwingMetro::StepButtonInputs::Batch& batch) {
     for (std::size_t index = 0; index < batch.size(); ++index) {
@@ -321,6 +378,7 @@ void setup() {
 }
 
 void loop() {
+    pollSerialRunCommand();
     midiClockReceiver.poll([&](const SwingMetro::MidiRealtimeEvent& event) {
         transportController.handleExternal(event, micros());
     });
@@ -348,7 +406,12 @@ void loop() {
     handleButtonBatch(tempoSwitchInput.update(millis()));
     handleButtonBatch(volumeSwitchInput.update(millis()));
 
+    updateSerialRun();
     syncInternalAlarm();
+    if (serialRunCompletionPending && !internalAlarmActive) {
+        Serial.println(F("swing_metro_control_v1,run_complete"));
+        serialRunCompletionPending = false;
+    }
 
     UiSettings settings{tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue(),
                         mainSequencer.getDisplayStepIndex().value_or(UINT8_MAX),

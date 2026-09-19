@@ -105,6 +105,21 @@ reboot Pico. Открыть CDC serial monitor на 115200, начать host MI
 эта строка уже получена после остановки/drain producer-а. Не делать serial print,
 снимки или LittleFS операции во время работающего transport.
 
+Для автоматического free-прогона остановленная firmware принимает одну строку
+`RUN <duration_ms> <bpm> <swing>`. Перед Start она печатает acknowledgement, затем до
+автоматического Stop не читает и не печатает Serial. После Stop выводятся diagnostics
+v2 и `swing_metro_control_v1,run_complete`. Host helper сам находит единственный
+`/dev/cu.usbmodem*` и сохраняет только CSV header/data:
+
+```sh
+~/.platformio/penv/bin/python scripts/pico_serial_run.py \
+  --duration-seconds 244 --bpm 68 --swing 50 \
+  --output data/midi-stage-1-5-free-diagnostics-v2.csv
+```
+
+Скрипт отказывается перезаписывать существующий файл. MIDI host capture запускается
+отдельно до этой команды; command channel не заменяет `.mmon`.
+
 Для каждого прогона записать:
 
 - git revision и параметры сборки;
