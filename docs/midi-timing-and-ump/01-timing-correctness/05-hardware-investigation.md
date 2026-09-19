@@ -117,8 +117,33 @@ v2 и `swing_metro_control_v1,run_complete`. Host helper сам находит �
   --output data/midi-stage-1-5-free-diagnostics-v2.csv
 ```
 
-Скрипт отказывается перезаписывать существующий файл. MIDI host capture запускается
-отдельно до этой команды; command channel не заменяет `.mmon`.
+Скрипт отказывается перезаписывать существующий файл. Если нужен только diagnostics
+snapshot, MIDI host capture запускается отдельно до этой команды.
+
+Рекомендуемый автоматический прогон одновременно открывает CDC Serial и USB MIDI,
+записывает все принятые MIDI-сообщения с host monotonic timestamps и сопоставляет
+число принятых Clock с firmware F8 attempts. Установить host-зависимости и запустить:
+
+```sh
+~/.platformio/penv/bin/pip install -r scripts/requirements-hardware.txt
+~/.platformio/penv/bin/python scripts/pico_midi_run.py \
+  --duration-seconds 244 --bpm 68 --swing 50 \
+  --output-prefix data/midi-stage-1-5-free
+```
+
+Перед измерением всё ещё требуется reboot Pico: firmware counters cumulative с boot.
+Скрипт открывает MIDI до отправки `RUN` и больше не посылает данные по Serial во время
+active transport; firmware в это время не читает и не печатает Serial. После
+`run_complete` скрипт создаёт три файла:
+
+- `*-midi.csv`: сырые MIDI-сообщения, host timestamp и Clock interval;
+- `*-diagnostics.csv`: firmware diagnostics v2;
+- `*-summary.csv`: interval statistics, подозрительные короткие/длинные интервалы и
+  разница между firmware F8 attempts и принятыми host Clock.
+
+При нескольких MIDI-входах нужный порт задаётся индексом или уникальной частью имени
+через `--midi-port`; список показывает `--list-midi-ports`. Host timestamps включают
+USB и scheduling latency macOS и не заменяют Pico-side lateness diagnostics.
 
 Для каждого прогона записать:
 

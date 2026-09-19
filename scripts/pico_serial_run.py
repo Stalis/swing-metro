@@ -4,25 +4,19 @@
 from __future__ import annotations
 
 import argparse
-import glob
 import pathlib
 import sys
 import time
 
 import serial
 
-
-CONTROL_PREFIX = "swing_metro_control_v1"
-DIAGNOSTICS_PREFIX = "swing_metro_diagnostics_v2"
-
-
-def find_port(explicit_port: str | None) -> str:
-    if explicit_port:
-        return explicit_port
-    ports = sorted(glob.glob("/dev/cu.usbmodem*"))
-    if len(ports) != 1:
-        raise RuntimeError(f"expected one /dev/cu.usbmodem* port, found {ports}")
-    return ports[0]
+from pico_run_protocol import (
+    CONTROL_PREFIX,
+    DIAGNOSTICS_HEADER,
+    DIAGNOSTICS_PREFIX,
+    find_serial_port,
+    parse_diagnostics_row,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,8 +35,7 @@ def main() -> int:
     if args.output.exists():
         raise RuntimeError(f"refusing to overwrite {args.output}")
 
-    port = find_port(args.port)
-    header: str | None = None
+    port = find_serial_port(args.port)
     row: str | None = None
     timeout_at = time.monotonic() + args.duration_seconds + 30.0
     with serial.Serial(port, 115200, timeout=0.25) as connection:
@@ -56,17 +49,18 @@ def main() -> int:
                 continue
             line = raw.decode("utf-8", "replace").strip()
             print(line, flush=True)
-            if line.startswith(f"{DIAGNOSTICS_PREFIX},alarm_callback_invocations"):
-                header = line
-            elif line.startswith(f"{DIAGNOSTICS_PREFIX},"):
+            if line.startswith(f"{DIAGNOSTICS_PREFIX},") and not line.startswith(
+                f"{DIAGNOSTICS_PREFIX},alarm_callback_invocations"
+            ):
                 row = line
             elif line == f"{CONTROL_PREFIX},run_complete":
                 break
 
-    if header is None or row is None:
-        raise RuntimeError("run completed without a diagnostics v2 header and row")
+    if row is None:
+        raise RuntimeError("run completed without a diagnostics v2 row")
+    parse_diagnostics_row(row)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(f"{header}\n{row}\n", encoding="utf-8")
+    args.output.write_text(f"{DIAGNOSTICS_HEADER}\n{row}\n", encoding="utf-8")
     print(f"saved {args.output}")
     return 0
 

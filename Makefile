@@ -35,7 +35,7 @@ TIDY_TOOLCHAIN_ARGS := \
 	--extra-arg=-isystem --extra-arg=$(ARM_GCC_INCLUDE)-fixed \
 	--extra-arg=-isystem --extra-arg=$(TOOLCHAIN_ROOT)/arm-none-eabi/include
 
-.PHONY: help format format-check compiledb tidy tidy-run test build verify \
+.PHONY: help format format-check compiledb tidy tidy-run test test-scripts build verify \
 	check-format-tool check-tidy-tool check-pio-tool check-tidy-toolchain
 
 help:
@@ -44,6 +44,7 @@ help:
 		'make format-check  Check formatting without changing files' \
 		'make tidy          Regenerate compile_commands.json and run clang-tidy' \
 		'make test          Run native Unity tests' \
+		'make test-scripts  Run host-side Python tests' \
 		'make build         Build firmware for the configured board' \
 		'make verify        Run format-check, tidy, tests, and firmware build'
 
@@ -91,6 +92,9 @@ tidy-run: check-tidy-tool check-tidy-toolchain
 test: check-pio-tool
 	$(PIO) test -e $(NATIVE_ENV) -f test_native
 
+test-scripts:
+	python3 -m unittest discover -s scripts/tests
+
 build: check-pio-tool
 	$(PIO) run -e $(PIO_ENV)
 
@@ -98,4 +102,5 @@ verify:
 	@$(MAKE) --no-print-directory format-check
 	@$(MAKE) --no-print-directory tidy
 	@$(MAKE) --no-print-directory test
+	@$(MAKE) --no-print-directory test-scripts
 	@$(MAKE) --no-print-directory build
