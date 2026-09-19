@@ -42,7 +42,7 @@ MPE и MIDI 2.0 не тождественны. Классический MPE ис
 | Этап | Документ | Результат |
 | --- | --- | --- |
 | 1 | [Измерения и ошибка времени](01-timing-correctness.md) | **Выполнено:** исправлены ранняя отправка и потеря internal Clock; аппаратно подтверждены 60 122 из 60 122 Clock на 68/240 BPM. |
-| 2 | [События и надёжная отправка](02-events-and-usb-backpressure.md) | События независимы от USB; отказы обрабатываются без блокировки. |
+| 2 | [События и надёжная отправка](02-events-and-usb-backpressure.md) | Пять самостоятельных шагов: typed events/encoder, acceptance и pending delivery, lifecycle policies, diagnostics и hardware baseline. |
 | 3 | [Регулярный ввод](03-input-scheduling-and-debounce.md) | Предсказуемый опрос и debounce по времени. |
 | 4 | [Gate Percent](04-note-gate.md) | Длительность каждой ноты, независимые Note Off, UI и сохранение. |
 | 5 | [Диагностика и нагрузочная проверка](05-diagnostics-and-validation.md) | Воспроизводимые измерения всей системы и выводы об узких местах. |
