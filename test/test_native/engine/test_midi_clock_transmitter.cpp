@@ -1,8 +1,8 @@
 #include "test_midi_clock_transmitter.h"
 
+#include "drivers/midi_usb_encoder.h"
 #include "engine/midi_clock_transmitter.h"
 #include "engine/midi_step_boundary.h"
-#include "engine/midi_usb_packet.h"
 
 #include <array>
 #include <cstddef>
@@ -35,9 +35,9 @@ class EventSink final : public SwingMetro::MidiRealTimeSink {
 };
 
 void test_usb_real_time_packets_use_single_byte_cin() {
-    constexpr auto clock = SwingMetro::usbMidiRealTimePacket(0xF8);
-    constexpr auto start = SwingMetro::usbMidiRealTimePacket(0xFA);
-    constexpr auto stop = SwingMetro::usbMidiRealTimePacket(0xFC);
+    constexpr auto clock = SwingMetro::encodeMidiUsbPacket(SwingMetro::MidiMessage::clock());
+    constexpr auto start = SwingMetro::encodeMidiUsbPacket(SwingMetro::MidiMessage::start());
+    constexpr auto stop = SwingMetro::encodeMidiUsbPacket(SwingMetro::MidiMessage::stop());
 
     TEST_ASSERT_EQUAL_HEX8(0x0F, clock[0]);
     TEST_ASSERT_EQUAL_HEX8(0xF8, clock[1]);

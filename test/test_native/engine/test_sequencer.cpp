@@ -2,14 +2,12 @@
 
 #include "engine/sequencer.h"
 
-#include <array>
 #include <unity.h>
 
 namespace {
 
 using SwingMetro::MidiEventQueue;
 using SwingMetro::MidiEventQueueEnqueueResult;
-using SwingMetro::TransportPosition;
 
 void enableStep(Sequencer& sequencer, StepIndex index, MIDI_Note note, uint8_t velocity) {
     auto steps = sequencer.steps();
@@ -27,16 +25,18 @@ void test_start_schedules_tick_zero_and_two_tick_horizon() {
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, sequencer.scheduleThrough({0, 0}, queue));
     TEST_ASSERT_EQUAL_UINT32(1, queue.size());
     TEST_ASSERT_EQUAL_UINT64(0, queue.nextPosition()->tick);
-    TEST_ASSERT_EQUAL_UINT8(60, queue.drainAt({0, 0}).events[0].packet[2]);
+    const auto first = queue.drainAt({0, 0});
+    TEST_ASSERT_TRUE(first.events[0].message.isNoteOn());
+    TEST_ASSERT_EQUAL_UINT8(60, first.events[0].message.note());
     sequencer.notifyNoteOnSent(60);
 
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, sequencer.scheduleThrough({4, 0}, queue));
     const auto boundary = queue.drainAt({6, 0});
     TEST_ASSERT_EQUAL_UINT32(2, boundary.count);
-    TEST_ASSERT_EQUAL_HEX8(0x80, boundary.events[0].packet[1]);
-    TEST_ASSERT_EQUAL_UINT8(60, boundary.events[0].packet[2]);
-    TEST_ASSERT_EQUAL_HEX8(0x90, boundary.events[1].packet[1]);
-    TEST_ASSERT_EQUAL_UINT8(61, boundary.events[1].packet[2]);
+    TEST_ASSERT_TRUE(boundary.events[0].message.isNoteOffEquivalent());
+    TEST_ASSERT_EQUAL_UINT8(60, boundary.events[0].message.note());
+    TEST_ASSERT_TRUE(boundary.events[1].message.isNoteOn());
+    TEST_ASSERT_EQUAL_UINT8(61, boundary.events[1].message.note());
 }
 
 void test_steps_wrap_after_sixteen_sixteenth_boundaries() {
@@ -56,7 +56,7 @@ void test_steps_wrap_after_sixteen_sixteenth_boundaries() {
 
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, sequencer.scheduleThrough({96, 0}, queue));
     const auto boundary = queue.drainAt({96, 0});
-    TEST_ASSERT_EQUAL_UINT8(60, boundary.events[boundary.count - 1].packet[2]);
+    TEST_ASSERT_EQUAL_UINT8(60, boundary.events[boundary.count - 1].message.note());
 }
 
 void test_queue_rejection_keeps_boundary_retryable() {
@@ -64,8 +64,9 @@ void test_queue_rejection_keeps_boundary_retryable() {
     MidiEventQueue queue;
     enableStep(sequencer, 0, 60, 100);
     for (std::size_t index = 0; index < MidiEventQueue::CAPACITY; ++index) {
-        TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
-                          queue.enqueue({100 + index, 0}, {0x09, 0x90, 1, 1}));
+        TEST_ASSERT_EQUAL(
+            MidiEventQueueEnqueueResult::Ok,
+            queue.enqueue({100 + index, 0}, *SwingMetro::MidiMessage::noteOn(0, 1, 1)));
     }
 
     sequencer.start();
@@ -73,7 +74,7 @@ void test_queue_rejection_keeps_boundary_retryable() {
                       sequencer.scheduleThrough({0, 0}, queue));
     queue.clear();
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, sequencer.scheduleThrough({0, 0}, queue));
-    TEST_ASSERT_EQUAL_UINT8(60, queue.drainAt({0, 0}).events[0].packet[2]);
+    TEST_ASSERT_EQUAL_UINT8(60, queue.drainAt({0, 0}).events[0].message.note());
 }
 
 void test_stop_returns_actual_not_projected_note() {
@@ -106,7 +107,7 @@ void test_continue_preserves_next_boundary() {
     sequencer.continuePlayback();
 
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, sequencer.scheduleThrough({4, 0}, queue));
-    TEST_ASSERT_EQUAL_UINT8(61, queue.drainAt({6, 0}).events[0].packet[2]);
+    TEST_ASSERT_EQUAL_UINT8(61, queue.drainAt({6, 0}).events[0].message.note());
 }
 
 void test_legacy_timing_api_remains_compatible_until_stage_six() {
@@ -139,22 +140,22 @@ void test_swing_schedules_only_odd_note_ons_at_a_phase() {
     (void)sequencer.scheduleThrough({4, 0}, queue);
     const auto first = queue.drainAt({0, 0});
     TEST_ASSERT_EQUAL_UINT32(1, first.count);
-    TEST_ASSERT_EQUAL_HEX8(0x90, first.events[0].packet[1]);
+    TEST_ASSERT_TRUE(first.events[0].message.isNoteOn());
     const auto boundary = queue.drainAt({6, 0});
     TEST_ASSERT_EQUAL_UINT32(1, boundary.count);
-    TEST_ASSERT_EQUAL_HEX8(0x80, boundary.events[0].packet[1]);
+    TEST_ASSERT_TRUE(boundary.events[0].message.isNoteOffEquivalent());
     const auto delayed = queue.drainAt({6, SwingMetro::phaseFromPercent(75)});
     TEST_ASSERT_EQUAL_UINT32(1, delayed.count);
-    TEST_ASSERT_EQUAL_HEX8(0x90, delayed.events[0].packet[1]);
+    TEST_ASSERT_TRUE(delayed.events[0].message.isNoteOn());
 
     (void)sequencer.scheduleThrough({10, 0}, queue);
     const auto next = queue.drainAt({12, 0});
     TEST_ASSERT_EQUAL_UINT32(2, next.count);
-    TEST_ASSERT_EQUAL_HEX8(0x80, next.events[0].packet[1]);
-    TEST_ASSERT_EQUAL_HEX8(0x90, next.events[1].packet[1]);
+    TEST_ASSERT_TRUE(next.events[0].message.isNoteOffEquivalent());
+    TEST_ASSERT_TRUE(next.events[1].message.isNoteOn());
 }
 
-void test_actual_sounding_state_follows_transmitted_packets() {
+void test_actual_sounding_state_follows_transmitted_messages() {
     Sequencer sequencer;
 
     sequencer.notifyNoteOnSent(60);
@@ -176,5 +177,5 @@ void test_sequencer_main() {
     RUN_TEST(test_legacy_timing_api_remains_compatible_until_stage_six);
     RUN_TEST(test_swing_phase_is_literal_and_only_delays_odd_steps);
     RUN_TEST(test_swing_schedules_only_odd_note_ons_at_a_phase);
-    RUN_TEST(test_actual_sounding_state_follows_transmitted_packets);
+    RUN_TEST(test_actual_sounding_state_follows_transmitted_messages);
 }

@@ -4,7 +4,6 @@
 #include "internal_tick_source.h"
 #include "midi_clock_mode.h"
 #include "midi_event_queue.h"
-#include "midi_usb_packet.h"
 #include "sequencer.h"
 #include "timestamp.h"
 #include "transport.h"
@@ -14,10 +13,10 @@
 
 namespace SwingMetro {
 
-class MidiPacketSink {
+class MidiMessageSink {
   public:
-    virtual ~MidiPacketSink() = default;
-    virtual auto send(const MidiUsbPacket& packet) -> void = 0;
+    virtual ~MidiMessageSink() = default;
+    virtual auto send(const MidiMessage& message) -> void = 0;
 };
 
 struct TransportDiagnostics {
@@ -48,7 +47,7 @@ struct TickPipelineDiagnostics {
 class MidiDispatcher {
   public:
     MidiDispatcher(MidiEventQueue& queue, Transport& transport, Sequencer& sequencer,
-                   MidiPacketSink& sink, TransportDiagnostics& diagnostics) noexcept
+                   MidiMessageSink& sink, TransportDiagnostics& diagnostics) noexcept
         : _queue{queue}, _transport{transport}, _sequencer{sequencer}, _sink{sink},
           _diagnostics{diagnostics} {}
 
@@ -57,7 +56,7 @@ class MidiDispatcher {
         _haveTick = false;
         _internalOutputActive = emitStart;
         if (emitStart) {
-            _sink.send(usbMidiRealTimePacket(0xFA));
+            _sink.send(MidiMessage::start());
         }
     }
 
@@ -68,10 +67,10 @@ class MidiDispatcher {
 
     auto stop(std::optional<MIDI_Note> note) -> void {
         if (note.has_value()) {
-            _sink.send({0x08, 0x80, *note, 0});
+            _sink.send(*MidiMessage::noteOff(0, *note));
         }
         if (_internalOutputActive) {
-            _sink.send(usbMidiRealTimePacket(0xFC));
+            _sink.send(MidiMessage::stop());
         }
         _internalOutputActive = false;
         if (_haveTick) {
@@ -114,7 +113,7 @@ class MidiDispatcher {
         _sequencer.notifyBoundaryReached(_transport.position().tick);
         if (emitClock) {
             addOne(_diagnostics.outgoingInternalClockAttempts);
-            _sink.send(usbMidiRealTimePacket(0xF8));
+            _sink.send(MidiMessage::clock());
             updateLateness(_diagnostics.maxClockAttemptLatenessUs, attemptAtUs, record.timestampUs);
         }
         sendDue({_transport.position().tick, 0}, attemptAtUs);
@@ -146,19 +145,17 @@ class MidiDispatcher {
         for (std::size_t index = 0; index < due.count; ++index) {
             const auto& event = due.events[index];
             const auto deadlineUs = _tickStartUs + phaseOffsetUs(event.target.phase, _tickPeriodUs);
-            if (event.packet[1] == 0xF8) {
+            if (event.message.isClock()) {
                 updateLateness(_diagnostics.maxClockAttemptLatenessUs, attemptAtUs, deadlineUs);
             } else {
                 updateLateness(_diagnostics.maxQueuedEventAttemptLatenessUs, attemptAtUs,
                                deadlineUs);
             }
-            _sink.send(event.packet);
-            const auto& packet = event.packet;
-            if ((packet[1] & 0xF0U) == 0x90U && packet[3] != 0U) {
-                _sequencer.notifyNoteOnSent(packet[2]);
-            } else if ((packet[1] & 0xF0U) == 0x80U ||
-                       ((packet[1] & 0xF0U) == 0x90U && packet[3] == 0U)) {
-                _sequencer.notifyNoteOffSent(packet[2]);
+            _sink.send(event.message);
+            if (event.message.isNoteOn()) {
+                _sequencer.notifyNoteOnSent(event.message.note());
+            } else if (event.message.isNoteOffEquivalent()) {
+                _sequencer.notifyNoteOffSent(event.message.note());
             }
         }
     }
@@ -166,7 +163,7 @@ class MidiDispatcher {
     MidiEventQueue& _queue;
     Transport& _transport;
     Sequencer& _sequencer;
-    MidiPacketSink& _sink;
+    MidiMessageSink& _sink;
     TransportDiagnostics& _diagnostics;
     std::uint32_t _tickStartUs = 0;
     std::uint32_t _tickPeriodUs = 0;
@@ -177,11 +174,11 @@ class MidiDispatcher {
 class TransportController {
   public:
     TransportController(Sequencer& sequencer, MidiClockSettings& settings,
-                        MidiPacketSink& sink) noexcept
+                        MidiMessageSink& sink) noexcept
         : _sequencer{sequencer}, _settings{settings}, _queue{_ownedQueue},
           _dispatcher{_queue, _transport, sequencer, sink, _diagnostics} {}
 
-    TransportController(Sequencer& sequencer, MidiClockSettings& settings, MidiPacketSink& sink,
+    TransportController(Sequencer& sequencer, MidiClockSettings& settings, MidiMessageSink& sink,
                         MidiEventQueue& queue) noexcept
         : _sequencer{sequencer}, _settings{settings}, _queue{queue},
           _dispatcher{_queue, _transport, sequencer, sink, _diagnostics} {}

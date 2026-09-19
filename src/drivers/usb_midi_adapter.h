@@ -1,7 +1,7 @@
 #pragma once
 
+#include "drivers/midi_usb_encoder.h"
 #include "engine/midi_realtime_event.h"
-#include "engine/midi_usb_packet.h"
 #include "engine/transport_controller.h"
 
 #include <Adafruit_TinyUSB.h>
@@ -10,11 +10,12 @@
 
 namespace SwingMetro {
 
-class UsbMidiPacketSink final : public MidiPacketSink {
+class UsbMidiMessageSink final : public MidiMessageSink {
   public:
-    explicit UsbMidiPacketSink(Adafruit_USBD_MIDI& midi) noexcept : _midi{midi} {}
+    explicit UsbMidiMessageSink(Adafruit_USBD_MIDI& midi) noexcept : _midi{midi} {}
 
-    auto send(const MidiUsbPacket& packet) -> void override {
+    auto send(const MidiMessage& message) -> void override {
+        const auto packet = encodeMidiUsbPacket(message);
         (void)_midi.writePacket(packet.data());
     }
 

@@ -1,5 +1,6 @@
 #include "test_transport_controller.h"
 
+#include "drivers/midi_usb_encoder.h"
 #include "engine/transport_controller.h"
 
 #include <array>
@@ -7,15 +8,20 @@
 
 namespace {
 
-class Sink final : public SwingMetro::MidiPacketSink {
+class Sink final : public SwingMetro::MidiMessageSink {
   public:
-    auto send(const SwingMetro::MidiUsbPacket& packet) -> void override {
-        packets[count++] = packet;
+    auto send(const SwingMetro::MidiMessage& message) -> void override {
+        packets[count++] = SwingMetro::encodeMidiUsbPacket(message);
     }
 
     std::array<SwingMetro::MidiUsbPacket, 16> packets{};
     std::size_t count = 0;
 };
+
+constexpr auto noteOn(std::uint8_t channel, std::uint8_t note, std::uint8_t velocity)
+    -> SwingMetro::MidiMessage {
+    return *SwingMetro::MidiMessage::noteOn(channel, note, velocity);
+}
 
 auto event(SwingMetro::MidiRealtimeEventType type, std::uint32_t timestampUs)
     -> SwingMetro::MidiRealtimeEvent {
@@ -37,7 +43,7 @@ void test_dispatcher_sends_tick_before_phase_zero_and_due_phase() {
     SwingMetro::TransportDiagnostics diagnostics;
     SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
-                      queue.enqueue({0, SwingMetro::phaseFromPercent(50)}, {0x09, 0x90, 60, 100}));
+                      queue.enqueue({0, SwingMetro::phaseFromPercent(50)}, noteOn(0, 60, 100)));
 
     dispatcher.start(true);
     dispatcher.consumeTick({1'000, 20'000}, true, 1'000);
@@ -47,6 +53,27 @@ void test_dispatcher_sends_tick_before_phase_zero_and_due_phase() {
     dispatcher.dispatchDue(11'000, 11'000);
     TEST_ASSERT_EQUAL_UINT32(3, sink.count);
     TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[2][1]);
+}
+
+void test_velocity_zero_note_on_clears_sounding_note_without_changing_bytes() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    sequencer.notifyNoteOnSent(60);
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, 0}, noteOn(0, 60, 0)));
+
+    dispatcher.start(false);
+    dispatcher.consumeTick({1'000, 20'000}, false, 1'000);
+
+    TEST_ASSERT_FALSE(sequencer.actualSoundingNote().has_value());
+    TEST_ASSERT_EQUAL_HEX8(0x09, sink.packets[0][0]);
+    TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[0][1]);
+    TEST_ASSERT_EQUAL_UINT8(60, sink.packets[0][2]);
+    TEST_ASSERT_EQUAL_UINT8(0, sink.packets[0][3]);
 }
 
 void test_internal_start_emits_start_tick_and_queued_note() {
@@ -426,7 +453,7 @@ void test_capacity_schedule_failure_stops_once_and_clears_queue() {
     controller.process(1'000, ticks);
     for (std::size_t index = 0; index < SwingMetro::MidiEventQueue::CAPACITY; ++index) {
         TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
-                          queue.enqueue({100 + index, 0}, {0x09, 0x90, 1, 1}));
+                          queue.enqueue({100 + index, 0}, noteOn(0, 1, 1)));
     }
     for (std::uint32_t tick = 1; tick <= 4; ++tick) {
         TEST_ASSERT_TRUE(ticks.publish({1'000 + tick * 20'000, 20'000}));
@@ -455,7 +482,7 @@ void test_tick_quota_schedule_failure_stops_once_and_clears_queue() {
     controller.process(1'000, ticks);
     for (std::size_t index = 0; index < 7; ++index) {
         TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
-                          queue.enqueue({6, 0}, {0x09, 0x90, 1, 1}));
+                          queue.enqueue({6, 0}, noteOn(0, 1, 1)));
     }
     for (std::uint32_t tick = 1; tick <= 4; ++tick) {
         TEST_ASSERT_TRUE(ticks.publish({1'000 + tick * 20'000, 20'000}));
@@ -556,7 +583,7 @@ void test_period_changes_retime_deadline_without_changing_queue_position() {
     SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
     const auto phase = SwingMetro::phaseFromPercent(75);
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
-                      queue.enqueue({1, phase}, {0x09, 0x90, 60, 100}));
+                      queue.enqueue({1, phase}, noteOn(0, 60, 100)));
 
     dispatcher.start(false);
     dispatcher.consumeTick({1'000, 20'000}, false, 1'000);
@@ -579,7 +606,7 @@ void test_dispatcher_does_not_send_phase_before_tick_start_or_deadline() {
     SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
     const auto phase = SwingMetro::phaseFromPercent(75);
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
-                      queue.enqueue({0, phase}, {0x09, 0x90, 60, 100}));
+                      queue.enqueue({0, phase}, noteOn(0, 60, 100)));
 
     dispatcher.start(false);
     dispatcher.consumeTick({100'010, 20'000}, false, 100'010);
@@ -603,7 +630,7 @@ void test_dispatcher_sends_phase_after_timestamp_wrap() {
     SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
     const auto phase = SwingMetro::phaseFromPercent(75);
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
-                      queue.enqueue({0, phase}, {0x09, 0x90, 60, 100}));
+                      queue.enqueue({0, phase}, noteOn(0, 60, 100)));
 
     dispatcher.start(false);
     dispatcher.consumeTick({UINT32_MAX - 9'999, 20'000}, false, UINT32_MAX - 9'999);
@@ -625,7 +652,7 @@ void test_internal_tick_newer_than_process_timestamp_waits_for_deadline() {
     controller.applyMode(SwingMetro::MidiClockMode::Internal);
     controller.toggle(0);
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
-                      queue.enqueue({0, phase}, {0x09, 0x90, 61, 100}));
+                      queue.enqueue({0, phase}, noteOn(0, 61, 100)));
     TEST_ASSERT_TRUE(ticks.publish({100'010, 20'000}));
     controller.process(100'000, ticks);
     TEST_ASSERT_EQUAL_UINT32(2, sink.count);
@@ -646,7 +673,7 @@ void test_external_tick_newer_than_process_timestamp_waits_for_deadline() {
     controller.applyMode(SwingMetro::MidiClockMode::External);
     handleExternal(controller, SwingMetro::MidiRealtimeEventType::Start, 0);
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
-                      queue.enqueue({0, phase}, {0x09, 0x90, 62, 100}));
+                      queue.enqueue({0, phase}, noteOn(0, 62, 100)));
     handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 80'010);
     handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 100'010);
     controller.process(100'000, ticks);
@@ -707,7 +734,7 @@ void test_queued_event_attempt_lateness_uses_ceil_phase_deadline() {
         SwingMetro::TransportDiagnostics diagnostics;
         SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
         TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
-                          queue.enqueue({0, phase}, {0x09, 0x90, 60, 100}));
+                          queue.enqueue({0, phase}, noteOn(0, 60, 100)));
 
         dispatcher.start(false);
         dispatcher.consumeTick({1'000, 20'000}, false, 1'000);
@@ -726,9 +753,9 @@ void test_attempt_lateness_classifies_queued_clock_and_wraps() {
     SwingMetro::TransportDiagnostics diagnostics;
     SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
-                      queue.enqueue({0, phase}, SwingMetro::usbMidiRealTimePacket(0xF8)));
+                      queue.enqueue({0, phase}, SwingMetro::MidiMessage::clock()));
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
-                      queue.enqueue({0, phase}, {0x09, 0x90, 60, 100}));
+                      queue.enqueue({0, phase}, noteOn(0, 60, 100)));
 
     dispatcher.start(false);
     dispatcher.consumeTick({UINT32_MAX - 9'999, 20'000}, false, UINT32_MAX - 9'999);
@@ -768,6 +795,7 @@ void test_service_and_tick_lateness_wrap_and_rebaseline_at_horizon() {
 
 void test_transport_controller_main() {
     RUN_TEST(test_dispatcher_sends_tick_before_phase_zero_and_due_phase);
+    RUN_TEST(test_velocity_zero_note_on_clears_sounding_note_without_changing_bytes);
     RUN_TEST(test_internal_start_emits_start_tick_and_queued_note);
     RUN_TEST(test_external_start_waits_for_measured_tick_and_never_echoes_clock);
     RUN_TEST(test_repeated_external_start_stops_sounding_note_before_reset);

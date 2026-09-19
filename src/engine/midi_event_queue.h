@@ -1,6 +1,6 @@
 #pragma once
 
-#include "midi_usb_packet.h"
+#include "midi_message.h"
 #include "transport.h"
 
 #include <array>
@@ -12,13 +12,13 @@ namespace SwingMetro {
 
 struct MidiEvent {
     TransportPosition target{};
-    MidiUsbPacket packet{};
+    MidiMessage message{};
     std::size_t sequenceNumber = 0;
 };
 
 struct MidiEventRequest {
     TransportPosition target{};
-    MidiUsbPacket packet{};
+    MidiMessage message{};
 };
 
 enum class MidiEventQueueEnqueueResult : std::uint8_t {
@@ -38,9 +38,9 @@ class MidiEventQueue {
     static constexpr std::size_t CAPACITY = 16;
     static constexpr std::size_t MAX_PACKETS_PER_TICK = 8;
 
-    [[nodiscard]] auto enqueue(TransportPosition target, const MidiUsbPacket& packet) noexcept
+    [[nodiscard]] auto enqueue(TransportPosition target, const MidiMessage& message) noexcept
         -> MidiEventQueueEnqueueResult {
-        const MidiEventRequest request{target, packet};
+        const MidiEventRequest request{target, message};
         return enqueueBatch(&request, 1);
     }
 
@@ -56,7 +56,7 @@ class MidiEventQueue {
             for (std::size_t index = 0; index < count; ++index) {
                 if (requests[index].target.tick == tick) {
                     ++packetCount;
-                    nonClockCount += requests[index].packet[1] != 0xF8;
+                    nonClockCount += !requests[index].message.isClock();
                 }
             }
             if (packetCount > MAX_PACKETS_PER_TICK || nonClockCount >= MAX_PACKETS_PER_TICK) {
@@ -115,7 +115,7 @@ class MidiEventQueue {
 
   private:
     auto enqueueUnchecked(const MidiEventRequest& request) noexcept -> void {
-        const MidiEvent event{request.target, request.packet, _nextSequenceNumber++};
+        const MidiEvent event{request.target, request.message, _nextSequenceNumber++};
         std::size_t insertAt = _count;
         while (insertAt > 0 && eventPrecedes(event, _events[insertAt - 1])) {
             _events[insertAt] = _events[insertAt - 1];
@@ -136,23 +136,13 @@ class MidiEventQueue {
     [[nodiscard]] auto nonClockPacketsAtTick(TransportTick tick) const noexcept -> std::size_t {
         std::size_t count = 0;
         for (std::size_t index = 0; index < _count; ++index) {
-            count += _events[index].target.tick == tick && _events[index].packet[1] != 0xF8;
+            count += _events[index].target.tick == tick && !_events[index].message.isClock();
         }
         return count;
     }
 
     [[nodiscard]] static auto priority(const MidiEvent& event) noexcept -> std::uint8_t {
-        const auto status = event.packet[1];
-        if (status == 0xF8) {
-            return 0;
-        }
-        if ((status & 0xF0) == 0x80 || ((status & 0xF0) == 0x90 && event.packet[3] == 0)) {
-            return 1;
-        }
-        if ((status & 0xF0) == 0x90) {
-            return 2;
-        }
-        return 3;
+        return event.message.priority();
     }
 
     [[nodiscard]] static auto eventPrecedes(const MidiEvent& left, const MidiEvent& right) noexcept

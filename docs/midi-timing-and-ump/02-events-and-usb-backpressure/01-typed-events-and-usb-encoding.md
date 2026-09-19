@@ -1,6 +1,6 @@
 # Шаг 2.1. Типизированные события и USB-кодировщик
 
-Статус: запланировано. Зависит от завершённого этапа 1.
+Статус: завершено. Зависит от завершённого этапа 1.
 
 ## Цель
 
@@ -82,6 +82,23 @@ Encoder не знает transport, retry и состояние ноты. TinyUSB
 - Единственное outbound USB MIDI 1.0 кодирование находится на adapter boundary.
 - Существующая музыкальная семантика и все тесты сохранены.
 - Выполнен `make verify`.
+
+## Реализация и проверка
+
+- Добавлены fixed-size trivially-copyable `MidiMessage` и семантическая классификация. Note On
+  с velocity 0 сохраняет legacy USB bytes, но является note-off-equivalent для priority и
+  состояния звучащей ноты.
+- Queue, sequencer и dispatcher больше не зависят от USB MIDI packet layout. Неиспользуемые
+  default-constructed элементы fixed arrays безопасны: их обработка всегда ограничена `count`.
+- Чистый USB MIDI 1.0 encoder находится в `src/drivers/midi_usb_encoder.h`; TinyUSB adapter
+  кодирует непосредственно перед `writePacket()` без изменения его `void`-семантики.
+- Изменены `src/engine/midi_message.h`, `src/engine/midi_event_queue.h`,
+  `src/engine/sequencer.cpp`, `src/engine/transport_controller.h`,
+  `src/drivers/midi_usb_encoder.h`, `src/drivers/usb_midi_adapter.h`, `src/main.cpp` и native
+  tests; удалён `src/engine/midi_usb_packet.h`.
+- Проверка: `make verify` успешно выполнен (format-check, tidy, 245 native Unity tests, 8 script
+  tests и rpipico2 build). Encoder tests покрывают realtime, Note On/Off, границы channel/data и
+  velocity-zero Note On.
 
 ## Вне объёма
 

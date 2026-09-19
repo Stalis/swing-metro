@@ -146,13 +146,14 @@ Sequencer::scheduleThrough(SwingMetro::TransportPosition position,
         std::array<SwingMetro::MidiEventRequest, 2> requests{};
         std::size_t count = 0;
         if (_projectedSoundingNote.has_value()) {
-            requests[count++] = {{_nextBoundaryTick, 0}, {0x08, 0x80, *_projectedSoundingNote, 0}};
+            requests[count++] = {{_nextBoundaryTick, 0},
+                                 *SwingMetro::MidiMessage::noteOff(0, *_projectedSoundingNote)};
         }
         std::optional<MIDI_Note> projected;
         if (step.isEnabled) {
             projected = step.note;
             requests[count++] = {{_nextBoundaryTick, SwingMetro::swingPhase(stepIndex, _swing)},
-                                 {0x09, 0x90, step.note, step.velocity}};
+                                 *SwingMetro::MidiMessage::noteOn(0, step.note, step.velocity)};
         }
         const auto result = queue.enqueueBatch(requests, count);
         if (result != SwingMetro::MidiEventQueueEnqueueResult::Ok) {

@@ -33,7 +33,7 @@ SwingMetro::UsbMidiRealtimeReceiver midiClockReceiver{usbMidi};
 
 Sequencer mainSequencer;
 SwingMetro::MidiClockSettings midiClockSettings;
-SwingMetro::UsbMidiPacketSink midiSink{usbMidi};
+SwingMetro::UsbMidiMessageSink midiSink{usbMidi};
 SwingMetro::InternalTickSource internalTicks;
 SwingMetro::PicoInternalTickAlarm internalTickAlarm{internalTicks};
 SwingMetro::TransportController transportController{mainSequencer, midiClockSettings, midiSink};
