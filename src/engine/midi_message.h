@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <type_traits>
@@ -13,6 +15,20 @@ enum class MidiMessageType : std::uint8_t {
     Continue,
     Stop,
     Clock,
+};
+
+enum class MidiMessageClass : std::uint8_t {
+    Clock,
+    Transport,
+    Note,
+    Count,
+};
+
+static constexpr std::size_t MIDI_MESSAGE_CLASS_COUNT =
+    static_cast<std::size_t>(MidiMessageClass::Count);
+
+struct MidiMessageClassSummary {
+    std::array<std::size_t, MIDI_MESSAGE_CLASS_COUNT> counts{};
 };
 
 class MidiMessage {
@@ -66,6 +82,12 @@ class MidiMessage {
     }
     [[nodiscard]] constexpr auto priority() const noexcept -> std::uint8_t {
         return isClock() ? 0 : (isNoteOffEquivalent() ? 1 : (isNoteOn() ? 2 : 3));
+    }
+
+    [[nodiscard]] constexpr auto messageClass() const noexcept -> MidiMessageClass {
+        return isClock() ? MidiMessageClass::Clock
+                         : (isNoteOn() || isNoteOffEquivalent() ? MidiMessageClass::Note
+                                                                : MidiMessageClass::Transport);
     }
 
   private:

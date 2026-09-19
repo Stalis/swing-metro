@@ -11,13 +11,13 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Mapping
 
 from pico_run_protocol import (
     CONTROL_PREFIX,
-    DIAGNOSTICS_HEADER,
-    DIAGNOSTICS_PREFIX,
+    diagnostics_header_for_row,
     find_serial_port,
+    is_diagnostics_data_row,
     parse_diagnostics_row,
 )
 
@@ -131,7 +131,7 @@ def analyze_events(events: list[MidiEvent], bpm: int) -> dict[str, int | float]:
 
 
 def add_firmware_summary(
-    summary: dict[str, int | float], diagnostics: dict[str, int]
+    summary: Mapping[str, int | float], diagnostics: Mapping[str, int], diagnostics_version: int = 2
 ) -> dict[str, int | float | str]:
     fresh_firmware_counters = diagnostics["synchronous_start_publication_attempts"] == 1
     host_clock_difference: int | str = "not_comparable_cumulative_firmware_counters"
@@ -147,6 +147,34 @@ def add_firmware_summary(
             "firmware_successful_publication_count": diagnostics["successful_publications"],
             "firmware_successful_consumer_pop_count": diagnostics["successful_consumer_pops"],
             "host_clock_count_difference": host_clock_difference,
+        }
+    )
+    if diagnostics_version == 2:
+        combined.update(
+            {
+                "firmware_clock_stack_accepted_count": "unavailable_v2",
+                "clock_attempt_minus_accepted": "unavailable_v2",
+                "clock_accepted_minus_host": "unavailable_v2",
+            }
+        )
+        return combined
+
+    if diagnostics_version != 3:
+        raise RuntimeError(f"unsupported diagnostics version {diagnostics_version}")
+    accepted = diagnostics["delivery_clock_accepted"]
+    difference: int | str = "not_comparable_cumulative_firmware_counters"
+    if fresh_firmware_counters:
+        difference = diagnostics["delivery_clock_attempts"] - accepted
+    accepted_host_difference: int | str = "not_comparable_cumulative_firmware_counters"
+    if fresh_firmware_counters:
+        accepted_host_difference = accepted - int(summary["clock_count"])
+    combined.update(
+        {
+            "firmware_clock_attempt_count": diagnostics["delivery_clock_attempts"],
+            "firmware_clock_stack_accepted_count": accepted,
+            "host_clock_count": int(summary["clock_count"]),
+            "clock_attempt_minus_accepted": difference,
+            "clock_accepted_minus_host": accepted_host_difference,
         }
     )
     return combined
@@ -295,9 +323,7 @@ def main() -> int:
                     continue
                 line = raw.decode("utf-8", "replace").strip()
                 print(line, flush=True)
-                if line.startswith(f"{DIAGNOSTICS_PREFIX},") and not line.startswith(
-                    f"{DIAGNOSTICS_PREFIX},alarm_callback_invocations"
-                ):
+                if is_diagnostics_data_row(line):
                     row = line
                 elif line == f"{CONTROL_PREFIX},run_complete":
                     completed = True
@@ -309,14 +335,14 @@ def main() -> int:
     if not completed:
         raise RuntimeError("timed run did not report completion")
     if row is None:
-        raise RuntimeError("run completed without a diagnostics v2 row")
-    diagnostics = parse_diagnostics_row(row)
+        raise RuntimeError("run completed without a diagnostics row")
+    diagnostics_version, diagnostics = parse_diagnostics_row(row)
     with event_lock:
         captured_events = list(events)
 
     summary = analyze_events(captured_events, args.bpm)
-    summary_with_firmware = add_firmware_summary(summary, diagnostics)
-    diagnostics_path.write_text(f"{DIAGNOSTICS_HEADER}\n{row}\n", encoding="utf-8")
+    summary_with_firmware = add_firmware_summary(summary, diagnostics, diagnostics_version)
+    diagnostics_path.write_text(f"{diagnostics_header_for_row(row)}\n{row}\n", encoding="utf-8")
     write_midi_csv(midi_path, captured_events)
     write_summary_csv(summary_path, summary_with_firmware)
     print(f"saved {midi_path}")

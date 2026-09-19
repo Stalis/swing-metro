@@ -26,11 +26,55 @@ enum class InvalidationReason : std::uint8_t {
     SupersededStart,
 };
 
+enum class DeliveryRemovalReason : std::uint8_t {
+    ClockCoalesced,
+    ClockExpired,
+    NoteOnExpired,
+    Stop,
+    ModeSwitch,
+    Storage,
+    ExternalClockLost,
+    RetryWindowExceeded,
+    DeliveryCapacity,
+    Disconnected,
+    SupersededStart,
+    ScheduledOverdue,
+    Count,
+};
+
+static constexpr std::size_t DELIVERY_REMOVAL_REASON_COUNT =
+    static_cast<std::size_t>(DeliveryRemovalReason::Count);
+
+[[nodiscard]] constexpr auto deliveryRemovalReason(InvalidationReason reason) noexcept
+    -> DeliveryRemovalReason {
+    switch (reason) {
+    case InvalidationReason::Stop:
+        return DeliveryRemovalReason::Stop;
+    case InvalidationReason::ModeSwitch:
+        return DeliveryRemovalReason::ModeSwitch;
+    case InvalidationReason::Storage:
+        return DeliveryRemovalReason::Storage;
+    case InvalidationReason::ExternalClockLost:
+        return DeliveryRemovalReason::ExternalClockLost;
+    case InvalidationReason::RetryWindowExceeded:
+        return DeliveryRemovalReason::RetryWindowExceeded;
+    case InvalidationReason::DeliveryCapacity:
+        return DeliveryRemovalReason::DeliveryCapacity;
+    case InvalidationReason::Disconnected:
+        return DeliveryRemovalReason::Disconnected;
+    case InvalidationReason::SupersededStart:
+        return DeliveryRemovalReason::SupersededStart;
+    }
+    return DeliveryRemovalReason::Stop;
+}
+
 struct PendingRemovalSummary {
-    std::size_t clocks = 0;
+    MidiMessageClassSummary byClass{};
     std::size_t noteOns = 0;
     std::size_t noteOffs = 0;
     std::size_t stops = 0;
+    std::size_t terminalNoteOffs = 0;
+    std::size_t terminalStops = 0;
 };
 
 struct PendingMidiEvent {
@@ -41,6 +85,8 @@ struct PendingMidiEvent {
     bool countsAsInternalClockAttempt = false;
     bool terminal = false;
     MidiAttemptLateness lateness = MidiAttemptLateness::None;
+    std::uint8_t attemptOrdinal = 0;
+    bool retrySeen = false;
 };
 
 class MidiPendingDeliveryQueue {
@@ -64,7 +110,9 @@ class MidiPendingDeliveryQueue {
                           sessionGeneration,
                           countsAsInternalClockAttempt,
                           terminal,
-                          lateness};
+                          lateness,
+                          0,
+                          false};
         _tail = (_tail + 1) % CAPACITY;
         ++_count;
         return true;
@@ -95,6 +143,17 @@ class MidiPendingDeliveryQueue {
         --_count;
     }
 
+    auto markFrontRetry() noexcept -> void {
+        if (_count == 0) {
+            return;
+        }
+        auto& pending = _events[_head];
+        if (pending.attemptOrdinal != UINT8_MAX) {
+            ++pending.attemptOrdinal;
+        }
+        pending.retrySeen = true;
+    }
+
     auto clear() noexcept -> void {
         _head = 0;
         _tail = 0;
@@ -112,14 +171,16 @@ class MidiPendingDeliveryQueue {
                 retained[retainedCount++] = pending;
                 continue;
             }
-            if (pending.event.message.isClock()) {
-                ++summary.clocks;
-            } else if (pending.event.message.isNoteOn()) {
+            ++summary.byClass
+                  .counts[static_cast<std::size_t>(pending.event.message.messageClass())];
+            if (pending.event.message.isNoteOn()) {
                 ++summary.noteOns;
             } else if (pending.event.message.isNoteOffEquivalent()) {
                 ++summary.noteOffs;
+                summary.terminalNoteOffs += pending.terminal;
             } else if (pending.event.message.type() == MidiMessageType::Stop) {
                 ++summary.stops;
+                summary.terminalStops += pending.terminal;
             }
         }
         _events = retained;
@@ -167,6 +228,14 @@ class MidiPendingDeliveryQueue {
     [[nodiscard]] auto full() const noexcept -> bool { return _count == CAPACITY; }
     [[nodiscard]] auto empty() const noexcept -> bool { return _count == 0; }
     [[nodiscard]] auto size() const noexcept -> std::size_t { return _count; }
+    [[nodiscard]] auto classSummary() const noexcept -> MidiMessageClassSummary {
+        MidiMessageClassSummary summary;
+        for (std::size_t index = 0; index < _count; ++index) {
+            ++summary.counts[static_cast<std::size_t>(
+                _events[(_head + index) % CAPACITY].event.message.messageClass())];
+        }
+        return summary;
+    }
 
   private:
     std::array<PendingMidiEvent, CAPACITY> _events{};

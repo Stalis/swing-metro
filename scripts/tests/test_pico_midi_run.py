@@ -16,7 +16,13 @@ from pico_midi_run import (
     output_paths,
     write_summary_csv,
 )
-from pico_run_protocol import DIAGNOSTICS_HEADER, parse_diagnostics_row
+from pico_run_protocol import (
+    V2_COLUMNS,
+    V3_COLUMNS,
+    diagnostics_header_for_row,
+    is_diagnostics_data_row,
+    parse_diagnostics_row,
+)
 
 
 class PicoMidiRunTests(unittest.TestCase):
@@ -62,12 +68,30 @@ class PicoMidiRunTests(unittest.TestCase):
             output_paths(pathlib.Path("capture-minder")),
         )
 
-    def test_parses_full_diagnostics_row(self):
-        columns = DIAGNOSTICS_HEADER.split(",")
+    def test_parses_v2_diagnostics_row(self):
+        columns = V2_COLUMNS
         row = ",".join([columns[0], *(str(index) for index in range(1, len(columns)))])
-        parsed = parse_diagnostics_row(row)
+        version, parsed = parse_diagnostics_row(row)
+        self.assertEqual(2, version)
         self.assertEqual(1, parsed["alarm_callback_invocations"])
         self.assertEqual(27, parsed["max_process_duration_us"])
+        with self.assertRaises(RuntimeError):
+            parse_diagnostics_row(",".join([columns[0], *("1" for _ in columns[2:])]))
+        with self.assertRaises(RuntimeError):
+            parse_diagnostics_row(",".join(["swing_metro_diagnostics_v9", *("1" for _ in columns[1:])]))
+
+    def test_parses_v3_diagnostics_row_and_matches_header(self):
+        row = ",".join([V3_COLUMNS[0], *(str(index) for index in range(1, len(V3_COLUMNS)))])
+        version, parsed = parse_diagnostics_row(row)
+        self.assertEqual(3, version)
+        self.assertEqual(len(V2_COLUMNS), V3_COLUMNS.index("delivery_clock_attempts"))
+        self.assertEqual(len(V2_COLUMNS), parsed["delivery_clock_attempts"])
+        self.assertEqual(8, len([column for column in V3_COLUMNS if column.startswith("session_ends_")]))
+        self.assertEqual(",".join(V3_COLUMNS), diagnostics_header_for_row(row))
+        self.assertTrue(is_diagnostics_data_row(row))
+        self.assertFalse(is_diagnostics_data_row(",".join(V3_COLUMNS)))
+        with self.assertRaises(RuntimeError):
+            parse_diagnostics_row(",".join([V3_COLUMNS[0], *("1" for _ in V2_COLUMNS[1:])]))
 
     def test_summary_supports_non_comparable_marker(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -94,6 +118,50 @@ class PicoMidiRunTests(unittest.TestCase):
             "not_comparable_cumulative_firmware_counters",
             combined["host_clock_count_difference"],
         )
+
+    def test_v3_firmware_summary_distinguishes_attempt_acceptance_and_host(self):
+        summary = {"clock_count": 55}
+        diagnostics = {
+            "synchronous_start_publication_attempts": 1,
+            "outgoing_internal_f8_attempts": 60,
+            "delivery_clock_attempts": 61,
+            "delivery_clock_accepted": 58,
+            "successful_publications": 60,
+            "successful_consumer_pops": 60,
+        }
+        combined = add_firmware_summary(summary, diagnostics, 3)
+        self.assertEqual(61, combined["firmware_clock_attempt_count"])
+        self.assertEqual(58, combined["firmware_clock_stack_accepted_count"])
+        self.assertEqual(55, combined["host_clock_count"])
+        self.assertEqual(3, combined["clock_attempt_minus_accepted"])
+        self.assertEqual(3, combined["clock_accepted_minus_host"])
+        self.assertEqual(1, combined["firmware_counters_fresh_for_run"])
+
+        diagnostics["synchronous_start_publication_attempts"] = 2
+        combined = add_firmware_summary(summary, diagnostics, 3)
+        self.assertEqual(0, combined["firmware_counters_fresh_for_run"])
+        self.assertEqual(
+            "not_comparable_cumulative_firmware_counters",
+            combined["clock_attempt_minus_accepted"],
+        )
+        self.assertEqual(
+            "not_comparable_cumulative_firmware_counters",
+            combined["clock_accepted_minus_host"],
+        )
+
+    def test_v2_firmware_summary_marks_acceptance_unavailable(self):
+        combined = add_firmware_summary(
+            {"clock_count": 55},
+            {
+                "synchronous_start_publication_attempts": 1,
+                "outgoing_internal_f8_attempts": 55,
+                "successful_publications": 55,
+                "successful_consumer_pops": 55,
+            },
+        )
+        self.assertEqual("unavailable_v2", combined["firmware_clock_stack_accepted_count"])
+        self.assertEqual("unavailable_v2", combined["clock_attempt_minus_accepted"])
+        self.assertEqual("unavailable_v2", combined["clock_accepted_minus_host"])
 
 
 if __name__ == "__main__":

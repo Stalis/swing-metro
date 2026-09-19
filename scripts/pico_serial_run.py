@@ -12,10 +12,9 @@ import serial
 
 from pico_run_protocol import (
     CONTROL_PREFIX,
-    DIAGNOSTICS_HEADER,
-    DIAGNOSTICS_PREFIX,
+    diagnostics_header_for_row,
     find_serial_port,
-    parse_diagnostics_row,
+    is_diagnostics_data_row,
 )
 
 
@@ -49,18 +48,15 @@ def main() -> int:
                 continue
             line = raw.decode("utf-8", "replace").strip()
             print(line, flush=True)
-            if line.startswith(f"{DIAGNOSTICS_PREFIX},") and not line.startswith(
-                f"{DIAGNOSTICS_PREFIX},alarm_callback_invocations"
-            ):
+            if is_diagnostics_data_row(line):
                 row = line
             elif line == f"{CONTROL_PREFIX},run_complete":
                 break
 
     if row is None:
-        raise RuntimeError("run completed without a diagnostics v2 row")
-    parse_diagnostics_row(row)
+        raise RuntimeError("run completed without a diagnostics row")
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(f"{DIAGNOSTICS_HEADER}\n{row}\n", encoding="utf-8")
+    args.output.write_text(f"{diagnostics_header_for_row(row)}\n{row}\n", encoding="utf-8")
     print(f"saved {args.output}")
     return 0
 

@@ -6,9 +6,10 @@ import glob
 
 
 CONTROL_PREFIX = "swing_metro_control_v1"
-DIAGNOSTICS_PREFIX = "swing_metro_diagnostics_v2"
-DIAGNOSTICS_COLUMNS = (
-    DIAGNOSTICS_PREFIX,
+V2_DIAGNOSTICS_PREFIX = "swing_metro_diagnostics_v2"
+V3_DIAGNOSTICS_PREFIX = "swing_metro_diagnostics_v3"
+V2_COLUMNS = (
+    V2_DIAGNOSTICS_PREFIX,
     "alarm_callback_invocations",
     "synchronous_start_publication_attempts",
     "successful_publications",
@@ -37,7 +38,89 @@ DIAGNOSTICS_COLUMNS = (
     "max_remaining_internal_ticks_after_budget_pass",
     "max_process_duration_us",
 )
-DIAGNOSTICS_HEADER = ",".join(DIAGNOSTICS_COLUMNS)
+_DELIVERY_CLASSES = ("clock", "transport", "note")
+_DELIVERY_FIELDS = (
+    "attempts",
+    "accepted",
+    "retry_later",
+    "disconnected",
+    "retry_recovered",
+    "max_first_attempt_lateness_us",
+    "max_acceptance_lateness_us",
+)
+_INVALIDATION_REASONS = (
+    "clock_coalesced",
+    "clock_expired",
+    "note_on_expired",
+    "stop",
+    "mode_switch",
+    "storage",
+    "external_clock_lost",
+    "retry_window_exceeded",
+    "delivery_capacity",
+    "disconnected",
+    "superseded_start",
+    "scheduled_overdue",
+)
+_SESSION_END_REASONS = (
+    "stop",
+    "mode_switch",
+    "storage",
+    "external_clock_lost",
+    "retry_window_exceeded",
+    "delivery_capacity",
+    "disconnected",
+    "superseded_start",
+)
+V3_COLUMNS = (
+    V3_DIAGNOSTICS_PREFIX,
+    *V2_COLUMNS[1:],
+    *(f"delivery_{message_class}_{field}" for message_class in _DELIVERY_CLASSES for field in _DELIVERY_FIELDS),
+    *(f"{queue}_removed_{reason}_{message_class}" for reason in _INVALIDATION_REASONS for message_class in _DELIVERY_CLASSES for queue in ("pending", "scheduled")),
+    *(f"{field}_{message_class}" for message_class in _DELIVERY_CLASSES for field in ("scheduled_created", "scheduled_transferred", "outbox_inserted", "current_scheduled_depth", "current_outbox_depth")),
+    "clock_coalesced_count",
+    "clock_expired_count",
+    "note_on_expired_count",
+    "terminal_note_off_abandoned_count",
+    "terminal_stop_abandoned_count",
+    "current_outbox_depth",
+    "max_outbox_depth",
+    "max_send_attempts_per_public_pass",
+    "outbox_capacity_failures",
+    "delivery_capacity_safety_stops",
+    "retry_window_safety_stops",
+    "session_generation_advances",
+    "explicit_clean_starts",
+    "current_session_generation",
+    *(f"session_ends_{reason}" for reason in _SESSION_END_REASONS),
+)
+
+# Keep these names for callers that only know the original v2 protocol.
+DIAGNOSTICS_PREFIX = V2_DIAGNOSTICS_PREFIX
+DIAGNOSTICS_COLUMNS = V2_COLUMNS
+DIAGNOSTICS_HEADER = ",".join(V2_COLUMNS)
+
+
+def diagnostics_columns_for_row(row: str) -> tuple[int, tuple[str, ...]]:
+    fields = row.split(",")
+    schemas = ((2, V2_COLUMNS), (3, V3_COLUMNS))
+    for version, columns in schemas:
+        if fields[0] == columns[0] and len(fields) == len(columns):
+            return version, columns
+    raise RuntimeError(f"unrecognized diagnostics prefix or field count: {fields[0]!r}, {len(fields)}")
+
+
+def diagnostics_header_for_row(row: str) -> str:
+    _, columns = diagnostics_columns_for_row(row)
+    return ",".join(columns)
+
+
+def is_diagnostics_data_row(row: str) -> bool:
+    try:
+        parse_diagnostics_row(row)
+    except RuntimeError:
+        return False
+    return True
 
 
 def find_serial_port(explicit_port: str | None) -> str:
@@ -49,14 +132,11 @@ def find_serial_port(explicit_port: str | None) -> str:
     return ports[0]
 
 
-def parse_diagnostics_row(row: str) -> dict[str, int]:
+def parse_diagnostics_row(row: str) -> tuple[int, dict[str, int]]:
     fields = row.split(",")
-    if fields[0] != DIAGNOSTICS_PREFIX or len(fields) != len(DIAGNOSTICS_COLUMNS):
-        raise RuntimeError(
-            f"expected {len(DIAGNOSTICS_COLUMNS)} diagnostics fields, found {len(fields)}"
-        )
+    version, columns = diagnostics_columns_for_row(row)
     try:
         values = [int(value) for value in fields[1:]]
     except ValueError as error:
         raise RuntimeError("diagnostics row contains a non-integer value") from error
-    return dict(zip(DIAGNOSTICS_COLUMNS[1:], values, strict=True))
+    return version, dict(zip(columns[1:], values, strict=True))

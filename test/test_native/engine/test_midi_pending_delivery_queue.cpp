@@ -82,6 +82,28 @@ void test_pending_queue_reserves_terminal_slots_and_filters_stably() {
     TEST_ASSERT_EQUAL_UINT8(2, queue.front()->event.message.note());
 }
 
+void test_pending_retry_ordinal_and_terminal_summary_are_bounded() {
+    SwingMetro::MidiPendingDeliveryQueue queue;
+    TEST_ASSERT_TRUE(queue.push(event(0, 60), 0, 0));
+    for (std::size_t attempt = 0; attempt < 300; ++attempt) {
+        queue.markFrontRetry();
+    }
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, queue.front()->attemptOrdinal);
+    TEST_ASSERT_TRUE(queue.front()->retrySeen);
+
+    queue.clear();
+    const SwingMetro::MidiEvent noteOff{{0, 0}, *SwingMetro::MidiMessage::noteOff(0, 60), 0};
+    const SwingMetro::MidiEvent stop{{0, 0}, SwingMetro::MidiMessage::stop(), 1};
+    TEST_ASSERT_TRUE(
+        queue.push(noteOff, 0, 0, false, SwingMetro::MidiAttemptLateness::None, 1, true));
+    TEST_ASSERT_TRUE(queue.push(stop, 0, 1, false, SwingMetro::MidiAttemptLateness::None, 1, true));
+    const auto removed = queue.removeIf([](const SwingMetro::PendingMidiEvent&) { return true; });
+    TEST_ASSERT_EQUAL_UINT32(1, removed.noteOffs);
+    TEST_ASSERT_EQUAL_UINT32(1, removed.stops);
+    TEST_ASSERT_EQUAL_UINT32(1, removed.terminalNoteOffs);
+    TEST_ASSERT_EQUAL_UINT32(1, removed.terminalStops);
+}
+
 } // namespace
 
 void test_midi_pending_delivery_queue_main() {
@@ -89,4 +111,5 @@ void test_midi_pending_delivery_queue_main() {
     RUN_TEST(test_pending_queue_full_rejection_does_not_mutate_fifo);
     RUN_TEST(test_pending_queue_wraps_and_clear_resets_storage);
     RUN_TEST(test_pending_queue_reserves_terminal_slots_and_filters_stably);
+    RUN_TEST(test_pending_retry_ordinal_and_terminal_summary_are_bounded);
 }

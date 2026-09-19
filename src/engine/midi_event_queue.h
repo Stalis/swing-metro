@@ -107,21 +107,40 @@ class MidiEventQueue {
         --_count;
     }
 
-    auto clear() noexcept -> void { _count = 0; }
+    [[nodiscard]] auto clear() noexcept -> MidiMessageClassSummary {
+        MidiMessageClassSummary summary;
+        for (std::size_t index = 0; index < _count; ++index) {
+            ++summary.counts[static_cast<std::size_t>(_events[index].message.messageClass())];
+        }
+        _count = 0;
+        return summary;
+    }
 
-    auto discardAt(TransportTick tick) noexcept -> void {
+    [[nodiscard]] auto discardAt(TransportTick tick) noexcept -> MidiMessageClassSummary {
+        MidiMessageClassSummary summary;
         std::size_t write = 0;
         for (std::size_t read = 0; read < _count; ++read) {
             if (_events[read].target.tick != tick) {
                 _events[write++] = _events[read];
+            } else {
+                ++summary.counts[static_cast<std::size_t>(_events[read].message.messageClass())];
             }
         }
         _count = write;
+        return summary;
     }
 
     [[nodiscard]] auto size() const noexcept -> std::size_t { return _count; }
 
     [[nodiscard]] auto empty() const noexcept -> bool { return _count == 0; }
+
+    [[nodiscard]] auto classSummary() const noexcept -> MidiMessageClassSummary {
+        MidiMessageClassSummary summary;
+        for (std::size_t index = 0; index < _count; ++index) {
+            ++summary.counts[static_cast<std::size_t>(_events[index].message.messageClass())];
+        }
+        return summary;
+    }
 
     [[nodiscard]] auto nextPosition() const noexcept -> std::optional<TransportPosition> {
         if (_count == 0) {

@@ -1,6 +1,6 @@
 # Шаг 2.4. Диагностика и fault injection
 
-Статус: запланировано. Зависит от шага 2.3.
+Статус: выполнено. Зависит от шага 2.3.
 
 ## Цель
 
@@ -95,3 +95,24 @@ Fake sink получает заранее заданную либо stateful п�
 ## Вне объёма
 
 GPIO ordinal trace, статистика UI/input, Gate-specific Off deadlines и UMP counters.
+
+## Реализация и проверка
+
+- `TransportDiagnostics` хранит boot-cumulative saturating delivery counters по Clock,
+  Transport и Note: attempts/Accepted/RetryLater/Disconnected/retry-recovered и maxima
+  deadline-to-first-attempt/acceptance. `currentOutboxDepth` и current generation — snapshots;
+  остальные delivery maxima/counters не сбрасываются при Start/Stop.
+- `MidiDeliveryAttempt` передаёт sink только immutable message, delivery identity, generation,
+  target/deadline и ordinal; очередные internals не выходят за границу sink. Один result path
+  сохраняет `attempts = accepted + retryLater + disconnected` для каждого класса.
+- Очереди остаются generic и возвращают fixed class summaries. Diagnostics различает successful
+  scheduled creation, scheduled-to-outbox transfer, named scheduled/pending invalidation и
+  acceptance. Проверяемые балансы: `created = scheduledDepth + transferred + scheduledRemoved`
+  и `outboxInserted = outboxDepth + accepted + pendingRemoved` (coalesce/expiry учитываются
+  отдельными named counters).
+- Firmware экспортирует только strict `swing_metro_diagnostics_v3` после полной остановки
+  transport; v3 начинает payload с неизменённых v2 columns и добавляет deterministic flattened
+  delivery/session fields. Host parsers принимают exact v2/v3 prefix+field count и никогда не
+  трактуют v2 как v3. Hardware capture и claims остаются шагом 2.5.
+- Проверка: native fake sink покрывает identity retry, class result counters, lateness, pass
+  budget и local balance; Python tests покрывают v2/v3 schema/header/summary compatibility.

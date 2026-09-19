@@ -32,7 +32,7 @@
 | 2.1 | [Типизированные события и USB-кодировщик](02-events-and-usb-backpressure/01-typed-events-and-usb-encoding.md) | Секвенсор и очередь больше не хранят USB-пакеты; прежние MIDI 1.0 bytes создаёт отдельный кодировщик. | Этап 1 |
 | 2.2 | [Принятие, pending delivery и состояние нот](02-events-and-usb-backpressure/02-acceptance-and-pending-delivery.md) | Выполнено: Sink возвращает явный результат; непринятое событие остаётся pending, а состояние ноты меняется только после acceptance. | 2.1 |
 | 2.3 | [Просрочка и жизненный цикл сессии](02-events-and-usb-backpressure/03-overdue-and-session-lifecycle.md) | Выполнено: bounded Clock/Note policies, idempotent Stop barrier, reserve и disconnect recovery. | 2.2 |
-| 2.4 | [Диагностика и fault injection](02-events-and-usb-backpressure/04-diagnostics-and-fault-injection.md) | Все исходы наблюдаемы; fake sink детерминированно проверяет backpressure и бюджеты. | 2.3 |
+| 2.4 | [Диагностика и fault injection](02-events-and-usb-backpressure/04-diagnostics-and-fault-injection.md) | Выполнено: все исходы наблюдаемы; fake sink детерминированно проверяет backpressure и бюджеты. | 2.3 |
 | 2.5 | [Аппаратная проверка и baseline](02-events-and-usb-backpressure/05-hardware-validation.md) | Подтверждено отсутствие timing-регрессии и сопоставлены acceptance counters с host capture. | 2.1–2.4 |
 
 ## Общие инварианты

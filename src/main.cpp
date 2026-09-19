@@ -138,14 +138,163 @@ bool serialRunCompletionPending = false;
 std::uint32_t serialRunStartedAtMs = 0;
 std::uint32_t serialRunDurationMs = 0;
 
+constexpr std::array<const char*, SwingMetro::DELIVERY_MESSAGE_CLASS_COUNT> DELIVERY_CLASS_NAMES = {
+    "clock", "transport", "note"};
+constexpr std::array<const char*,
+                     static_cast<std::size_t>(SwingMetro::InvalidationReason::SupersededStart) + 1>
+    INVALIDATION_REASON_NAMES = {"stop",
+                                 "mode_switch",
+                                 "storage",
+                                 "external_clock_lost",
+                                 "retry_window_exceeded",
+                                 "delivery_capacity",
+                                 "disconnected",
+                                 "superseded_start"};
+constexpr std::array<const char*, SwingMetro::DELIVERY_REMOVAL_REASON_COUNT>
+    DELIVERY_REMOVAL_NAMES = {
+        "clock_coalesced",   "clock_expired", "note_on_expired",     "stop",
+        "mode_switch",       "storage",       "external_clock_lost", "retry_window_exceeded",
+        "delivery_capacity", "disconnected",  "superseded_start",    "scheduled_overdue"};
+
+void printDeliveryDiagnosticsHeader() {
+    for (const auto* messageClass : DELIVERY_CLASS_NAMES) {
+        Serial.print(',');
+        Serial.print(F("delivery_"));
+        Serial.print(messageClass);
+        Serial.print(F("_attempts,delivery_"));
+        Serial.print(messageClass);
+        Serial.print(F("_accepted,delivery_"));
+        Serial.print(messageClass);
+        Serial.print(F("_retry_later,delivery_"));
+        Serial.print(messageClass);
+        Serial.print(F("_disconnected,delivery_"));
+        Serial.print(messageClass);
+        Serial.print(F("_retry_recovered,delivery_"));
+        Serial.print(messageClass);
+        Serial.print(F("_max_first_attempt_lateness_us,delivery_"));
+        Serial.print(messageClass);
+        Serial.print(F("_max_acceptance_lateness_us"));
+    }
+    for (const auto* reason : DELIVERY_REMOVAL_NAMES) {
+        for (const auto* messageClass : DELIVERY_CLASS_NAMES) {
+            Serial.print(F(",pending_removed_"));
+            Serial.print(reason);
+            Serial.print('_');
+            Serial.print(messageClass);
+            Serial.print(F(",scheduled_removed_"));
+            Serial.print(reason);
+            Serial.print('_');
+            Serial.print(messageClass);
+        }
+    }
+    for (const auto* messageClass : DELIVERY_CLASS_NAMES) {
+        Serial.print(F(",scheduled_created_"));
+        Serial.print(messageClass);
+        Serial.print(F(",scheduled_transferred_"));
+        Serial.print(messageClass);
+        Serial.print(F(",outbox_inserted_"));
+        Serial.print(messageClass);
+        Serial.print(F(",current_scheduled_depth_"));
+        Serial.print(messageClass);
+        Serial.print(F(",current_outbox_depth_"));
+        Serial.print(messageClass);
+    }
+    Serial.print(F(",clock_coalesced_count,clock_expired_count,note_on_expired_count,"
+                   "terminal_note_off_abandoned_count,terminal_stop_abandoned_count,"
+                   "current_outbox_depth,max_outbox_depth,max_send_attempts_per_public_pass,"
+                   "outbox_capacity_failures,delivery_capacity_safety_stops,"
+                   "retry_window_safety_stops,session_generation_advances,explicit_clean_starts,"
+                   "current_session_generation"));
+    for (const auto* reason : INVALIDATION_REASON_NAMES) {
+        Serial.print(F(",session_ends_"));
+        Serial.print(reason);
+    }
+}
+
+void printDeliveryDiagnostics(const SwingMetro::TransportDiagnostics& transport) {
+    const auto print = [](std::uint32_t value) { Serial.print(value); };
+    for (const auto& delivery : transport.delivery) {
+        Serial.print(',');
+        print(delivery.attempts);
+        Serial.print(',');
+        print(delivery.accepted);
+        Serial.print(',');
+        print(delivery.retryLater);
+        Serial.print(',');
+        print(delivery.disconnected);
+        Serial.print(',');
+        print(delivery.retryRecovered);
+        Serial.print(',');
+        print(delivery.maxFirstAttemptLatenessUs);
+        Serial.print(',');
+        print(delivery.maxAcceptanceLatenessUs);
+    }
+    for (std::size_t reason = 0; reason < DELIVERY_REMOVAL_NAMES.size(); ++reason) {
+        for (std::size_t messageClass = 0; messageClass < DELIVERY_CLASS_NAMES.size();
+             ++messageClass) {
+            Serial.print(',');
+            print(transport.pendingRemovals[reason][messageClass]);
+            Serial.print(',');
+            print(transport.scheduledRemovals[reason][messageClass]);
+        }
+    }
+    for (std::size_t messageClass = 0; messageClass < DELIVERY_CLASS_NAMES.size(); ++messageClass) {
+        Serial.print(',');
+        print(transport.scheduledCreated[messageClass]);
+        Serial.print(',');
+        print(transport.scheduledTransferred[messageClass]);
+        Serial.print(',');
+        print(transport.outboxInserted[messageClass]);
+        Serial.print(',');
+        print(transport.currentScheduledDepth[messageClass]);
+        Serial.print(',');
+        print(transport.currentOutboxDepthByClass[messageClass]);
+    }
+    Serial.print(',');
+    print(transport.clockCoalescedCount);
+    Serial.print(',');
+    print(transport.clockExpiredCount);
+    Serial.print(',');
+    print(transport.noteOnExpiredCount);
+    Serial.print(',');
+    print(transport.terminalNoteOffAbandonedCount);
+    Serial.print(',');
+    print(transport.terminalStopAbandonedCount);
+    Serial.print(',');
+    print(transport.currentOutboxDepth);
+    Serial.print(',');
+    print(transport.maxOutboxDepth);
+    Serial.print(',');
+    print(transport.maxSendAttemptsPerPublicPass);
+    Serial.print(',');
+    print(transport.outboxCapacityFailures);
+    Serial.print(',');
+    print(transport.deliveryCapacitySafetyStops);
+    Serial.print(',');
+    print(transport.retryWindowSafetyStops);
+    Serial.print(',');
+    print(transport.sessionGenerationAdvances);
+    Serial.print(',');
+    print(transport.explicitCleanStarts);
+    Serial.print(',');
+    print(transport.currentSessionGeneration);
+    for (const auto count : transport.sessionEnds) {
+        Serial.print(',');
+        print(count);
+    }
+}
+
 void exportInternalTimingDiagnostics() {
+    if (transportController.usesInternalTiming() || transportController.isRunning()) {
+        return;
+    }
     const auto diagnostics = transportController.pipelineDiagnostics(internalTicks);
     const auto& producer = diagnostics.producer;
     const auto transport = transportController.diagnostics();
 
     if (!diagnosticsHeaderPrinted) {
-        Serial.println(
-            F("swing_metro_diagnostics_v2,alarm_callback_invocations,"
+        Serial.print(
+            F("swing_metro_diagnostics_v3,alarm_callback_invocations,"
               "synchronous_start_publication_attempts,successful_publications,"
               "failed_publications,tick_queue_overflows,stop_discards,mode_switch_discards,"
               "storage_discards,alarm_arm_failures,stale_alarm_callbacks,"
@@ -158,10 +307,12 @@ void exportInternalTimingDiagnostics() {
               "max_queued_event_attempt_lateness_us,max_internal_ticks_popped_per_process_pass,"
               "internal_tick_budget_reached_passes,"
               "max_remaining_internal_ticks_after_budget_pass,max_process_duration_us"));
+        printDeliveryDiagnosticsHeader();
+        Serial.println();
         diagnosticsHeaderPrinted = true;
     }
 
-    Serial.print(F("swing_metro_diagnostics_v2,"));
+    Serial.print(F("swing_metro_diagnostics_v3,"));
     const auto print = [](std::uint32_t value) { Serial.print(value); };
     const auto separator = []() { Serial.print(','); };
     print(producer.alarmCallbackInvocations);
@@ -217,6 +368,7 @@ void exportInternalTimingDiagnostics() {
     print(transport.maxRemainingInternalTicksAfterBudgetPass);
     separator();
     print(transport.maxProcessDurationUs);
+    printDeliveryDiagnostics(transport);
     Serial.println();
 }
 

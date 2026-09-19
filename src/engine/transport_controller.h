@@ -9,6 +9,8 @@
 #include "timestamp.h"
 #include "transport.h"
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
@@ -20,10 +22,33 @@ enum class SendResult : std::uint8_t {
     Disconnected,
 };
 
+using DeliveryMessageClass = MidiMessageClass;
+static constexpr std::size_t DELIVERY_MESSAGE_CLASS_COUNT = MIDI_MESSAGE_CLASS_COUNT;
+
+struct DeliveryClassDiagnostics {
+    std::uint32_t attempts = 0;
+    std::uint32_t accepted = 0;
+    std::uint32_t retryLater = 0;
+    std::uint32_t disconnected = 0;
+    std::uint32_t retryRecovered = 0;
+    std::uint32_t maxFirstAttemptLatenessUs = 0;
+    std::uint32_t maxAcceptanceLatenessUs = 0;
+};
+
+struct MidiDeliveryAttempt {
+    MidiMessage message{};
+    std::size_t deliverySequenceNumber = 0;
+    std::uint32_t sessionGeneration = 1;
+    TransportPosition target{};
+    std::uint32_t deadlineUs = 0;
+    std::uint8_t attemptOrdinal = 0;
+    bool firstAttempt = true;
+};
+
 class MidiMessageSink {
   public:
     virtual ~MidiMessageSink() = default;
-    virtual auto send(const MidiMessage& message) -> SendResult = 0;
+    virtual auto send(const MidiDeliveryAttempt& attempt) -> SendResult = 0;
 };
 
 struct TransportDiagnostics {
@@ -43,8 +68,32 @@ struct TransportDiagnostics {
     std::uint32_t maxProcessDurationUs = 0;
     std::uint32_t clockCoalescedCount = 0;
     std::uint32_t clockExpiredCount = 0;
+    std::uint32_t noteOnExpiredCount = 0;
     std::uint32_t terminalNoteOffAbandonedCount = 0;
     std::uint32_t terminalStopAbandonedCount = 0;
+    std::array<DeliveryClassDiagnostics, DELIVERY_MESSAGE_CLASS_COUNT> delivery{};
+    std::array<std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT>,
+               DELIVERY_REMOVAL_REASON_COUNT>
+        pendingRemovals{};
+    std::array<std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT>,
+               DELIVERY_REMOVAL_REASON_COUNT>
+        scheduledRemovals{};
+    std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT> scheduledCreated{};
+    std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT> scheduledTransferred{};
+    std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT> outboxInserted{};
+    std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT> currentScheduledDepth{};
+    std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT> currentOutboxDepthByClass{};
+    std::uint32_t currentOutboxDepth = 0;
+    std::uint32_t maxOutboxDepth = 0;
+    std::uint32_t maxSendAttemptsPerPublicPass = 0;
+    std::uint32_t outboxCapacityFailures = 0;
+    std::uint32_t deliveryCapacitySafetyStops = 0;
+    std::uint32_t retryWindowSafetyStops = 0;
+    std::uint32_t sessionGenerationAdvances = 0;
+    std::uint32_t explicitCleanStarts = 0;
+    std::array<std::uint32_t, static_cast<std::size_t>(InvalidationReason::SupersededStart) + 1>
+        sessionEnds{};
+    std::uint32_t currentSessionGeneration = 1;
     InvalidationReason lastSessionEndReason = InvalidationReason::Stop;
 };
 
@@ -73,6 +122,7 @@ class MidiDispatcher {
 
     auto beginPass(std::uint32_t attemptAtUs = 0) -> void {
         _attemptsRemaining = MAX_SEND_ATTEMPTS_PER_PASS;
+        _attemptsThisPass = 0;
         _passActive = true;
         _deliveryBlocked = false;
         servicePending(attemptAtUs);
@@ -84,10 +134,12 @@ class MidiDispatcher {
     }
 
     auto start(bool emitStart, std::uint32_t deadlineUs = 0) -> void {
-        _pending.removeIf([](const PendingMidiEvent& pending) {
+        recordPendingRemoval(_pending.removeIf([](const PendingMidiEvent& pending) {
             return pending.terminal && pending.event.message.type() == MidiMessageType::Stop;
-        });
+        }),
+                             DeliveryRemovalReason::SupersededStart);
         advanceSessionGeneration();
+        addOne(_diagnostics.explicitCleanStarts);
         _disconnected = false;
         _transport.start();
         _haveTick = false;
@@ -115,6 +167,7 @@ class MidiDispatcher {
                 return pending.event.message.isClock() || pending.event.message.isNoteOn() ||
                        type == MidiMessageType::Start || type == MidiMessageType::Continue;
             });
+            recordPendingRemoval(summary, deliveryRemovalReason(reason));
             if (note.has_value() && !_pending.hasNoteOff(*note, _sessionGeneration)) {
                 enqueueDirect(*MidiMessage::noteOff(0, *note), deadlineUs, false,
                               MidiAttemptLateness::None, true);
@@ -126,6 +179,7 @@ class MidiDispatcher {
             }
             _terminalGeneration = _sessionGeneration;
             _diagnostics.lastSessionEndReason = reason;
+            addOne(_diagnostics.sessionEnds[static_cast<std::size_t>(reason)]);
         }
         _internalOutputActive = false;
         if (_haveTick) {
@@ -166,7 +220,8 @@ class MidiDispatcher {
             if (_capacityExceeded) {
                 return;
             }
-            _queue.discardAt(_transport.position().tick);
+            recordScheduledRemoval(_queue.discardAt(_transport.position().tick),
+                                   DeliveryRemovalReason::ScheduledOverdue);
             (void)_transport.advanceTick();
         }
         _tickStartUs = record.timestampUs;
@@ -197,9 +252,12 @@ class MidiDispatcher {
 
     [[nodiscard]] auto abandonPending() noexcept -> PendingRemovalSummary {
         const auto summary = _pending.removeIf([](const PendingMidiEvent&) { return true; });
-        addCount(_diagnostics.terminalNoteOffAbandonedCount, summary.noteOffs);
-        addCount(_diagnostics.terminalStopAbandonedCount, summary.stops);
+        recordPendingRemoval(summary, DeliveryRemovalReason::Disconnected);
+        addCount(_diagnostics.terminalNoteOffAbandonedCount, summary.terminalNoteOffs);
+        addCount(_diagnostics.terminalStopAbandonedCount, summary.terminalStops);
         _diagnostics.lastSessionEndReason = InvalidationReason::Disconnected;
+        addOne(
+            _diagnostics.sessionEnds[static_cast<std::size_t>(InvalidationReason::Disconnected)]);
         _terminalGeneration = 0;
         _disconnected = false;
         return summary;
@@ -210,6 +268,14 @@ class MidiDispatcher {
     }
 
     auto clearCapacityExceeded() noexcept -> void { _capacityExceeded = false; }
+
+    auto recordScheduledRemoval(const MidiMessageClassSummary& summary,
+                                DeliveryRemovalReason reason) noexcept -> void {
+        addRemoval(_diagnostics.scheduledRemovals, summary, reason);
+        updateScheduledDepth();
+    }
+
+    auto recordScheduledDepth() noexcept -> void { updateScheduledDepth(); }
 
     auto abortOutboundSession() noexcept -> void {
         (void)abandonPending();
@@ -222,6 +288,52 @@ class MidiDispatcher {
     }
 
   private:
+    [[nodiscard]] static auto index(MidiMessageClass messageClass) noexcept -> std::size_t {
+        return static_cast<std::size_t>(messageClass);
+    }
+
+    static auto addSummary(std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT>& destination,
+                           const MidiMessageClassSummary& summary) noexcept -> void {
+        for (std::size_t messageClass = 0; messageClass < DELIVERY_MESSAGE_CLASS_COUNT;
+             ++messageClass) {
+            addCount(destination[messageClass], summary.counts[messageClass]);
+        }
+    }
+
+    static auto addRemoval(std::array<std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT>,
+                                      DELIVERY_REMOVAL_REASON_COUNT>& destination,
+                           const MidiMessageClassSummary& summary,
+                           DeliveryRemovalReason reason) noexcept -> void {
+        addSummary(destination[static_cast<std::size_t>(reason)], summary);
+    }
+
+    auto recordPendingRemoval(const PendingRemovalSummary& summary,
+                              DeliveryRemovalReason reason) noexcept -> void {
+        addRemoval(_diagnostics.pendingRemovals, summary.byClass, reason);
+        updateOutboxDepth();
+    }
+
+    auto updateOutboxDepth() noexcept -> void {
+        const auto summary = _pending.classSummary();
+        for (std::size_t messageClass = 0; messageClass < DELIVERY_MESSAGE_CLASS_COUNT;
+             ++messageClass) {
+            _diagnostics.currentOutboxDepthByClass[messageClass] =
+                static_cast<std::uint32_t>(summary.counts[messageClass]);
+        }
+        _diagnostics.currentOutboxDepth = static_cast<std::uint32_t>(_pending.size());
+        if (_diagnostics.currentOutboxDepth > _diagnostics.maxOutboxDepth) {
+            _diagnostics.maxOutboxDepth = _diagnostics.currentOutboxDepth;
+        }
+    }
+
+    auto updateScheduledDepth() noexcept -> void {
+        const auto summary = _queue.classSummary();
+        for (std::size_t messageClass = 0; messageClass < DELIVERY_MESSAGE_CLASS_COUNT;
+             ++messageClass) {
+            _diagnostics.currentScheduledDepth[messageClass] =
+                static_cast<std::uint32_t>(summary.counts[messageClass]);
+        }
+    }
     static auto updateLateness(std::uint32_t& maximum, std::uint32_t attemptAtUs,
                                std::uint32_t deadlineUs) noexcept -> void {
         if (timestampReached(attemptAtUs, deadlineUs)) {
@@ -262,7 +374,9 @@ class MidiDispatcher {
                 return pending.sessionGeneration == _sessionGeneration &&
                        pending.event.message.isClock();
             });
-            addCount(_diagnostics.clockCoalescedCount, summary.clocks);
+            recordPendingRemoval(summary, DeliveryRemovalReason::ClockCoalesced);
+            addCount(_diagnostics.clockCoalescedCount,
+                     summary.byClass.counts[static_cast<std::size_t>(MidiMessageClass::Clock)]);
         }
         const auto candidate = _nextDeliverySequenceNumber;
         const auto inserted =
@@ -272,10 +386,13 @@ class MidiDispatcher {
                 : _pending.pushNormal(event, deadlineUs, candidate, countsAsInternalClockAttempt,
                                       lateness, _sessionGeneration);
         if (!inserted) {
+            addOne(_diagnostics.outboxCapacityFailures);
             _capacityExceeded = true;
             return;
         }
         ++_nextDeliverySequenceNumber;
+        addOne(_diagnostics.outboxInserted[index(event.message.messageClass())]);
+        updateOutboxDepth();
     }
 
     auto sendDue(TransportPosition position, std::uint32_t) -> void {
@@ -292,6 +409,8 @@ class MidiDispatcher {
                 return;
             }
             _queue.popFront();
+            addOne(_diagnostics.scheduledTransferred[index(event->message.messageClass())]);
+            updateScheduledDepth();
         }
     }
 
@@ -304,6 +423,7 @@ class MidiDispatcher {
             return;
         }
         _attemptsRemaining = MAX_SEND_ATTEMPTS_PER_PASS;
+        _attemptsThisPass = 0;
         _deliveryBlocked = false;
         servicePending(attemptAtUs);
     }
@@ -333,20 +453,50 @@ class MidiDispatcher {
                 addOne(_diagnostics.outgoingInternalClockAttempts);
             }
             --_attemptsRemaining;
-            const auto sendResult = _sink.send(pending->event.message);
+            const auto messageClass = pending->event.message.messageClass();
+            auto& delivery = _diagnostics.delivery[index(messageClass)];
+            const bool firstAttempt = pending->attemptOrdinal == 0;
+            if (firstAttempt) {
+                updateLateness(delivery.maxFirstAttemptLatenessUs, attemptAtUs,
+                               pending->deadlineUs);
+            }
+            addOne(delivery.attempts);
+            ++_attemptsThisPass;
+            if (_attemptsThisPass > _diagnostics.maxSendAttemptsPerPublicPass) {
+                _diagnostics.maxSendAttemptsPerPublicPass = _attemptsThisPass;
+            }
+            const MidiDeliveryAttempt attempt{
+                pending->event.message,
+                pending->deliverySequenceNumber,
+                pending->sessionGeneration,
+                pending->event.target,
+                pending->deadlineUs,
+                static_cast<std::uint8_t>(pending->attemptOrdinal == UINT8_MAX
+                                              ? UINT8_MAX
+                                              : pending->attemptOrdinal + 1U),
+                firstAttempt};
+            const auto sendResult = _sink.send(attempt);
             if (sendResult == SendResult::Disconnected) {
+                addOne(delivery.disconnected);
                 _lifecycleOutcome = DeliveryLifecycleOutcome::Disconnected;
                 _disconnected = true;
                 _deliveryBlocked = true;
                 return;
             }
             if (sendResult == SendResult::RetryLater) {
+                addOne(delivery.retryLater);
+                _pending.markFrontRetry();
                 if (pending->event.message.isClock() && !_clockRetryStartTick.has_value()) {
                     _clockRetryStartTick = pending->event.target.tick;
                 }
                 _deliveryBlocked = true;
                 return;
             }
+            addOne(delivery.accepted);
+            if (pending->retrySeen) {
+                addOne(delivery.retryRecovered);
+            }
+            updateLateness(delivery.maxAcceptanceLatenessUs, attemptAtUs, pending->deadlineUs);
             if (pending->event.message.isClock()) {
                 _clockRetryStartTick.reset();
             }
@@ -356,6 +506,7 @@ class MidiDispatcher {
                 _sequencer.notifyNoteOffAccepted(pending->event.message.note());
             }
             _pending.popFront();
+            updateOutboxDepth();
         }
     }
 
@@ -387,22 +538,28 @@ class MidiDispatcher {
             _lifecycleOutcome = DeliveryLifecycleOutcome::RetryWindowExceeded;
             return;
         }
-        const auto summary =
+        const auto clocks = _pending.removeIf([this, currentTick](const PendingMidiEvent& pending) {
+            return pending.sessionGeneration == _sessionGeneration &&
+                   pending.event.message.isClock() && currentTick > pending.event.target.tick;
+        });
+        recordPendingRemoval(clocks, DeliveryRemovalReason::ClockExpired);
+        addCount(_diagnostics.clockExpiredCount,
+                 clocks.byClass.counts[static_cast<std::size_t>(MidiMessageClass::Clock)]);
+        const auto noteOns =
             _pending.removeIf([this, currentTick](const PendingMidiEvent& pending) {
-                if (pending.sessionGeneration != _sessionGeneration) {
-                    return false;
-                }
-                if (pending.event.message.isClock()) {
-                    return currentTick > pending.event.target.tick;
-                }
-                return pending.event.message.isNoteOn() &&
+                return pending.sessionGeneration == _sessionGeneration &&
+                       pending.event.message.isNoteOn() &&
                        expiredAt(currentTick, pending.event.target.tick);
             });
-        addCount(_diagnostics.clockExpiredCount, summary.clocks);
+        recordPendingRemoval(noteOns, DeliveryRemovalReason::NoteOnExpired);
+        addCount(_diagnostics.noteOnExpiredCount,
+                 noteOns.byClass.counts[static_cast<std::size_t>(MidiMessageClass::Note)]);
     }
 
     auto advanceSessionGeneration() noexcept -> void {
         _sessionGeneration = nextSessionGeneration(_sessionGeneration);
+        addOne(_diagnostics.sessionGenerationAdvances);
+        _diagnostics.currentSessionGeneration = _sessionGeneration;
         _terminalGeneration = 0;
         _clockRetryStartTick.reset();
     }
@@ -419,6 +576,7 @@ class MidiDispatcher {
     std::uint32_t _sessionGeneration = 1;
     std::uint32_t _terminalGeneration = 0;
     std::uint8_t _attemptsRemaining = 0;
+    std::uint8_t _attemptsThisPass = 0;
     bool _passActive = false;
     bool _deliveryBlocked = false;
     bool _capacityExceeded = false;
@@ -551,6 +709,7 @@ class TransportController {
     }
 
     [[nodiscard]] auto usesInternalTiming() const noexcept -> bool { return _internalTiming; }
+    [[nodiscard]] auto isRunning() const noexcept -> bool { return _transport.snapshot().running; }
     [[nodiscard]] auto externalStatus() const noexcept -> ExternalMidiClockStatus {
         return _external.status();
     }
@@ -570,6 +729,11 @@ class TransportController {
         if (counter != UINT32_MAX) {
             ++counter;
         }
+    }
+
+    static auto addCount(std::uint32_t& counter, std::size_t count) noexcept -> void {
+        const auto available = static_cast<std::size_t>(UINT32_MAX - counter);
+        counter += static_cast<std::uint32_t>(count > available ? available : count);
     }
 
     static auto updateTickLateness(std::uint32_t& maximum, std::uint32_t observedAtUs,
@@ -600,7 +764,7 @@ class TransportController {
     }
 
     auto start(bool waitForExternalTick, std::uint32_t nowUs) -> void {
-        _queue.clear();
+        _dispatcher.recordScheduledRemoval(_queue.clear(), DeliveryRemovalReason::Stop);
         const auto note = _sequencer.stop();
         _dispatcher.stop(note, nowUs);
         _sequencer.beginCleanRemoteSession();
@@ -613,8 +777,17 @@ class TransportController {
     }
 
     auto schedule(std::uint32_t nowUs) -> void {
-        if (_sequencer.scheduleThrough(_dispatcher.position(), _queue) !=
-            MidiEventQueueEnqueueResult::Ok) {
+        const auto before = _queue.classSummary();
+        const auto result = _sequencer.scheduleThrough(_dispatcher.position(), _queue);
+        const auto after = _queue.classSummary();
+        for (std::size_t messageClass = 0; messageClass < DELIVERY_MESSAGE_CLASS_COUNT;
+             ++messageClass) {
+            addCount(_diagnostics.scheduledCreated[messageClass],
+                     after.counts[messageClass] - before.counts[messageClass]);
+        }
+        _dispatcher.recordScheduledDepth();
+        if (result != MidiEventQueueEnqueueResult::Ok) {
+            addOne(_diagnostics.deliveryCapacitySafetyStops);
             stop(InternalTickDiscardReason::Stop, true, nowUs, true,
                  InvalidationReason::DeliveryCapacity);
         }
@@ -623,7 +796,7 @@ class TransportController {
     auto stop(InternalTickDiscardReason discardReason = InternalTickDiscardReason::Stop,
               bool resetExternal = true, std::uint32_t nowUs = 0, bool service = true,
               InvalidationReason reason = InvalidationReason::Stop) -> void {
-        _queue.clear();
+        _dispatcher.recordScheduledRemoval(_queue.clear(), deliveryRemovalReason(reason));
         const auto note = _sequencer.stop();
         _dispatcher.stop(note, nowUs, reason, service);
         _internalTiming = false;
@@ -642,6 +815,7 @@ class TransportController {
     }
 
     auto stopForDeliveryCapacity() noexcept -> void {
+        addOne(_diagnostics.deliveryCapacitySafetyStops);
         stop(InternalTickDiscardReason::Stop, true, 0, true, InvalidationReason::DeliveryCapacity);
         _dispatcher.clearCapacityExceeded();
     }
@@ -655,7 +829,7 @@ class TransportController {
             const bool remoteUnknown =
                 _sequencer.actualSoundingNote().has_value() || _dispatcher.hasTerminalNoteOff();
             (void)_dispatcher.abandonPending();
-            _queue.clear();
+            _dispatcher.recordScheduledRemoval(_queue.clear(), DeliveryRemovalReason::Disconnected);
             (void)_sequencer.stop();
             if (remoteUnknown) {
                 _sequencer.abandonRemoteNoteState();
@@ -667,6 +841,7 @@ class TransportController {
             _requiresExplicitStart = true;
             return;
         }
+        addOne(_diagnostics.retryWindowSafetyStops);
         stop(InternalTickDiscardReason::Stop, true, nowUs, false,
              InvalidationReason::RetryWindowExceeded);
     }
