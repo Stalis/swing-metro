@@ -1,8 +1,7 @@
 # Шаг 1.5. Аппаратное расследование и baseline
 
-Статус: повторный free-прогон показал, что условный discard не устранил потери;
-исправление заменено политикой без discard backlog-а. Ожидается один free-прогон на
-изменённой firmware.
+Статус: выполнено 2026-09-19. Consumer discard race исправлен политикой без
+discard active backlog-а; аппаратная проверка на 68 и 240 BPM завершена.
 Зависит от шагов 1.1–1.4.
 
 ## Цель
@@ -265,11 +264,46 @@ Firmware `e729b92`, полный run 243,858 с, internal clock 68 BPM. Proven f
 budget-limited passes, максимум pops/pass и duration `process()`. Stop, mode switch и
 storage по-прежнему явно drain/discard producer queue.
 
-Шаблон таблицы до/после:
+### Аппаратная проверка исправления
 
-| Run | Load | Duration s | Clock count | Double intervals (count/max/ordinals) | Drift us | Max service/process us | Max callback interval/lateness us | Max tick/F8/event lateness us | Max pops/pass | Budget passes/remaining depth | Overflow/budget/explicit discard | Consumer pops/F8 attempts | Balance | Decision |
-| --- | --- | ---: | ---: | --- | ---: | --- | --- | --- | ---: | --- | --- | --- | --- | --- |
-| A | none |  |  |  |  |  |  |  |  |  |  |  | pass/fail |  |
+Проверка выполнена на Pico 2 W с firmware после `cfd3f36` и host monitor из
+`213e445`. Перед каждым измеряемым прогоном firmware загружалась заново, поэтому
+diagnostics относятся к одному run. Все прогоны: internal clock, swing 50%, 244 с;
+host capture использует CoreMIDI через `python-rtmidi` и `time.monotonic_ns()`.
+
+| Run | Условия | Host/Firmware Clock | Длинные интервалы / потери | Host abs jitter p95/p99 | Callback interval/lateness | Tick/F8/event lateness | Max process | Queue / discard |
+| --- | --- | ---: | --- | --- | --- | --- | ---: | --- |
+| Free 68 A | без interaction | 6 637 / 6 637 | 0 / 0 | 303 / 952 мкс | 36 807 / 49 мкс | 324 / 324 / 203 мкс | 373 мкс | max 1 pop; 0 budget/overflow |
+| Free 68 B | повторный free | 6 637 / 6 637 | 0 / 0 | 286 / 773 мкс | 36 807 / 49 мкс | 277 / 277 / 141 мкс | 361 мкс | max 1 pop; 0 budget/overflow |
+| Free 240 | без interaction | 23 424 / 23 424 | 0 / 0 | 274 / 639 мкс | 10 449 / 41 мкс | 495 / 495 / 147 мкс | 562 мкс | max 1 pop; 0 budget/overflow |
+| Loaded 240 | активное редактирование note/velocity | 23 424 / 23 424 | 0 / 0 | 338 / 789 мкс | 10 461 / 55 мкс | 602 / 602 / 501 мкс | 713 мкс | max 1 pop; 0 budget/overflow |
+
+Итого в четырёх полных прогонах host получил 60 122 из 60 122 F8 attempts. Средняя
+ошибка периода находилась в диапазоне 0,019–0,144 мкс, end-to-end drift за каждый
+244-секундный run — 128–956 мкс. Редкие host-выбросы до примерно 4 мс приходят
+компенсирующими длинной/короткой парой; ни один не достиг порога 1,5 периода и не
+соответствует потере Clock. Это host arrival timestamps, поэтому они включают USB и
+планирование macOS.
+
+В loaded 240 snapshot `max_service_interval_us` равен 114 903 мкс, но этот cumulative
+с boot максимум не локализован внутри active transport. Он не может представлять
+active consumer stall такой длительности: max tick lateness равен 602 мкс, max
+callback lateness 55 мкс, queue не накопилась, overflow и missed target равны нулю.
+Для последующих этапов service maximum следует сбрасывать при старте измеряемого run
+или маркировать active-only, если потребуется связывать его с конкретной нагрузкой.
+
+Сырые локальные артефакты проверки:
+
+- `data/midi-stage-1-5-monitor-{midi,diagnostics,summary}.csv` — Free 68 A;
+- `data/midi-stage-1-5-loaded-monitor-{midi,diagnostics,summary}.csv` — Free 68 B
+  (имя историческое; interaction в MIDI-потоке не зафиксирован);
+- `data/midi-stage-1-5-free-240bpm-monitor-{midi,diagnostics,summary}.csv` — Free 240;
+- `data/midi-stage-1-5-loaded-240bpm-monitor-{midi,diagnostics,summary}.csv` — Loaded 240.
+
+Дополнительный loaded 68 capture был вручную остановлен через Save на 130,47 с. До
+Stop host получил 3 549 из 3 549 Clock; он подтверждает работу под interaction, но не
+включён в четыре полных прогона и итог 60 122. Файлы имеют префикс
+`data/midi-stage-1-5-loaded-monitor-actual`.
 
 Команды проверки:
 
@@ -295,14 +329,14 @@ pio device monitor -e rpipico2
   callback lateness, tick/event lateness, overflow/discard и Clock attempts.
 - Выполнен `make verify`; аппаратные результаты содержат все условия прогона.
 
-## Pending Hardware
+## Hardware validation result
 
-Нужен ровно один free-прогон на firmware с schema v2 и no-discard backlog policy:
-internal clock, 68 BPM, swing 50, без interaction, не менее 243,858 с, с лимитом MIDI
-Monitor не менее 10 000 сообщений. Сохранить один CDC CSV v2 после Stop и host capture.
-Проверить zero `budget_discards`, balance, равенство F8 attempts и consumer pops, а
-также double Clock intervals и новые backlog/process maxima. До этого прогона hardware
-validation нового исправления не заявляется.
+Pending Hardware закрыт четырьмя полными прогонами выше. Для каждого run выполняется
+quiescent balance, `successful_publications == successful_consumer_pops ==
+outgoing_internal_f8_attempts == host Clock count`; все discard/overflow counters
+равны нулю. Источник старых двойных интервалов локализован в active consumer discard
+race и устранён. Этап 1 не оставляет незакрытой hardware-гипотезы о потере internal
+Clock.
 
 ## Вне объёма
 
