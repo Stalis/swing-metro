@@ -1,6 +1,6 @@
 # Шаг 2.2. Принятие, pending delivery и состояние нот
 
-Статус: запланировано. Зависит от шага 2.1.
+Статус: выполнено. Зависит от шага 2.1.
 
 ## Цель
 
@@ -94,3 +94,20 @@ counter появится в шаге 2.4.
 
 Окончательные type-specific overdue/drop/reconnect policies и полная diagnostics
 schema выполняются в шагах 2.3–2.4. Hardware host capture — шаг 2.5.
+
+## Реализация и проверка
+
+- `SendResult` различает accepted, retry и подтверждённое отсутствие mount; adapter считает
+  `writePacket()` false только временным backpressure.
+- Dispatcher владеет fixed FIFO на 16 элементов. У каждого принятого FIFO элемента есть
+  отдельный monotonic `deliverySequenceNumber`; candidate увеличивается только после
+  успешного insertion, а retry сохраняет identity, target и deadline.
+- Один public controller pass использует общий budget `MAX_SEND_ATTEMPTS_PER_PASS = 8`;
+  pending head пробуется до новых сообщений и RetryLater/Disconnected завершает delivery pass.
+- `toggle`, `applyMode`, `openStorage` и external path передают observed timestamp для
+  Start/Stop/emergency Note Off. Accepted note state обновляется только в commit path.
+- Полный FIFO завершает session non-sending cancellation path: scheduled и pending contents
+  отменяются без рекурсивной постановки Stop/Note Off. Overdue, reconnect и remote recovery
+  остаются задачами 2.3.
+- Проверка: `make format`, затем `make verify` успешно выполнены: format-check и tidy прошли,
+  260 native Unity tests, 8 script tests и rpipico2 build.

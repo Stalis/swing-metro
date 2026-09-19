@@ -28,7 +28,7 @@ void test_start_schedules_tick_zero_and_two_tick_horizon() {
     const auto first = queue.drainAt({0, 0});
     TEST_ASSERT_TRUE(first.events[0].message.isNoteOn());
     TEST_ASSERT_EQUAL_UINT8(60, first.events[0].message.note());
-    sequencer.notifyNoteOnSent(60);
+    sequencer.notifyNoteOnAccepted(60);
 
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, sequencer.scheduleThrough({4, 0}, queue));
     const auto boundary = queue.drainAt({6, 0});
@@ -85,12 +85,14 @@ void test_stop_returns_actual_not_projected_note() {
     sequencer.start();
     (void)sequencer.scheduleThrough({0, 0}, queue);
     (void)queue.drainAt({0, 0});
-    sequencer.notifyNoteOnSent(60);
+    sequencer.notifyNoteOnAccepted(60);
     (void)sequencer.scheduleThrough({4, 0}, queue);
 
     queue.clear();
     TEST_ASSERT_EQUAL_UINT8(60, *sequencer.stop());
     TEST_ASSERT_FALSE(sequencer.stop().has_value());
+    TEST_ASSERT_EQUAL_UINT8(60, *sequencer.actualSoundingNote());
+    sequencer.notifyNoteOffAccepted(60);
     TEST_ASSERT_FALSE(sequencer.actualSoundingNote().has_value());
 }
 
@@ -102,7 +104,7 @@ void test_continue_preserves_next_boundary() {
     sequencer.start();
     (void)sequencer.scheduleThrough({0, 0}, queue);
     (void)queue.drainAt({0, 0});
-    sequencer.notifyNoteOnSent(60);
+    sequencer.notifyNoteOnAccepted(60);
     (void)sequencer.stop();
     sequencer.continuePlayback();
 
@@ -158,12 +160,23 @@ void test_swing_schedules_only_odd_note_ons_at_a_phase() {
 void test_actual_sounding_state_follows_transmitted_messages() {
     Sequencer sequencer;
 
-    sequencer.notifyNoteOnSent(60);
+    sequencer.notifyNoteOnAccepted(60);
     TEST_ASSERT_EQUAL_UINT8(60, *sequencer.actualSoundingNote());
-    sequencer.notifyNoteOffSent(61);
+    sequencer.notifyNoteOffAccepted(61);
     TEST_ASSERT_EQUAL_UINT8(60, *sequencer.actualSoundingNote());
-    sequencer.notifyNoteOffSent(60);
+    sequencer.notifyNoteOffAccepted(60);
     TEST_ASSERT_FALSE(sequencer.actualSoundingNote().has_value());
+}
+
+void test_cancelled_note_off_request_preserves_accepted_state_and_can_be_requested_again() {
+    Sequencer sequencer;
+    sequencer.notifyNoteOnAccepted(60);
+    TEST_ASSERT_EQUAL_UINT8(60, *sequencer.stop());
+    TEST_ASSERT_FALSE(sequencer.stop().has_value());
+
+    sequencer.cancelRequestedNoteOff();
+    TEST_ASSERT_EQUAL_UINT8(60, *sequencer.actualSoundingNote());
+    TEST_ASSERT_EQUAL_UINT8(60, *sequencer.stop());
 }
 
 } // namespace
@@ -178,4 +191,5 @@ void test_sequencer_main() {
     RUN_TEST(test_swing_phase_is_literal_and_only_delays_odd_steps);
     RUN_TEST(test_swing_schedules_only_odd_note_ons_at_a_phase);
     RUN_TEST(test_actual_sounding_state_follows_transmitted_messages);
+    RUN_TEST(test_cancelled_note_off_request_preserves_accepted_state_and_can_be_requested_again);
 }

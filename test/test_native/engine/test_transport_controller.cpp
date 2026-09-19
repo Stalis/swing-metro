@@ -10,12 +10,16 @@ namespace {
 
 class Sink final : public SwingMetro::MidiMessageSink {
   public:
-    auto send(const SwingMetro::MidiMessage& message) -> void override {
+    auto send(const SwingMetro::MidiMessage& message) -> SwingMetro::SendResult override {
         packets[count++] = SwingMetro::encodeMidiUsbPacket(message);
+        return attemptCount < results.size() ? results[attemptCount++]
+                                             : SwingMetro::SendResult::Accepted;
     }
 
-    std::array<SwingMetro::MidiUsbPacket, 16> packets{};
+    std::array<SwingMetro::MidiUsbPacket, 128> packets{};
+    std::array<SwingMetro::SendResult, 128> results{};
     std::size_t count = 0;
+    std::size_t attemptCount = 0;
 };
 
 constexpr auto noteOn(std::uint8_t channel, std::uint8_t note, std::uint8_t velocity)
@@ -62,7 +66,7 @@ void test_velocity_zero_note_on_clears_sounding_note_without_changing_bytes() {
     Sink sink;
     SwingMetro::TransportDiagnostics diagnostics;
     SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
-    sequencer.notifyNoteOnSent(60);
+    sequencer.notifyNoteOnAccepted(60);
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
                       queue.enqueue({0, 0}, noteOn(0, 60, 0)));
 
@@ -791,6 +795,284 @@ void test_service_and_tick_lateness_wrap_and_rebaseline_at_horizon() {
     TEST_ASSERT_EQUAL_UINT32(126, controller.diagnostics().maxClockAttemptLatenessUs);
 }
 
+void test_retry_keeps_delivery_identity_and_commits_note_once() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    sink.results[0] = SwingMetro::SendResult::RetryLater;
+    sink.results[1] = SwingMetro::SendResult::Accepted;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, 0}, noteOn(0, 60, 100)));
+
+    dispatcher.start(false, 900);
+    dispatcher.consumeTick({1'000, 20'000}, false, 1'000);
+    const auto pending = dispatcher.pendingFront();
+    TEST_ASSERT_TRUE(pending.has_value());
+    TEST_ASSERT_EQUAL_UINT32(0, pending->deliverySequenceNumber);
+    TEST_ASSERT_EQUAL_UINT32(1'000, pending->deadlineUs);
+    TEST_ASSERT_FALSE(sequencer.actualSoundingNote().has_value());
+
+    dispatcher.dispatchDue(1'001, 1'001);
+    TEST_ASSERT_EQUAL_UINT32(2, sink.count);
+    TEST_ASSERT_FALSE(dispatcher.pendingFront().has_value());
+    TEST_ASSERT_EQUAL_UINT8(60, *sequencer.actualSoundingNote());
+}
+
+void test_one_pass_limits_accepted_fifo_to_eight_attempts() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    for (std::size_t index = 0; index < 7; ++index) {
+        TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                          queue.enqueue({0, 0}, noteOn(0, 60, 100)));
+    }
+    for (std::size_t index = 0; index < 2; ++index) {
+        TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                          queue.enqueue({1, 0}, noteOn(0, 61, 100)));
+    }
+
+    dispatcher.start(false, 0);
+    dispatcher.beginPass(1'000);
+    dispatcher.consumeTick({1'000, 20'000}, false, 1'000);
+    dispatcher.consumeTick({21'000, 20'000}, false, 21'000);
+    dispatcher.finishPass(21'000);
+    TEST_ASSERT_EQUAL_UINT32(8, sink.count);
+    TEST_ASSERT_TRUE(dispatcher.pendingFront().has_value());
+}
+
+void test_full_pending_keeps_scheduled_head_and_reports_capacity() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    sink.results[0] = SwingMetro::SendResult::RetryLater;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    for (std::size_t tick = 0; tick < SwingMetro::MidiEventQueue::CAPACITY; ++tick) {
+        TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                          queue.enqueue({tick, 0}, noteOn(0, 60, 100)));
+    }
+
+    dispatcher.start(false, 0);
+    dispatcher.beginPass(0);
+    for (std::uint32_t tick = 0; tick < SwingMetro::MidiEventQueue::CAPACITY; ++tick) {
+        dispatcher.consumeTick({1'000 + tick * 20'000, 20'000}, false, 1'000 + tick * 20'000);
+    }
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({16, 0}, noteOn(0, 61, 100)));
+    dispatcher.consumeTick({321'000, 20'000}, false, 321'000);
+    TEST_ASSERT_TRUE(dispatcher.capacityExceeded());
+    TEST_ASSERT_EQUAL_UINT64(16, queue.nextPosition()->tick);
+}
+
+void test_full_pending_does_not_discard_previous_tick_scheduled_head() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    for (std::size_t tick = 0; tick < SwingMetro::MidiEventQueue::CAPACITY - 1; ++tick) {
+        TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                          queue.enqueue({tick, 0}, noteOn(0, 60, 100)));
+    }
+    const auto delayedPhase = SwingMetro::phaseFromPercent(75);
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({15, delayedPhase}, noteOn(0, 61, 100)));
+
+    dispatcher.beginPass(0);
+    dispatcher.start(true, 0);
+    for (std::uint32_t tick = 0; tick <= 15; ++tick) {
+        dispatcher.consumeTick({1'000 + tick * 20'000, 20'000}, false, 1'000 + tick * 20'000);
+    }
+    dispatcher.consumeTick({321'000, 20'000}, false, 321'000);
+
+    TEST_ASSERT_TRUE(dispatcher.capacityExceeded());
+    TEST_ASSERT_EQUAL_UINT64(15, queue.front()->target.tick);
+    TEST_ASSERT_EQUAL_UINT16(delayedPhase, queue.front()->target.phase);
+}
+
+void test_retry_and_disconnect_attempt_head_only_once_per_pass() {
+    for (const auto blockedResult :
+         {SwingMetro::SendResult::RetryLater, SwingMetro::SendResult::Disconnected}) {
+        Sequencer sequencer;
+        SwingMetro::MidiEventQueue queue;
+        SwingMetro::Transport transport;
+        Sink sink;
+        sink.results[0] = blockedResult;
+        sink.results[1] = SwingMetro::SendResult::Accepted;
+        SwingMetro::TransportDiagnostics diagnostics;
+        SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+        TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                          queue.enqueue({0, 0}, noteOn(0, 60, 100)));
+
+        dispatcher.start(false, 900);
+        dispatcher.beginPass(1'000);
+        dispatcher.consumeTick({1'000, 20'000}, false, 1'000);
+        dispatcher.finishPass(1'000);
+        TEST_ASSERT_EQUAL_UINT32(1, sink.count);
+        const auto blocked = dispatcher.pendingFront();
+        TEST_ASSERT_TRUE(blocked.has_value());
+        TEST_ASSERT_EQUAL_UINT32(0, blocked->deliverySequenceNumber);
+        TEST_ASSERT_EQUAL_UINT32(1'000, blocked->deadlineUs);
+        TEST_ASSERT_FALSE(sequencer.actualSoundingNote().has_value());
+
+        dispatcher.beginPass(1'001);
+        dispatcher.finishPass(1'001);
+        TEST_ASSERT_EQUAL_UINT32(2, sink.count);
+        TEST_ASSERT_FALSE(dispatcher.pendingFront().has_value());
+        TEST_ASSERT_EQUAL_UINT8(60, *sequencer.actualSoundingNote());
+    }
+}
+
+void test_blocked_start_prevents_clock_from_overtaking() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    sink.results[0] = SwingMetro::SendResult::RetryLater;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+
+    dispatcher.beginPass(100);
+    dispatcher.start(true, 100);
+    dispatcher.consumeTick({100, 20'000}, true, 100);
+    dispatcher.finishPass(100);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.count);
+    TEST_ASSERT_EQUAL_HEX8(0xFA, sink.packets[0][1]);
+    TEST_ASSERT_EQUAL_UINT32(0, diagnostics.outgoingInternalClockAttempts);
+
+    dispatcher.beginPass(101);
+    dispatcher.finishPass(101);
+    TEST_ASSERT_EQUAL_UINT32(3, sink.count);
+    TEST_ASSERT_EQUAL_HEX8(0xFA, sink.packets[1][1]);
+    TEST_ASSERT_EQUAL_HEX8(0xF8, sink.packets[2][1]);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.outgoingInternalClockAttempts);
+}
+
+void test_blocked_note_off_prevents_note_on_and_commits_in_order() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, 0}, noteOn(0, 60, 100)));
+    dispatcher.start(false, 0);
+    dispatcher.consumeTick({1'000, 20'000}, false, 1'000);
+    TEST_ASSERT_EQUAL_UINT8(60, *sequencer.actualSoundingNote());
+
+    sink.results[1] = SwingMetro::SendResult::RetryLater;
+    sink.results[2] = SwingMetro::SendResult::Accepted;
+    sink.results[3] = SwingMetro::SendResult::RetryLater;
+    sink.results[4] = SwingMetro::SendResult::Accepted;
+    const std::array<SwingMetro::MidiEventRequest, 2> next = {
+        SwingMetro::MidiEventRequest{{1, 0}, *SwingMetro::MidiMessage::noteOff(0, 60)},
+        SwingMetro::MidiEventRequest{{1, 0}, noteOn(0, 61, 100)},
+    };
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueueBatch(next, next.size()));
+
+    dispatcher.beginPass(21'000);
+    dispatcher.consumeTick({21'000, 20'000}, false, 21'000);
+    dispatcher.finishPass(21'000);
+    TEST_ASSERT_EQUAL_UINT32(2, sink.count);
+    TEST_ASSERT_EQUAL_HEX8(0x80, sink.packets[1][1]);
+    TEST_ASSERT_EQUAL_UINT8(60, *sequencer.actualSoundingNote());
+
+    dispatcher.beginPass(21'001);
+    dispatcher.finishPass(21'001);
+    TEST_ASSERT_EQUAL_UINT32(4, sink.count);
+    TEST_ASSERT_EQUAL_HEX8(0x80, sink.packets[2][1]);
+    TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[3][1]);
+    TEST_ASSERT_FALSE(sequencer.actualSoundingNote().has_value());
+
+    dispatcher.beginPass(21'002);
+    dispatcher.finishPass(21'002);
+    TEST_ASSERT_EQUAL_UINT32(5, sink.count);
+    TEST_ASSERT_EQUAL_UINT8(61, *sequencer.actualSoundingNote());
+}
+
+void test_velocity_zero_note_on_clears_state_only_after_acceptance() {
+    Sequencer sequencer;
+    sequencer.notifyNoteOnAccepted(60);
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    sink.results[0] = SwingMetro::SendResult::RetryLater;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, 0}, noteOn(0, 60, 0)));
+
+    dispatcher.start(false, 0);
+    dispatcher.beginPass(1'000);
+    dispatcher.consumeTick({1'000, 20'000}, false, 1'000);
+    dispatcher.finishPass(1'000);
+    TEST_ASSERT_EQUAL_UINT8(60, *sequencer.actualSoundingNote());
+
+    dispatcher.beginPass(1'001);
+    dispatcher.finishPass(1'001);
+    TEST_ASSERT_FALSE(sequencer.actualSoundingNote().has_value());
+}
+
+void test_capacity_stop_cancels_without_recursive_send_and_can_restart() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    SwingMetro::MidiEventQueue queue;
+    Sink sink;
+    sink.results.fill(SwingMetro::SendResult::RetryLater);
+    SwingMetro::TransportController controller{sequencer, settings, sink, queue};
+    SwingMetro::InternalTickStore<> ticks;
+    controller.applyMode(SwingMetro::MidiClockMode::Internal, 0);
+    controller.toggle(1);
+    for (std::size_t tick = 0; tick < SwingMetro::MidiEventQueue::CAPACITY; ++tick) {
+        TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                          queue.enqueue({tick, 0}, noteOn(0, 60, 100)));
+    }
+
+    for (std::uint32_t tick = 0;
+         tick < SwingMetro::MidiEventQueue::CAPACITY && controller.usesInternalTiming(); ++tick) {
+        const auto timestampUs = 1'000 + tick * 20'000;
+        TEST_ASSERT_TRUE(ticks.publish({timestampUs, 20'000}));
+        const auto attemptsBefore = sink.count;
+        controller.process(timestampUs, ticks);
+        TEST_ASSERT_TRUE(sink.count == attemptsBefore || sink.count == attemptsBefore + 1);
+    }
+
+    TEST_ASSERT_FALSE(controller.usesInternalTiming());
+    TEST_ASSERT_TRUE(queue.empty());
+    for (std::size_t index = 0; index < sink.count; ++index) {
+        TEST_ASSERT_EQUAL_HEX8(0xFA, sink.packets[index][1]);
+    }
+    const auto attemptsAfterCapacityStop = sink.count;
+    controller.toggle(400'000);
+    TEST_ASSERT_TRUE(controller.usesInternalTiming());
+    TEST_ASSERT_EQUAL_UINT32(attemptsAfterCapacityStop + 1, sink.count);
+}
+
+void test_direct_control_messages_do_not_change_stage_one_lateness_metrics() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+
+    dispatcher.beginPass(10'000);
+    dispatcher.start(true, 100);
+    dispatcher.finishPass(10'000);
+    TEST_ASSERT_EQUAL_UINT32(0, diagnostics.maxClockAttemptLatenessUs);
+    TEST_ASSERT_EQUAL_UINT32(0, diagnostics.maxQueuedEventAttemptLatenessUs);
+}
+
 } // namespace
 
 void test_transport_controller_main() {
@@ -826,5 +1108,15 @@ void test_transport_controller_main() {
     RUN_TEST(test_queued_event_attempt_lateness_uses_ceil_phase_deadline);
     RUN_TEST(test_attempt_lateness_classifies_queued_clock_and_wraps);
     RUN_TEST(test_service_and_tick_lateness_wrap_and_rebaseline_at_horizon);
+    RUN_TEST(test_retry_keeps_delivery_identity_and_commits_note_once);
+    RUN_TEST(test_one_pass_limits_accepted_fifo_to_eight_attempts);
+    RUN_TEST(test_full_pending_keeps_scheduled_head_and_reports_capacity);
+    RUN_TEST(test_full_pending_does_not_discard_previous_tick_scheduled_head);
+    RUN_TEST(test_retry_and_disconnect_attempt_head_only_once_per_pass);
+    RUN_TEST(test_blocked_start_prevents_clock_from_overtaking);
+    RUN_TEST(test_blocked_note_off_prevents_note_on_and_commits_in_order);
+    RUN_TEST(test_velocity_zero_note_on_clears_state_only_after_acceptance);
+    RUN_TEST(test_capacity_stop_cancels_without_recursive_send_and_can_restart);
+    RUN_TEST(test_direct_control_messages_do_not_change_stage_one_lateness_metrics);
     RUN_TEST(test_process_duration_is_recorded_separately_from_service_interval);
 }

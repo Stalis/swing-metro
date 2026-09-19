@@ -1,0 +1,69 @@
+#include "test_midi_pending_delivery_queue.h"
+
+#include "engine/midi_pending_delivery_queue.h"
+
+#include <unity.h>
+
+namespace {
+
+constexpr auto event(std::size_t sequence, std::uint8_t note) -> SwingMetro::MidiEvent {
+    return {{sequence, 0}, *SwingMetro::MidiMessage::noteOn(0, note, 100), sequence};
+}
+
+void test_pending_queue_preserves_fifo_identity_and_metadata() {
+    SwingMetro::MidiPendingDeliveryQueue queue;
+    TEST_ASSERT_TRUE(
+        queue.push(event(7, 60), 1'234, 42, true, SwingMetro::MidiAttemptLateness::ClockAttempt));
+
+    const auto front = queue.front();
+    TEST_ASSERT_TRUE(front.has_value());
+    TEST_ASSERT_EQUAL_UINT64(7, front->event.target.tick);
+    TEST_ASSERT_EQUAL_UINT8(60, front->event.message.note());
+    TEST_ASSERT_EQUAL_UINT32(1'234, front->deadlineUs);
+    TEST_ASSERT_EQUAL_UINT32(42, front->deliverySequenceNumber);
+    TEST_ASSERT_TRUE(front->countsAsInternalClockAttempt);
+    TEST_ASSERT_EQUAL(SwingMetro::MidiAttemptLateness::ClockAttempt, front->lateness);
+}
+
+void test_pending_queue_full_rejection_does_not_mutate_fifo() {
+    SwingMetro::MidiPendingDeliveryQueue queue;
+    for (std::size_t index = 0; index < SwingMetro::MidiPendingDeliveryQueue::CAPACITY; ++index) {
+        TEST_ASSERT_TRUE(queue.push(event(index, static_cast<std::uint8_t>(index)),
+                                    static_cast<std::uint32_t>(index), index));
+    }
+    TEST_ASSERT_TRUE(queue.full());
+    TEST_ASSERT_FALSE(queue.push(event(99, 99), 99, 99));
+    TEST_ASSERT_EQUAL_UINT32(SwingMetro::MidiPendingDeliveryQueue::CAPACITY, queue.size());
+    TEST_ASSERT_EQUAL_UINT32(0, queue.front()->deliverySequenceNumber);
+
+    for (std::size_t index = 0; index < SwingMetro::MidiPendingDeliveryQueue::CAPACITY; ++index) {
+        TEST_ASSERT_EQUAL_UINT32(index, queue.front()->deliverySequenceNumber);
+        queue.popFront();
+    }
+    TEST_ASSERT_TRUE(queue.empty());
+}
+
+void test_pending_queue_wraps_and_clear_resets_storage() {
+    SwingMetro::MidiPendingDeliveryQueue queue;
+    for (std::size_t index = 0; index < SwingMetro::MidiPendingDeliveryQueue::CAPACITY; ++index) {
+        TEST_ASSERT_TRUE(queue.push(event(index, 60), 0, index));
+    }
+    queue.popFront();
+    TEST_ASSERT_TRUE(queue.push(event(100, 61), 100, 100));
+    for (std::size_t index = 1; index < SwingMetro::MidiPendingDeliveryQueue::CAPACITY; ++index) {
+        TEST_ASSERT_EQUAL_UINT32(index, queue.front()->deliverySequenceNumber);
+        queue.popFront();
+    }
+    TEST_ASSERT_EQUAL_UINT32(100, queue.front()->deliverySequenceNumber);
+    queue.clear();
+    TEST_ASSERT_TRUE(queue.empty());
+    TEST_ASSERT_FALSE(queue.front().has_value());
+}
+
+} // namespace
+
+void test_midi_pending_delivery_queue_main() {
+    RUN_TEST(test_pending_queue_preserves_fifo_identity_and_metadata);
+    RUN_TEST(test_pending_queue_full_rejection_does_not_mutate_fifo);
+    RUN_TEST(test_pending_queue_wraps_and_clear_resets_storage);
+}

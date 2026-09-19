@@ -78,8 +78,9 @@ class Sequencer {
     [[nodiscard]] SwingMetro::MidiEventQueueEnqueueResult
     scheduleThrough(SwingMetro::TransportPosition position, SwingMetro::MidiEventQueue& queue);
     void notifyBoundaryReached(SwingMetro::TransportTick tick);
-    void notifyNoteOnSent(MIDI_Note note);
-    void notifyNoteOffSent(MIDI_Note note);
+    void notifyNoteOnAccepted(MIDI_Note note);
+    void notifyNoteOffAccepted(MIDI_Note note);
+    void cancelRequestedNoteOff() noexcept;
     [[nodiscard]] std::optional<MIDI_Note> actualSoundingNote() const;
 
     void sync(uint32_t micros);
@@ -101,6 +102,7 @@ class Sequencer {
     uint8_t _swing = SwingMetro::SWING_MIN_VALUE;
     bool _running = false;
     std::optional<MIDI_Note> _actualSoundingNote;
+    std::optional<MIDI_Note> _requestedNoteOff;
     std::optional<MIDI_Note> _projectedSoundingNote;
     SwingMetro::TransportTick _nextBoundaryTick = 0;
 

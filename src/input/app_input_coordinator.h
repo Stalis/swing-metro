@@ -86,7 +86,7 @@ class AppInputCoordinator {
             }
         } else if (const auto* apply = std::get_if<ApplyMidiClockMode>(&event)) {
             if (_transport != nullptr) {
-                _transport->applyMode(apply->mode);
+                _transport->applyMode(apply->mode, nowUs);
             } else {
                 _midiClock.apply(apply->mode);
             }

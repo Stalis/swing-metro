@@ -101,10 +101,12 @@ bool Sequencer::isRunning() const { return _running; }
 
 std::optional<MIDI_Note> Sequencer::stop() {
     _running = false;
-    const auto actual = _actualSoundingNote;
-    _actualSoundingNote.reset();
     _projectedSoundingNote.reset();
-    return actual;
+    if (_actualSoundingNote.has_value() && _requestedNoteOff != _actualSoundingNote) {
+        _requestedNoteOff = _actualSoundingNote;
+        return _actualSoundingNote;
+    }
+    return std::nullopt;
 }
 
 void Sequencer::toggleRunning(uint32_t micros) {
@@ -125,7 +127,6 @@ void Sequencer::start() {
     _running = true;
     _currentStepIndex = 0;
     _hasCurrentStep = false;
-    _actualSoundingNote.reset();
     _projectedSoundingNote.reset();
     _nextBoundaryTick = 0;
 }
@@ -171,13 +172,21 @@ void Sequencer::notifyBoundaryReached(SwingMetro::TransportTick tick) {
     _hasCurrentStep = true;
 }
 
-void Sequencer::notifyNoteOnSent(MIDI_Note note) { _actualSoundingNote = note; }
+void Sequencer::notifyNoteOnAccepted(MIDI_Note note) {
+    _actualSoundingNote = note;
+    _requestedNoteOff.reset();
+}
 
-void Sequencer::notifyNoteOffSent(MIDI_Note note) {
+void Sequencer::notifyNoteOffAccepted(MIDI_Note note) {
     if (_actualSoundingNote == note) {
         _actualSoundingNote.reset();
     }
+    if (_requestedNoteOff == note) {
+        _requestedNoteOff.reset();
+    }
 }
+
+void Sequencer::cancelRequestedNoteOff() noexcept { _requestedNoteOff.reset(); }
 
 std::optional<MIDI_Note> Sequencer::actualSoundingNote() const { return _actualSoundingNote; }
 

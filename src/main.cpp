@@ -230,7 +230,7 @@ void handleEncoderDirection(const TAdapter& adapter, EncoderDirection direction)
     appInputCoordinator.dispatch(*input, micros());
 }
 
-void handleProgramStorageEvent(const SwingMetro::AppEvent& event);
+void handleProgramStorageEvent(const SwingMetro::AppEvent& event, std::uint32_t nowUs);
 
 void pollSerialRunCommand() {
     if (serialRunActive || transportController.usesInternalTiming()) {
@@ -251,7 +251,7 @@ void pollSerialRunCommand() {
         swingCounter.setValue(result.command.swing);
         mainSequencer.setBpm(tempoCounter.getValue());
         mainSequencer.setSwing(swingCounter.getValue());
-        transportController.applyMode(SwingMetro::MidiClockMode::Internal);
+        transportController.applyMode(SwingMetro::MidiClockMode::Internal, micros());
         Serial.print(F("swing_metro_control_v1,run_started,"));
         Serial.print(result.command.durationMs);
         Serial.print(',');
@@ -286,8 +286,9 @@ void updateSerialRun() {
 void handleButtonBatch(const SwingMetro::StepButtonInputs::Batch& batch) {
     for (std::size_t index = 0; index < batch.size(); ++index) {
         const auto& input = batch[index];
-        if (const auto event = appInputCoordinator.dispatch(input, micros()); event.has_value()) {
-            handleProgramStorageEvent(*event);
+        const auto nowUs = micros();
+        if (const auto event = appInputCoordinator.dispatch(input, nowUs); event.has_value()) {
+            handleProgramStorageEvent(*event, nowUs);
         }
     }
 }
@@ -316,10 +317,10 @@ void volumeEncoderSwitchReleaseHandler() {
     handleButtonBatch(volumeSwitchInput.onReleased(millis()));
 }
 
-void handleProgramStorageEvent(const SwingMetro::AppEvent& event) {
+void handleProgramStorageEvent(const SwingMetro::AppEvent& event, std::uint32_t nowUs) {
     if (std::holds_alternative<SwingMetro::OpenProgramStorage>(event) &&
         appInputCoordinator.isProgramStorageModalOpen()) {
-        transportController.openStorage();
+        transportController.openStorage(nowUs);
     } else if (std::holds_alternative<SwingMetro::CloseProgramStorage>(event)) {
         transportController.closeStorage();
     }

@@ -202,6 +202,24 @@ void test_default_slots_are_gated_by_count() {
     TEST_ASSERT_EQUAL_UINT8(60, result.events[0].message.note());
 }
 
+void test_front_and_pop_remove_only_the_scheduled_head() {
+    MidiEventQueue queue;
+    TEST_ASSERT_FALSE(queue.front().has_value());
+    queue.popFront();
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 0}, noteOn(62)));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({1, 0}, noteOn(61)));
+
+    const auto first = queue.front();
+    TEST_ASSERT_TRUE(first.has_value());
+    TEST_ASSERT_EQUAL_UINT64(1, first->target.tick);
+    TEST_ASSERT_EQUAL_UINT8(61, first->message.note());
+    queue.popFront();
+
+    TEST_ASSERT_EQUAL_UINT32(1, queue.size());
+    TEST_ASSERT_EQUAL_UINT64(2, queue.front()->target.tick);
+    TEST_ASSERT_EQUAL_UINT8(62, queue.front()->message.note());
+}
+
 } // namespace
 
 void test_midi_event_queue_main() {
@@ -218,4 +236,5 @@ void test_midi_event_queue_main() {
     RUN_TEST(test_clear_removes_all_events);
     RUN_TEST(test_next_position_is_read_only_and_returns_the_earliest_event);
     RUN_TEST(test_default_slots_are_gated_by_count);
+    RUN_TEST(test_front_and_pop_remove_only_the_scheduled_head);
 }

@@ -14,9 +14,12 @@ class UsbMidiMessageSink final : public MidiMessageSink {
   public:
     explicit UsbMidiMessageSink(Adafruit_USBD_MIDI& midi) noexcept : _midi{midi} {}
 
-    auto send(const MidiMessage& message) -> void override {
+    auto send(const MidiMessage& message) -> SendResult override {
+        if (!TinyUSBDevice.mounted()) {
+            return SendResult::Disconnected;
+        }
         const auto packet = encodeMidiUsbPacket(message);
-        (void)_midi.writePacket(packet.data());
+        return _midi.writePacket(packet.data()) ? SendResult::Accepted : SendResult::RetryLater;
     }
 
   private:

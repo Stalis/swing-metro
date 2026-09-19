@@ -90,6 +90,23 @@ class MidiEventQueue {
         return result;
     }
 
+    [[nodiscard]] auto front() const noexcept -> std::optional<MidiEvent> {
+        if (_count == 0) {
+            return std::nullopt;
+        }
+        return _events[0];
+    }
+
+    auto popFront() noexcept -> void {
+        if (_count == 0) {
+            return;
+        }
+        for (std::size_t index = 1; index < _count; ++index) {
+            _events[index - 1] = _events[index];
+        }
+        --_count;
+    }
+
     auto clear() noexcept -> void { _count = 0; }
 
     auto discardAt(TransportTick tick) noexcept -> void {
