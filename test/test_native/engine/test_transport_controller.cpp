@@ -854,21 +854,23 @@ void test_full_pending_keeps_scheduled_head_and_reports_capacity() {
     sink.results[0] = SwingMetro::SendResult::RetryLater;
     SwingMetro::TransportDiagnostics diagnostics;
     SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
-    for (std::size_t tick = 0; tick < SwingMetro::MidiEventQueue::CAPACITY; ++tick) {
+    for (std::size_t tick = 0; tick < SwingMetro::MidiPendingDeliveryQueue::NORMAL_CAPACITY;
+         ++tick) {
         TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
                           queue.enqueue({tick, 0}, noteOn(0, 60, 100)));
     }
 
     dispatcher.start(false, 0);
     dispatcher.beginPass(0);
-    for (std::uint32_t tick = 0; tick < SwingMetro::MidiEventQueue::CAPACITY; ++tick) {
+    for (std::uint32_t tick = 0; tick < SwingMetro::MidiPendingDeliveryQueue::NORMAL_CAPACITY;
+         ++tick) {
         dispatcher.consumeTick({1'000 + tick * 20'000, 20'000}, false, 1'000 + tick * 20'000);
     }
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
-                      queue.enqueue({16, 0}, noteOn(0, 61, 100)));
-    dispatcher.consumeTick({321'000, 20'000}, false, 321'000);
+                      queue.enqueue({14, 0}, noteOn(0, 61, 100)));
+    dispatcher.consumeTick({281'000, 20'000}, false, 281'000);
     TEST_ASSERT_TRUE(dispatcher.capacityExceeded());
-    TEST_ASSERT_EQUAL_UINT64(16, queue.nextPosition()->tick);
+    TEST_ASSERT_EQUAL_UINT64(14, queue.nextPosition()->tick);
 }
 
 void test_full_pending_does_not_discard_previous_tick_scheduled_head() {
@@ -878,24 +880,23 @@ void test_full_pending_does_not_discard_previous_tick_scheduled_head() {
     Sink sink;
     SwingMetro::TransportDiagnostics diagnostics;
     SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
-    for (std::size_t tick = 0; tick < SwingMetro::MidiEventQueue::CAPACITY - 1; ++tick) {
+    for (std::size_t tick = 0; tick < SwingMetro::MidiPendingDeliveryQueue::NORMAL_CAPACITY;
+         ++tick) {
         TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
                           queue.enqueue({tick, 0}, noteOn(0, 60, 100)));
     }
-    const auto delayedPhase = SwingMetro::phaseFromPercent(75);
     TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
-                      queue.enqueue({15, delayedPhase}, noteOn(0, 61, 100)));
+                      queue.enqueue({14, SwingMetro::phaseFromPercent(75)}, noteOn(0, 61, 100)));
 
     dispatcher.beginPass(0);
     dispatcher.start(true, 0);
-    for (std::uint32_t tick = 0; tick <= 15; ++tick) {
+    for (std::uint32_t tick = 0; tick <= 14; ++tick) {
         dispatcher.consumeTick({1'000 + tick * 20'000, 20'000}, false, 1'000 + tick * 20'000);
     }
-    dispatcher.consumeTick({321'000, 20'000}, false, 321'000);
+    dispatcher.consumeTick({281'000, 20'000}, false, 281'000);
 
-    TEST_ASSERT_TRUE(dispatcher.capacityExceeded());
-    TEST_ASSERT_EQUAL_UINT64(15, queue.front()->target.tick);
-    TEST_ASSERT_EQUAL_UINT16(delayedPhase, queue.front()->target.phase);
+    TEST_ASSERT_FALSE(dispatcher.capacityExceeded());
+    TEST_ASSERT_FALSE(queue.front().has_value());
 }
 
 void test_retry_and_disconnect_attempt_head_only_once_per_pass() {
@@ -923,6 +924,15 @@ void test_retry_and_disconnect_attempt_head_only_once_per_pass() {
         TEST_ASSERT_EQUAL_UINT32(1'000, blocked->deadlineUs);
         TEST_ASSERT_FALSE(sequencer.actualSoundingNote().has_value());
 
+        if (blockedResult == SwingMetro::SendResult::Disconnected) {
+            TEST_ASSERT_EQUAL(
+                static_cast<std::uint8_t>(SwingMetro::DeliveryLifecycleOutcome::Disconnected),
+                static_cast<std::uint8_t>(dispatcher.takeLifecycleOutcome()));
+            dispatcher.beginPass(1'001);
+            dispatcher.finishPass(1'001);
+            TEST_ASSERT_EQUAL_UINT32(1, sink.count);
+            continue;
+        }
         dispatcher.beginPass(1'001);
         dispatcher.finishPass(1'001);
         TEST_ASSERT_EQUAL_UINT32(2, sink.count);
@@ -1035,11 +1045,12 @@ void test_capacity_stop_cancels_without_recursive_send_and_can_restart() {
     controller.toggle(1);
     for (std::size_t tick = 0; tick < SwingMetro::MidiEventQueue::CAPACITY; ++tick) {
         TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
-                          queue.enqueue({tick, 0}, noteOn(0, 60, 100)));
+                          queue.enqueue({tick, 0}, *SwingMetro::MidiMessage::noteOff(0, 60)));
     }
 
     for (std::uint32_t tick = 0;
-         tick < SwingMetro::MidiEventQueue::CAPACITY && controller.usesInternalTiming(); ++tick) {
+         tick < SwingMetro::MidiEventQueue::CAPACITY * 2 && controller.usesInternalTiming();
+         ++tick) {
         const auto timestampUs = 1'000 + tick * 20'000;
         TEST_ASSERT_TRUE(ticks.publish({timestampUs, 20'000}));
         const auto attemptsBefore = sink.count;
@@ -1049,6 +1060,8 @@ void test_capacity_stop_cancels_without_recursive_send_and_can_restart() {
 
     TEST_ASSERT_FALSE(controller.usesInternalTiming());
     TEST_ASSERT_TRUE(queue.empty());
+    TEST_ASSERT_EQUAL(static_cast<std::uint8_t>(SwingMetro::InvalidationReason::DeliveryCapacity),
+                      static_cast<std::uint8_t>(controller.diagnostics().lastSessionEndReason));
     for (std::size_t index = 0; index < sink.count; ++index) {
         TEST_ASSERT_EQUAL_HEX8(0xFA, sink.packets[index][1]);
     }
@@ -1071,6 +1084,258 @@ void test_direct_control_messages_do_not_change_stage_one_lateness_metrics() {
     dispatcher.finishPass(10'000);
     TEST_ASSERT_EQUAL_UINT32(0, diagnostics.maxClockAttemptLatenessUs);
     TEST_ASSERT_EQUAL_UINT32(0, diagnostics.maxQueuedEventAttemptLatenessUs);
+}
+
+void test_lifecycle_expiry_and_generation_helpers_are_exact_and_saturating() {
+    TEST_ASSERT_EQUAL_UINT64(16, SwingMetro::MidiDispatcher::expiryTick(10));
+    TEST_ASSERT_EQUAL_UINT64(UINT64_MAX, SwingMetro::MidiDispatcher::expiryTick(UINT64_MAX - 2));
+    TEST_ASSERT_FALSE(SwingMetro::MidiDispatcher::expiredAt(UINT64_MAX - 1, UINT64_MAX - 2));
+    TEST_ASSERT_TRUE(SwingMetro::MidiDispatcher::expiredAt(UINT64_MAX, UINT64_MAX - 2));
+    TEST_ASSERT_FALSE(SwingMetro::MidiDispatcher::expiredAt(15, 10));
+    TEST_ASSERT_TRUE(SwingMetro::MidiDispatcher::expiredAt(16, 10));
+    TEST_ASSERT_EQUAL_UINT32(1, SwingMetro::MidiDispatcher::nextSessionGeneration(UINT32_MAX));
+    TEST_ASSERT_EQUAL_UINT32(2, SwingMetro::MidiDispatcher::nextSessionGeneration(1));
+}
+
+void test_clock_backpressure_coalesces_to_latest_without_burst() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    sink.results.fill(SwingMetro::SendResult::RetryLater);
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    dispatcher.start(false, 0);
+
+    dispatcher.beginPass(1'000);
+    dispatcher.consumeTick({1'000, 20'000}, true, 1'000);
+    dispatcher.finishPass(1'000);
+    dispatcher.beginPass(21'000);
+    dispatcher.consumeTick({21'000, 20'000}, true, 21'000);
+    dispatcher.finishPass(21'000);
+
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.clockCoalescedCount);
+    TEST_ASSERT_EQUAL_UINT64(1, dispatcher.pendingFront()->event.target.tick);
+    sink.results[sink.attemptCount] = SwingMetro::SendResult::Accepted;
+    dispatcher.beginPass(21'001);
+    dispatcher.finishPass(21'001);
+    TEST_ASSERT_FALSE(dispatcher.pendingFront().has_value());
+}
+
+void test_stale_clock_expires_instead_of_replaying() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    sink.results.fill(SwingMetro::SendResult::RetryLater);
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    dispatcher.start(false, 0);
+
+    dispatcher.beginPass(1'000);
+    dispatcher.consumeTick({1'000, 20'000}, true, 1'000);
+    dispatcher.finishPass(1'000);
+    dispatcher.beginPass(21'000);
+    dispatcher.consumeTick({21'000, 20'000}, false, 21'000);
+    dispatcher.finishPass(21'000);
+    dispatcher.beginPass(21'001);
+    dispatcher.finishPass(21'001);
+
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.clockExpiredCount);
+    TEST_ASSERT_FALSE(dispatcher.pendingFront().has_value());
+}
+
+void test_note_on_expires_at_retry_window_equality_without_acceptance() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    sink.results.fill(SwingMetro::SendResult::RetryLater);
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, 0}, noteOn(0, 60, 100)));
+    dispatcher.start(false, 0);
+    dispatcher.beginPass(1'000);
+    dispatcher.consumeTick({1'000, 20'000}, false, 1'000);
+    dispatcher.finishPass(1'000);
+    for (std::uint32_t tick = 1; tick <= SwingMetro::TICKS_PER_SIXTEENTH; ++tick) {
+        const auto atUs = 1'000 + tick * 20'000;
+        dispatcher.beginPass(atUs);
+        dispatcher.consumeTick({atUs, 20'000}, false, atUs);
+        dispatcher.finishPass(atUs);
+    }
+    dispatcher.beginPass(121'001);
+    dispatcher.finishPass(121'001);
+
+    TEST_ASSERT_FALSE(dispatcher.pendingFront().has_value());
+    TEST_ASSERT_FALSE(sequencer.actualSoundingNote().has_value());
+}
+
+void test_retry_window_equality_causes_one_controlled_stop() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    sink.results.fill(SwingMetro::SendResult::RetryLater);
+    sink.results[0] = SwingMetro::SendResult::Accepted;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickStore<> ticks;
+    controller.applyMode(SwingMetro::MidiClockMode::Internal, 0);
+    controller.toggle(1);
+    for (std::uint32_t tick = 0; tick <= SwingMetro::TICKS_PER_SIXTEENTH; ++tick) {
+        const auto atUs = 1'000 + tick * 20'000;
+        TEST_ASSERT_TRUE(ticks.publish({atUs, 20'000}));
+        controller.process(atUs, ticks);
+    }
+    controller.process(121'001, ticks);
+
+    TEST_ASSERT_FALSE(controller.usesInternalTiming());
+    TEST_ASSERT_EQUAL(
+        static_cast<std::uint8_t>(SwingMetro::InvalidationReason::RetryWindowExceeded),
+        static_cast<std::uint8_t>(controller.diagnostics().lastSessionEndReason));
+}
+
+void test_repeated_stop_retries_one_off_before_one_stop() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    dispatcher.start(true, 0);
+    sequencer.notifyNoteOnAccepted(60);
+    sink.results[1] = SwingMetro::SendResult::RetryLater;
+    sink.results[2] = SwingMetro::SendResult::Accepted;
+    sink.results[3] = SwingMetro::SendResult::RetryLater;
+    sink.results[4] = SwingMetro::SendResult::Accepted;
+
+    dispatcher.stop(sequencer.stop(), 100);
+    dispatcher.stop(sequencer.stop(), 101);
+    dispatcher.beginPass(102);
+    dispatcher.finishPass(102);
+    dispatcher.beginPass(103);
+    dispatcher.finishPass(103);
+
+    TEST_ASSERT_EQUAL_UINT32(5, sink.count);
+    TEST_ASSERT_EQUAL_HEX8(0xFA, sink.packets[0][1]);
+    TEST_ASSERT_EQUAL_HEX8(0x80, sink.packets[1][1]);
+    TEST_ASSERT_EQUAL_HEX8(0x80, sink.packets[2][1]);
+    TEST_ASSERT_EQUAL_HEX8(0xFC, sink.packets[3][1]);
+    TEST_ASSERT_EQUAL_HEX8(0xFC, sink.packets[4][1]);
+    TEST_ASSERT_FALSE(dispatcher.pendingFront().has_value());
+}
+
+void test_stop_does_not_duplicate_an_already_pending_note_off() {
+    Sequencer sequencer;
+    sequencer.notifyNoteOnAccepted(60);
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    sink.results[0] = SwingMetro::SendResult::RetryLater;
+    sink.results[1] = SwingMetro::SendResult::Accepted;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, 0}, *SwingMetro::MidiMessage::noteOff(0, 60)));
+    dispatcher.start(false, 0);
+    dispatcher.beginPass(1'000);
+    dispatcher.consumeTick({1'000, 20'000}, false, 1'000);
+    dispatcher.finishPass(1'000);
+    dispatcher.stop(sequencer.stop(), 1'001);
+    dispatcher.beginPass(1'002);
+    dispatcher.finishPass(1'002);
+
+    TEST_ASSERT_EQUAL_UINT32(2, sink.count);
+    TEST_ASSERT_FALSE(dispatcher.pendingFront().has_value());
+}
+
+void test_new_start_supersedes_unaccepted_old_stop() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    sink.results[1] = SwingMetro::SendResult::RetryLater;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    dispatcher.start(true, 0);
+    dispatcher.stop(std::nullopt, 100);
+    dispatcher.start(true, 101);
+
+    TEST_ASSERT_EQUAL_UINT32(3, sink.count);
+    TEST_ASSERT_EQUAL_HEX8(0xFA, sink.packets[0][1]);
+    TEST_ASSERT_EQUAL_HEX8(0xFC, sink.packets[1][1]);
+    TEST_ASSERT_EQUAL_HEX8(0xFA, sink.packets[2][1]);
+    TEST_ASSERT_FALSE(dispatcher.pendingFront().has_value());
+}
+
+void test_disconnect_requires_explicit_start_and_never_replays() {
+    Sequencer sequencer;
+    enableFirstStep(sequencer);
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    sink.results[0] = SwingMetro::SendResult::Disconnected;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    controller.applyMode(SwingMetro::MidiClockMode::External, 0);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Start, 1);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 1'000);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 21'833);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.count);
+    TEST_ASSERT_EQUAL(static_cast<std::uint8_t>(RemoteNoteState::Clean),
+                      static_cast<std::uint8_t>(sequencer.remoteNoteState()));
+
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Continue, 30'000);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 31'000);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 51'833);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.count);
+
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Start, 60'000);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 61'000);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 81'833);
+    TEST_ASSERT_EQUAL_UINT32(2, sink.count);
+    TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[1][1]);
+}
+
+void test_disconnect_abandons_terminal_off_and_marks_remote_unknown() {
+    Sequencer sequencer;
+    enableFirstStep(sequencer);
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    sink.results[0] = SwingMetro::SendResult::Accepted;
+    sink.results[1] = SwingMetro::SendResult::Disconnected;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    controller.applyMode(SwingMetro::MidiClockMode::External, 0);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Start, 1);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 1'000);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 21'833);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Stop, 22'000);
+
+    TEST_ASSERT_EQUAL(static_cast<std::uint8_t>(RemoteNoteState::Unknown),
+                      static_cast<std::uint8_t>(sequencer.remoteNoteState()));
+    TEST_ASSERT_EQUAL_UINT32(1, controller.diagnostics().terminalNoteOffAbandonedCount);
+    TEST_ASSERT_EQUAL(static_cast<std::uint8_t>(SwingMetro::InvalidationReason::Disconnected),
+                      static_cast<std::uint8_t>(controller.diagnostics().lastSessionEndReason));
+}
+
+void test_mode_storage_and_external_loss_record_distinct_reasons() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink sink;
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickStore<> ticks;
+    controller.applyMode(SwingMetro::MidiClockMode::Internal, 1);
+    TEST_ASSERT_EQUAL(static_cast<std::uint8_t>(SwingMetro::InvalidationReason::ModeSwitch),
+                      static_cast<std::uint8_t>(controller.diagnostics().lastSessionEndReason));
+    controller.toggle(2);
+    controller.openStorage(3);
+    TEST_ASSERT_EQUAL(static_cast<std::uint8_t>(SwingMetro::InvalidationReason::Storage),
+                      static_cast<std::uint8_t>(controller.diagnostics().lastSessionEndReason));
+    controller.closeStorage();
+    controller.applyMode(SwingMetro::MidiClockMode::External, 4);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Start, 5);
+    handleExternal(controller, SwingMetro::MidiRealtimeEventType::Clock, 1'000);
+    controller.process(1'000 + SwingMetro::ExternalMidiClock::CLOCK_LOSS_TIMEOUT_US, ticks);
+    TEST_ASSERT_EQUAL(static_cast<std::uint8_t>(SwingMetro::InvalidationReason::ExternalClockLost),
+                      static_cast<std::uint8_t>(controller.diagnostics().lastSessionEndReason));
 }
 
 } // namespace
@@ -1118,5 +1383,16 @@ void test_transport_controller_main() {
     RUN_TEST(test_velocity_zero_note_on_clears_state_only_after_acceptance);
     RUN_TEST(test_capacity_stop_cancels_without_recursive_send_and_can_restart);
     RUN_TEST(test_direct_control_messages_do_not_change_stage_one_lateness_metrics);
+    RUN_TEST(test_lifecycle_expiry_and_generation_helpers_are_exact_and_saturating);
+    RUN_TEST(test_clock_backpressure_coalesces_to_latest_without_burst);
+    RUN_TEST(test_stale_clock_expires_instead_of_replaying);
+    RUN_TEST(test_note_on_expires_at_retry_window_equality_without_acceptance);
+    RUN_TEST(test_retry_window_equality_causes_one_controlled_stop);
+    RUN_TEST(test_repeated_stop_retries_one_off_before_one_stop);
+    RUN_TEST(test_stop_does_not_duplicate_an_already_pending_note_off);
+    RUN_TEST(test_new_start_supersedes_unaccepted_old_stop);
+    RUN_TEST(test_disconnect_requires_explicit_start_and_never_replays);
+    RUN_TEST(test_disconnect_abandons_terminal_off_and_marks_remote_unknown);
+    RUN_TEST(test_mode_storage_and_external_loss_record_distinct_reasons);
     RUN_TEST(test_process_duration_is_recorded_separately_from_service_interval);
 }

@@ -1,6 +1,6 @@
 # Шаг 2.3. Просрочка и жизненный цикл сессии
 
-Статус: запланировано. Зависит от шага 2.2.
+Статус: выполнено. Зависит от шага 2.2.
 
 ## Цель
 
@@ -95,3 +95,17 @@ transport выполняет контролируемый Stop. Нельзя п�
 
 All Notes Off для полифонии, автоматический resume после reconnect, UMP negotiation,
 Gate и continuous-controller coalescing.
+
+## Реализация и проверка
+
+- Pending delivery хранит immutable identity, deadline, target и non-zero session generation.
+  Причина invalidation применяется только при stable removal; Clock coalescing/expiry и terminal
+  abandonment имеют минимальные saturating counters, а полный diagnostics schema остаётся шагом 2.4.
+- Normal pending traffic ограничен 14 из 16 slots; два terminal-reserve slots гарантируют
+  monophonic Note Off + internal Stop. Stop barrier idempotent: сохраняет Off -> Stop FIFO,
+  отменяет старые Clock/On/control и не создаёт duplicate terminal batch.
+- Clock retry window и Note On expiry равны шести MIDI ticks с saturating comparison; equality
+  expires. Clock window создаёт один controlled-stop outcome, а Note On только отменяется.
+- Confirmed disconnect завершает session без fake Note Off acceptance. Remote state становится
+  unknown только при accepted sounding/pending terminal Off; Continue игнорируется до explicit Start.
+- Проверка: `make verify`.

@@ -49,6 +49,8 @@ struct SequencerStep {
     void setNote(uint8_t newNote, uint8_t octave) { note = getNote(newNote, octave); }
 };
 
+enum class RemoteNoteState : std::uint8_t { Clean, Unknown };
+
 class Sequencer {
   public:
     Sequencer();
@@ -81,7 +83,10 @@ class Sequencer {
     void notifyNoteOnAccepted(MIDI_Note note);
     void notifyNoteOffAccepted(MIDI_Note note);
     void cancelRequestedNoteOff() noexcept;
+    void abandonRemoteNoteState() noexcept;
     [[nodiscard]] std::optional<MIDI_Note> actualSoundingNote() const;
+    [[nodiscard]] RemoteNoteState remoteNoteState() const noexcept;
+    void beginCleanRemoteSession() noexcept;
 
     void sync(uint32_t micros);
     bool update(uint32_t micros);
@@ -104,6 +109,7 @@ class Sequencer {
     std::optional<MIDI_Note> _actualSoundingNote;
     std::optional<MIDI_Note> _requestedNoteOff;
     std::optional<MIDI_Note> _projectedSoundingNote;
+    RemoteNoteState _remoteNoteState = RemoteNoteState::Clean;
     SwingMetro::TransportTick _nextBoundaryTick = 0;
 
     uint32_t _stepPeriodUs;

@@ -188,7 +188,21 @@ void Sequencer::notifyNoteOffAccepted(MIDI_Note note) {
 
 void Sequencer::cancelRequestedNoteOff() noexcept { _requestedNoteOff.reset(); }
 
+void Sequencer::abandonRemoteNoteState() noexcept {
+    _actualSoundingNote.reset();
+    _requestedNoteOff.reset();
+    _remoteNoteState = RemoteNoteState::Unknown;
+}
+
 std::optional<MIDI_Note> Sequencer::actualSoundingNote() const { return _actualSoundingNote; }
+
+RemoteNoteState Sequencer::remoteNoteState() const noexcept { return _remoteNoteState; }
+
+void Sequencer::beginCleanRemoteSession() noexcept {
+    _actualSoundingNote.reset();
+    _requestedNoteOff.reset();
+    _remoteNoteState = RemoteNoteState::Clean;
+}
 
 void Sequencer::sync(uint32_t micros) {
     _lastStepAt = micros - _stepPeriodUs;

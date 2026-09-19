@@ -60,10 +60,33 @@ void test_pending_queue_wraps_and_clear_resets_storage() {
     TEST_ASSERT_FALSE(queue.front().has_value());
 }
 
+void test_pending_queue_reserves_terminal_slots_and_filters_stably() {
+    SwingMetro::MidiPendingDeliveryQueue queue;
+    for (std::size_t index = 0; index < SwingMetro::MidiPendingDeliveryQueue::NORMAL_CAPACITY;
+         ++index) {
+        TEST_ASSERT_TRUE(
+            queue.pushNormal(event(index, static_cast<std::uint8_t>(index)), 0, index));
+    }
+    TEST_ASSERT_FALSE(queue.pushNormal(event(20, 100), 0, 20));
+    TEST_ASSERT_TRUE(
+        queue.push(event(21, 101), 0, 21, false, SwingMetro::MidiAttemptLateness::None, 1, true));
+    TEST_ASSERT_TRUE(
+        queue.push(event(22, 102), 0, 22, false, SwingMetro::MidiAttemptLateness::None, 1, true));
+
+    const auto removed = queue.removeIf([](const SwingMetro::PendingMidiEvent& pending) {
+        return pending.event.message.note() == 1 || pending.event.message.note() == 3;
+    });
+    TEST_ASSERT_EQUAL_UINT32(2, removed.noteOns);
+    TEST_ASSERT_EQUAL_UINT8(0, queue.front()->event.message.note());
+    queue.popFront();
+    TEST_ASSERT_EQUAL_UINT8(2, queue.front()->event.message.note());
+}
+
 } // namespace
 
 void test_midi_pending_delivery_queue_main() {
     RUN_TEST(test_pending_queue_preserves_fifo_identity_and_metadata);
     RUN_TEST(test_pending_queue_full_rejection_does_not_mutate_fifo);
     RUN_TEST(test_pending_queue_wraps_and_clear_resets_storage);
+    RUN_TEST(test_pending_queue_reserves_terminal_slots_and_filters_stably);
 }
