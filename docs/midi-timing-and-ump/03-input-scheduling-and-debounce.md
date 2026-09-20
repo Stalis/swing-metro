@@ -12,7 +12,7 @@ IRQ/PIO принимается только после аппаратных из
 
 | Шаг | Документ | Результат |
 | --- | --- | --- |
-| 3.1 | [Расписания input polling](03-input-scheduling-and-debounce/01-scheduler-contracts.md) | Независимые периоды matrix и encoder, wrap-safe scheduler и no-fake-catch-up policy. |
+| 3.1 | [Расписания input polling](03-input-scheduling-and-debounce/01-scheduler-contracts.md) | Выполнено: независимые периоды matrix и encoder, wrap-safe scheduler и no-fake-catch-up policy. |
 | 3.2 | [Debounce и временная семантика](03-input-scheduling-and-debounce/02-time-debounce-and-input-semantics.md) | Time-based debounce с определёнными observation/confirmation timestamps и long-press basis. |
 | 3.3 | [Наблюдаемость и интеграция](03-input-scheduling-and-debounce/03-observability-integration-and-native-regression.md) | Repository-side diagnostics, firmware integration и deterministic native regression tests. |
 | 3.4 | [Аппаратная проверка и решение capture](03-input-scheduling-and-debounce/04-hardware-midi-input-validation.md) | MIDI/input measurements и evidence-based polling-vs-IRQ/PIO decision. |

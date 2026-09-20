@@ -1,6 +1,6 @@
 # Шаг 3.1. Расписания input polling
 
-Статус: запланировано. Зависит от завершённого этапа 2.
+Статус: выполнено 2026-09-20. Зависит от завершённого этапа 2.
 
 ## Цель
 
@@ -10,15 +10,41 @@ wrap-safe расписания на core 0. Убрать зависимость 
 
 ## Контекст текущей реализации
 
-`loop()` в `src/main.cpp` вызывает `buttonMatrix.readButtons()` на каждом обороте,
-обрабатывает edge/holding, затем вызывает `buttonMatrix.update()` и `update()` всех
-трёх `Encoder` (строки 533–560). Поэтому matrix debounce в
+До этого шага `loop()` в `src/main.cpp` вызывал `buttonMatrix.readButtons()`,
+обрабатывал edge/holding, затем вызывал `buttonMatrix.update()` и `update()` всех
+трёх `Encoder` на каждом обороте. Это делало matrix debounce в
 `lib/ButtonMatrix/src/button_state.cpp` и switch debounce в
-`lib/Encoder/src/encoder.cpp` сейчас зависят от load-dependent числа вызовов.
+`lib/Encoder/src/encoder.cpp` зависимыми от load-dependent числа вызовов.
 `ButtonMatrix::readButtons()` выполняет один полный 4x4 scan с задержкой 5 us на
 строку (`lib/ButtonMatrix/src/button_matrix.ipp`), а `Encoder::update()` читает оба
 quadrature pins и switch в одном pass (`lib/Encoder/src/encoder.cpp`). MIDI polling и
-`transportController.process()` должны продолжать исполняться на каждом loop pass.
+`transportController.process()` продолжают исполняться на каждом loop pass; Step 3.1
+period-gates только GPIO input passes.
+
+## Принятые periods и encoder bound
+
+- `MATRIX_SCAN_PERIOD_MS = 5`: полный matrix scan имеет четыре intentional 5 us
+  row-settle delays, а 5 ms сохраняет отзывчивость UX. До шага 3.2 существующий
+  four-sample debounce временно требует примерно 15 ms стабильности от первого
+  observation и даёт до 20 ms общей input latency с учётом фазы scan; шаг 3.2 заменит
+  эту зависимость от samples на time-based contract.
+- `ENCODER_SAMPLE_PERIOD_US = 1_000`: для design bound предполагается максимум
+  100 practically repeatable detents/s. Current decoder требует 4 quadrature
+  transitions на detent, поэтому худший dwell одного состояния равен
+  `1_000_000 / (100 * 4) = 2_500 us`.
+- Допустимый actual encoder interval установлен в `1_250 us`: это запас 2x внутри
+  2_500 us dwell. Nominal 1_000 us period оставляет ещё 250 us scheduling margin
+  до bound. Это непроверенная design hypothesis, а не hardware claim: шаг 3.3 измерит
+  actual interval, а шаг 3.4 примет или отклонит polling по hardware evidence.
+
+Scheduler создаётся с compile-time period; valid period обязан быть nonzero и строго
+меньше `2^31` единиц соответствующих часов. До `start(now)` он inert. `start()` ставит
+первый deadline в `now + period`, поэтому setup не создаёт immediate или overdue pass.
+`poll(now)` сравнивает deadline через unsigned subtraction в half-range `2^31`. При
+late pass он выполняет один read и продвигает deadline на
+`((now - deadline) / period + 1) * period` к первому будущему target; пропущенные
+targets не вызывают повторных GPIO reads. Missed-deadline counter намеренно не добавлен:
+его defined observability semantics относится к шагу 3.3 и не может означать lost edges.
 
 ## Точный контракт scheduler-а
 
@@ -41,17 +67,14 @@ quadrature pins и switch в одном pass (`lib/Encoder/src/encoder.cpp`). MI
 
 ## Работа
 
-1. Добавить минимальный hardware-independent scheduler/elapsed helper в `src/input/`
-   либо иной native-testable module; не добавлять framework, task queue или dynamic
-   allocation.
-2. Добавить отдельное состояние deadlines для matrix и encoder в `src/main.cpp` и
-   инициализировать его в `setup()` без немедленной серии overdue passes.
-3. Вынести текущие matrix handling и encoder `UPDATABLES` в отдельные одинарные
-   scheduled passes, сохранив вызовы `handleButtonBatch()` и current routing.
-4. Определить, нужны ли scheduler missed-deadline counters для шага 3.3; если да,
-   counter отражает deadline lateness, а не выдуманное число восстановленных GPIO edges.
-5. Обновить этот документ точными chosen periods, расчётом encoder bound и причиной
-   выбора до завершения шага.
+1. Добавлен минимальный hardware-independent scheduler в `src/input/` без framework,
+   task queue или dynamic allocation.
+2. Добавлены независимые matrix и encoder deadlines, инициализируемые в `setup()`.
+3. Matrix handling и encoder `UPDATABLES` вынесены в отдельные single scheduled passes,
+   сохраняя `handleButtonBatch()` и current routing.
+4. Counter отложен до шага 3.3; scheduler resynchronizes deadline, но не заявляет
+   восстановление GPIO transitions.
+5. Этот документ фиксирует выбранные periods, calculation и design bound.
 
 ## Детерминированные проверки
 

@@ -8,6 +8,7 @@
 #include "input/app_input.h"
 #include "input/app_input_coordinator.h"
 #include "input/pad_button_ids.h"
+#include "input/periodic_scheduler.h"
 #include "input/serial_run_command.h"
 #include "input/step_button_inputs.h"
 #include "program/program_slot_store.h"
@@ -54,8 +55,12 @@ ContextInput::EncoderInputAdapter<SwingMetro::InputId> volumeInput{
 
 constexpr std::array<uint8_t, 4> INPUT_PINS = {D0, D1, D2, D3};
 constexpr std::array<uint8_t, 4> OUTPUT_PINS = {D4, D5, D6, D7};
+constexpr std::uint32_t MATRIX_SCAN_PERIOD_MS = 5;
+constexpr std::uint32_t ENCODER_SAMPLE_PERIOD_US = 1'000;
 ButtonMatrix<4, 4, SwingMetro::PadButtonIds> buttonMatrix(INPUT_PINS, OUTPUT_PINS, 3);
 SwingMetro::StepButtonInputs stepButtonInputs;
+SwingMetro::PeriodicScheduler<MATRIX_SCAN_PERIOD_MS> matrixScanScheduler;
+SwingMetro::PeriodicScheduler<ENCODER_SAMPLE_PERIOD_US> encoderSampleScheduler;
 
 void tempoEncoderHandler(EncoderDirection direction);
 void tempoEncoderSwitchHandler();
@@ -445,6 +450,30 @@ void handleButtonBatch(const SwingMetro::StepButtonInputs::Batch& batch) {
     }
 }
 
+void pollMatrixInputs(std::uint32_t nowMs) {
+    buttonMatrix.readButtons();
+
+    for (int physicalIndex = 0; physicalIndex < STEPS_COUNT; ++physicalIndex) {
+        const auto step = buttonMatrix.getButtonId(physicalIndex);
+        if (buttonMatrix.isButtonJustPressed(physicalIndex)) {
+            handleButtonBatch(stepButtonInputs.onPressed(step, nowMs));
+        } else if (buttonMatrix.isButtonJustReleased(physicalIndex)) {
+            handleButtonBatch(stepButtonInputs.onReleased(step, nowMs));
+        } else if (buttonMatrix.isButtonHolding(physicalIndex)) {
+            handleButtonBatch(stepButtonInputs.update(step, nowMs));
+        }
+    }
+
+    buttonMatrix.update();
+}
+
+void pollEncoderInputs() {
+    std::apply([](auto&... objects) { (objects.update(), ...); }, UPDATABLES);
+    const auto nowMs = millis();
+    handleButtonBatch(tempoSwitchInput.update(nowMs));
+    handleButtonBatch(volumeSwitchInput.update(nowMs));
+}
+
 void volumeEncoderHandler(EncoderDirection direction) {
     handleEncoderDirection(volumeInput, direction);
 }
@@ -528,6 +557,8 @@ void setup() {
         {tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue()}));
 
     mainSequencer.sync(micros());
+    matrixScanScheduler.start(millis());
+    encoderSampleScheduler.start(micros());
 }
 
 void loop() {
@@ -539,25 +570,15 @@ void loop() {
     transportController.process(processStartedAtUs, internalTicks.ticks());
     transportController.recordProcessDuration(processStartedAtUs, micros());
 
-    buttonMatrix.readButtons();
-    const auto now = millis();
-
-    for (int physicalIndex = 0; physicalIndex < STEPS_COUNT; ++physicalIndex) {
-        const auto step = buttonMatrix.getButtonId(physicalIndex);
-        if (buttonMatrix.isButtonJustPressed(physicalIndex)) {
-            handleButtonBatch(stepButtonInputs.onPressed(step, now));
-        } else if (buttonMatrix.isButtonJustReleased(physicalIndex)) {
-            handleButtonBatch(stepButtonInputs.onReleased(step, now));
-        } else if (buttonMatrix.isButtonHolding(physicalIndex)) {
-            handleButtonBatch(stepButtonInputs.update(step, now));
-        }
+    const auto matrixNowMs = millis();
+    if (matrixScanScheduler.poll(matrixNowMs)) {
+        pollMatrixInputs(matrixNowMs);
     }
 
-    buttonMatrix.update();
-
-    std::apply([](auto&... objects) { (objects.update(), ...); }, UPDATABLES);
-    handleButtonBatch(tempoSwitchInput.update(millis()));
-    handleButtonBatch(volumeSwitchInput.update(millis()));
+    const auto encoderNowUs = micros();
+    if (encoderSampleScheduler.poll(encoderNowUs)) {
+        pollEncoderInputs();
+    }
 
     updateSerialRun();
     syncInternalAlarm();
