@@ -1,7 +1,7 @@
 # MIDI timing, регулярный ввод и подготовка к UMP
 
-Статус: этап 1 завершён; в этапе 2 завершены шаги 2.1–2.2; этапы 3–6 запланированы.
-Дата: 2026-09-19.
+Статус: этапы 1–2 завершены; этапы 3–6 запланированы.
+Дата: 2026-09-20.
 
 ## Цели и summary
 
@@ -43,7 +43,7 @@ MPE и MIDI 2.0 не тождественны. Классический MPE ис
 | Этап | Документ | Результат |
 | --- | --- | --- |
 | 1 | [Измерения и ошибка времени](01-timing-correctness.md) | **Выполнено:** исправлены ранняя отправка и потеря internal Clock; аппаратно подтверждены 60 122 из 60 122 Clock на 68/240 BPM. |
-| 2 | [События и надёжная отправка](02-events-and-usb-backpressure.md) | Пять самостоятельных шагов: typed events/encoder, acceptance и pending delivery, lifecycle policies, diagnostics и hardware baseline. |
+| 2 | [События и надёжная отправка](02-events-and-usb-backpressure.md) | **Выполнено:** typed events, bounded result-aware delivery и diagnostics; аппаратно подтверждены 30 061 из 30 061 Clock без retry/drop или host gap. |
 | 3 | [Регулярный ввод](03-input-scheduling-and-debounce.md) | Предсказуемый опрос и debounce по времени. |
 | 4 | [Gate Percent](04-note-gate.md) | Длительность каждой ноты, независимые Note Off, UI и сохранение. |
 | 5 | [Диагностика и нагрузочная проверка](05-diagnostics-and-validation.md) | Воспроизводимые измерения всей системы и выводы об узких местах. |

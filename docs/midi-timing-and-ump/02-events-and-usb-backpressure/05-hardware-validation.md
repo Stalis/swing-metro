@@ -1,6 +1,6 @@
 # Шаг 2.5. Аппаратная проверка и baseline
 
-Статус: запланировано. Зависит от шагов 2.1–2.4.
+Статус: выполнено 2026-09-20. Зависит от шагов 2.1–2.4.
 
 ## Цель
 
@@ -79,6 +79,45 @@ fake-sink tests шага 2.4 остаются обязательными, но �
 - Если attempts > accepted, дефект находится до/в stack acceptance path этапа 2.
 - Если accepted > host при чистом capture, сохранить артефакты и передать конкретную
   host/USB гипотезу; не объявлять adapter причиной без сигнала.
+
+## Результат
+
+Проверка выполнена на том же Pico 2 W и macOS/CoreMIDI path с firmware revision
+`7c3ba26`. Перед каждым измеряемым run выполнены `make verify`, upload и reboot;
+MIDI Monitor параллельно не запускался. Оба run использовали internal clock, swing 50
+и длились 244 с. Во втором run активно редактировались note и velocity разных шагов
+без Save/Load и ручного Stop.
+
+| Run | Clock attempt / accepted / host | Long / short / estimated missing | Host abs jitter p95/p99 | Drift | Tick/F8 / event acceptance lateness | Max process |
+| --- | ---: | --- | --- | ---: | --- | ---: |
+| Free 68 | 6 637 / 6 637 / 6 637 | 0 / 0 / 0 | 569 / 716 мкс | 716 мкс | 512 / 318 мкс | 1 234 мкс |
+| Stress 240 | 23 424 / 23 424 / 23 424 | 0 / 0 / 0 | 502 / 690 мкс | 673 мкс | 885 / 779 мкс | 1 829 мкс |
+
+В обоих run Clock `RetryLater`, disconnect, coalescing, expiry, capacity failure и
+safety-stop counters равны нулю. Максимальная глубина outbox равна 3, максимум
+попыток за один publication pass — 3; после Stop scheduled и outbox пусты. Transport
+имеет 2 из 2 accepted сообщения. Free run имеет 2 214 из 2 214 accepted note events;
+stress — 7 800 из 7 800, то есть 3 900 упорядоченных пар Note On/Off. Stress capture
+содержит 51 различную ноту и 27 velocity, поэтому interaction действительно попало в
+MIDI stream. Stop является последним MIDI событием, после него нет старого Note On.
+Две scheduled note были отменены финальным Stop; terminal abandonment равен нулю.
+
+Относительно этапа 1 correctness-level timing не регрессировал: Clock не потерян и не
+дублирован, длинных/коротких интервалов нет, drift остаётся меньше 1 мс, а p99 лежит
+в прежнем диапазоне 639–952 мкс. При этом p95 host jitter вырос с прежних 274–338 до
+502–569 мкс, максимальная tick/F8 lateness — с 602 до 885 мкс, а `process()` — с 713
+до 1 829 мкс. Эти сдвиги зафиксированы как ограничение нового baseline: они не
+создали balance gap или deadline miss, но их нельзя трактовать как полное отсутствие
+изменений распределения lateness.
+
+Локальные артефакты, намеренно не добавленные в Git:
+
+- `data/midi-stage-2-5-free-68-20260920-0944-{midi,diagnostics,summary}.csv`;
+- `data/midi-stage-2-5-stress-240-20260920-0952-{midi,diagnostics,summary}.csv`.
+
+Физическая disconnect/backpressure проверка недоступна: единственный USB cable
+одновременно питает Pico и несёт Serial/MIDI. Fake-sink тесты шага 2.4 покрывают эти
+политики детерминированно, но не считаются аппаратным доказательством recovery.
 
 ## Готовность шага
 

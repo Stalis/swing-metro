@@ -1,6 +1,6 @@
 # Этап 2. Музыкальные события и надёжная USB-отправка
 
-Статус: запланировано. Зависит от завершённого этапа 1.
+Статус: выполнено 2026-09-20. Зависит от завершённого этапа 1.
 
 ## Цель этапа
 
@@ -29,11 +29,11 @@
 
 | Шаг | Документ | Результат | Зависит от |
 | --- | --- | --- | --- |
-| 2.1 | [Типизированные события и USB-кодировщик](02-events-and-usb-backpressure/01-typed-events-and-usb-encoding.md) | Секвенсор и очередь больше не хранят USB-пакеты; прежние MIDI 1.0 bytes создаёт отдельный кодировщик. | Этап 1 |
+| 2.1 | [Типизированные события и USB-кодировщик](02-events-and-usb-backpressure/01-typed-events-and-usb-encoding.md) | Выполнено: секвенсор и очередь больше не хранят USB-пакеты; прежние MIDI 1.0 bytes создаёт отдельный кодировщик. | Этап 1 |
 | 2.2 | [Принятие, pending delivery и состояние нот](02-events-and-usb-backpressure/02-acceptance-and-pending-delivery.md) | Выполнено: Sink возвращает явный результат; непринятое событие остаётся pending, а состояние ноты меняется только после acceptance. | 2.1 |
 | 2.3 | [Просрочка и жизненный цикл сессии](02-events-and-usb-backpressure/03-overdue-and-session-lifecycle.md) | Выполнено: bounded Clock/Note policies, idempotent Stop barrier, reserve и disconnect recovery. | 2.2 |
 | 2.4 | [Диагностика и fault injection](02-events-and-usb-backpressure/04-diagnostics-and-fault-injection.md) | Выполнено: все исходы наблюдаемы; fake sink детерминированно проверяет backpressure и бюджеты. | 2.3 |
-| 2.5 | [Аппаратная проверка и baseline](02-events-and-usb-backpressure/05-hardware-validation.md) | Подтверждено отсутствие timing-регрессии и сопоставлены acceptance counters с host capture. | 2.1–2.4 |
+| 2.5 | [Аппаратная проверка и baseline](02-events-and-usb-backpressure/05-hardware-validation.md) | Выполнено: 30 061 из 30 061 Clock приняты стеком и получены host без retry/drop; численные timing-сдвиги сохранены как новый baseline. | 2.1–2.4 |
 
 ## Общие инварианты
 
@@ -63,8 +63,9 @@
   Note On не появляется после Stop или смены сессии.
 - Все попытки, acceptance, retry, drop/cancel причины, high-water marks и acceptance
   lateness доступны в diagnostics.
-- Выполнен `make verify` и аппаратный host capture без timing-регрессии относительно
-  baseline этапа 1. Недоступные disconnect-проверки отмечены отдельно.
+- Выполнен `make verify` и два аппаратных host capture без Clock correctness-регрессии
+  относительно baseline этапа 1. Изменения p95/max lateness задокументированы, а
+  недоступная disconnect-проверка отмечена отдельно.
 
 ## Вне объёма
 
