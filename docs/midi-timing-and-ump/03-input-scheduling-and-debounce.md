@@ -1,6 +1,7 @@
 # Этап 3. Регулярный ввод и debounce по времени
 
-Статус: запланировано. Зависит от завершённых этапов 1–2.
+Статус: не завершено. Шаги 3.1–3.4 выполнены; аппаратная проверка отклонила polling,
+требуется отдельный bounded IRQ/PIO follow-up.
 
 ## Цель
 
@@ -15,12 +16,17 @@ IRQ/PIO принимается только после аппаратных из
 | 3.1 | [Расписания input polling](03-input-scheduling-and-debounce/01-scheduler-contracts.md) | Выполнено: независимые периоды matrix и encoder, wrap-safe scheduler и no-fake-catch-up policy. |
 | 3.2 | [Debounce и временная семантика](03-input-scheduling-and-debounce/02-time-debounce-and-input-semantics.md) | Time-based debounce с определёнными observation/confirmation timestamps и long-press basis. |
 | 3.3 | [Наблюдаемость и интеграция](03-input-scheduling-and-debounce/03-observability-integration-and-native-regression.md) | Repository-side diagnostics, firmware integration и deterministic native regression tests. |
-| 3.4 | [Аппаратная проверка и решение capture](03-input-scheduling-and-debounce/04-hardware-midi-input-validation.md) | MIDI/input measurements и evidence-based polling-vs-IRQ/PIO decision. |
+| 3.4 | [Аппаратная проверка и решение capture](03-input-scheduling-and-debounce/04-hardware-midi-input-validation.md) | Выполнено: MIDI без регрессии, но encoder polling нарушил bound 1 250 мкс; polling отклонён. |
 
 Шаги выполняются строго последовательно. Завершение шага 3.3 означает только готовность
 репозитория к измерению; оно не утверждает, что polling выдерживает encoder bound. Если
 polling не проходит критерии шага 3.4, этап 3 остаётся незавершённым, а документируется
 условный следующий implementation step для bounded IRQ/PIO capture.
+
+Аппаратные idle run шага 3.4 показали максимальные sampling intervals 1 643 мкс при
+68 BPM и 1 926 мкс при 240 BPM, с 1 216 и 8 402 превышениями bound соответственно.
+Поэтому этап нельзя отметить завершённым до реализации и повторной проверки bounded
+IRQ/PIO capture.
 
 ## Общие ограничения
 

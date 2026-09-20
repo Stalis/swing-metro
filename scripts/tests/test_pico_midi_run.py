@@ -63,6 +63,27 @@ class PicoMidiRunTests(unittest.TestCase):
         self.assertEqual(1, summary["estimated_missing_clock_count"])
         self.assertEqual(50_000.0, summary["max_clock_interval_us"])
 
+    def test_analyzes_absolute_clock_jitter_and_drift(self):
+        events = [
+            MidiEvent(1, 1_000_000, 0.0, (0xF8,)),
+            MidiEvent(2, 27_000_000, 0.026, (0xF8,)),
+            MidiEvent(3, 49_000_000, 0.022, (0xF8,)),
+            MidiEvent(4, 74_000_000, 0.025, (0xF8,)),
+        ]
+
+        summary = analyze_events(events, 100)
+
+        self.assertEqual(2_800.0, summary["host_abs_jitter_p95_us"])
+        self.assertEqual(2_960.0, summary["host_abs_jitter_p99_us"])
+        self.assertEqual(2_000.0, summary["absolute_clock_drift_us"])
+
+    def test_clock_jitter_and_drift_are_zero_with_fewer_than_two_clocks(self):
+        summary = analyze_events([MidiEvent(1, 1_000_000, 0.0, (0xF8,))], 100)
+
+        self.assertEqual(0.0, summary["host_abs_jitter_p95_us"])
+        self.assertEqual(0.0, summary["host_abs_jitter_p99_us"])
+        self.assertEqual(0.0, summary["absolute_clock_drift_us"])
+
     def test_output_paths_append_distinct_suffixes(self):
         self.assertEqual(
             (

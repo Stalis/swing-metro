@@ -1,6 +1,7 @@
 # MIDI timing, регулярный ввод и подготовка к UMP
 
-Статус: этапы 1–2 завершены; этапы 3–6 запланированы.
+Статус: этапы 1–2 завершены; этап 3 аппаратно отклонил polling и требует IRQ/PIO
+follow-up; этапы 4–6 запланированы.
 Дата: 2026-09-20.
 
 ## Цели и summary
@@ -44,7 +45,7 @@ MPE и MIDI 2.0 не тождественны. Классический MPE ис
 | --- | --- | --- |
 | 1 | [Измерения и ошибка времени](01-timing-correctness.md) | **Выполнено:** исправлены ранняя отправка и потеря internal Clock; аппаратно подтверждены 60 122 из 60 122 Clock на 68/240 BPM. |
 | 2 | [События и надёжная отправка](02-events-and-usb-backpressure.md) | **Выполнено:** typed events, bounded result-aware delivery и diagnostics; аппаратно подтверждены 30 061 из 30 061 Clock без retry/drop или host gap. |
-| 3 | [Регулярный ввод](03-input-scheduling-and-debounce.md) | Четыре последовательных шага: независимые schedules, time debounce, repository-side observability/regression и hardware polling-vs-IRQ/PIO decision. |
+| 3 | [Регулярный ввод](03-input-scheduling-and-debounce.md) | Шаги 3.1–3.4 выполнены; MIDI не регрессировал, но polling превысил encoder bound, поэтому этап ждёт bounded IRQ/PIO follow-up. |
 | 4 | [Gate Percent](04-note-gate.md) | Длительность каждой ноты, независимые Note Off, UI и сохранение. |
 | 5 | [Диагностика и нагрузочная проверка](05-diagnostics-and-validation.md) | Воспроизводимые измерения всей системы и выводы об узких местах. |
 | 6 | [Прототип USB MIDI 2.0](06-ump-prototype.md) | Проверена совместимость UMP, per-note control и timestamps с выбранным хостом. |

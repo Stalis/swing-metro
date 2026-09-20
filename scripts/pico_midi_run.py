@@ -113,6 +113,13 @@ def analyze_events(events: list[MidiEvent], bpm: int) -> dict[str, int | float]:
         for previous, current in zip(clocks, clocks[1:])
     ]
     expected_us = 60_000_000.0 / (bpm * 24)
+    absolute_jitter_us = [abs(value - expected_us) for value in intervals_us]
+    absolute_clock_drift_us = 0.0
+    if len(clocks) >= 2:
+        absolute_clock_drift_us = abs(
+            (clocks[-1].host_time_ns - clocks[0].host_time_ns) / 1000.0
+            - (expected_us * (len(clocks) - 1))
+        )
     long_intervals = [value for value in intervals_us if value > expected_us * 1.5]
     short_intervals = [value for value in intervals_us if value < expected_us * 0.5]
     estimated_missing = sum(max(0, round(value / expected_us) - 1) for value in long_intervals)
@@ -125,6 +132,9 @@ def analyze_events(events: list[MidiEvent], bpm: int) -> dict[str, int | float]:
         "mean_clock_interval_us": statistics.fmean(intervals_us) if intervals_us else 0.0,
         "median_clock_interval_us": statistics.median(intervals_us) if intervals_us else 0.0,
         "p95_clock_interval_us": percentile(intervals_us, 0.95),
+        "host_abs_jitter_p95_us": percentile(absolute_jitter_us, 0.95),
+        "host_abs_jitter_p99_us": percentile(absolute_jitter_us, 0.99),
+        "absolute_clock_drift_us": absolute_clock_drift_us,
         "min_clock_interval_us": min(intervals_us, default=0.0),
         "max_clock_interval_us": max(intervals_us, default=0.0),
         "long_interval_count": len(long_intervals),

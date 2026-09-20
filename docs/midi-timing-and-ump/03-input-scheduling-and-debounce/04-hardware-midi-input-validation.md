@@ -1,6 +1,7 @@
 # Шаг 3.4. Аппаратная проверка input и решение polling-vs-IRQ/PIO
 
-Статус: запланировано. Зависит от шагов 3.1–3.3.
+Статус: выполнено 2026-09-20; polling отклонён, требуется условный IRQ/PIO follow-up.
+Зависит от шагов 3.1–3.3.
 
 ## Цель
 
@@ -64,14 +65,73 @@ Serial или LVGL. Выбор IRQ/PIO и implementation scope оформляю�
 - В конце документа зафиксировать outcome: `polling accepted` либо
   `polling rejected — conditional IRQ/PIO follow-up required`.
 
+## Результат
+
+Проверка выполнена на Pico 2 W и macOS/CoreMIDI path с firmware revision `a7fa4ed`.
+Перед каждым измеряемым run выполнены `make verify`, upload и reboot; MIDI Monitor
+параллельно не запускался. Оба run использовали internal clock, swing 50, длились
+244 с и выполнялись без interaction. Диагностика input накоплена с момента reboot,
+поэтому включает также короткий интервал подготовки host capture.
+
+Host monitor дополнен метриками `host_abs_jitter_p95_us`,
+`host_abs_jitter_p99_us` и `absolute_clock_drift_us`; для их расчёта добавлены два
+Python regression tests. Формулы совпадают с использованными для Stage 2: абсолютное
+отклонение каждого межтактового интервала от ideal interval и абсолютное отклонение
+полной длительности последовательности Clock от идеальной.
+
+| Run | Clock attempt / accepted / host | Long / short / estimated missing | Host abs jitter p95/p99 | Drift | Tick/F8 / event acceptance lateness | Max process | Encoder interval max / > 1 250 мкс |
+| --- | ---: | --- | --- | ---: | --- | ---: | ---: |
+| Idle 68 | 6 637 / 6 637 / 6 637 | 0 / 0 / 0 | 205 / 284 мкс | 825 мкс | 354 / 205 мкс | 1 138 мкс | 1 643 мкс / 1 216 |
+| Idle 240 | 23 424 / 23 424 / 23 424 | 0 / 0 / 0 | 436 / 582 мкс | 709 мкс | 451 / 167 мкс | 1 156 мкс | 1 926 мкс / 8 402 |
+
+Clock `RetryLater`, disconnect, failed publication, queue overflow, missed target,
+coalescing, expiry, capacity failure и safety-stop counters равны нулю. Firmware
+stack-accepted Clock полностью совпадает с host capture. По сравнению со Stage 2
+idle/free baseline нет необъяснённой MIDI-регрессии: ни один Clock не потерян и не
+дублирован, long/short intervals отсутствуют, drift остаётся меньше 1 мс, p95/p99,
+lateness и max process duration не превышают соответствующие Stage 2 результаты.
+
+Тем не менее polling contract нарушен уже в первом обязательном idle scenario:
+максимальный фактический интервал sampling равен 1 643 мкс при опубликованном bound
+1 250 мкс, а число строгих превышений равно 1 216. Повторный idle run на 240 BPM
+подтвердил нарушение: 1 926 мкс и 8 402 превышения. Хороший MIDI balance не отменяет
+это нарушение input sampling contract.
+
+После первого decisive failure matrix, encoder physical и mixed stress scenarios
+остановлены досрочно: они не могут изменить обязательное решение, по которому одного
+нарушенного polling criterion достаточно для отклонения polling. Поэтому этот run не
+даёт нового аппаратного доказательства one-gesture-one-edge semantics или отсутствия
+потерянных/duplicated/inverted detents; соответствующие проверки должны войти в
+валидацию следующей реализации capture.
+
+Локальные артефакты, намеренно не добавленные в Git:
+
+- `data/midi-stage-3-4-idle-68-run1-{midi,diagnostics,input-diagnostics,summary}.csv`;
+- `data/midi-stage-3-4-idle-240-run1-{midi,diagnostics,input-diagnostics,summary}.csv`.
+
+## Решение и условный следующий шаг
+
+Outcome: `polling rejected — conditional IRQ/PIO follow-up required`.
+
+Этап 3 не завершён. Следующий implementation step должен заменить polling энкодеров
+ограниченным producer на GPIO IRQ либо PIO, который только timestamp-ит/буферизует
+переходы и не вызывает application code, USB, Serial или LVGL. Выбор IRQ или PIO,
+размер и overflow policy очереди, consumer budget и diagnostics необходимо оформить
+отдельным планом. После реализации повторить оба idle run, physical matrix/encoder
+scenarios и mixed stress по исходным критериям; bound 1 250 мкс задним числом не
+ослаблять.
+
 ## Готовность шага и этапа 3
 
-- Все обязательные runs, artifacts locations и численные результаты записаны.
+- Два idle run и их artifact locations записаны; physical/mixed runs намеренно
+  остановлены после decisive polling failure и не считаются пройденными.
 - Решение polling-vs-IRQ/PIO следует опубликованному criterion, а не предположению.
 - При `polling accepted` нет необъяснённой MIDI regression и этап 3 может быть отмечен
   завершённым в index/README.
 - При `polling rejected` этап 3 остаётся запланированным/незавершённым; conditional
   follow-up implementation описан, но не выполнен этим документом.
+- После изменений host monitor выполнен полный `make verify`: format, tidy, 296 native
+  tests, 14 Python tests и firmware build прошли.
 
 ## Вне объёма
 
