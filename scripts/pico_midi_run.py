@@ -18,7 +18,10 @@ from pico_run_protocol import (
     diagnostics_header_for_row,
     find_serial_port,
     is_diagnostics_data_row,
+    input_diagnostics_header_for_row,
+    is_input_diagnostics_data_row,
     parse_diagnostics_row,
+    parse_input_diagnostics_row,
 )
 
 
@@ -188,6 +191,10 @@ def output_paths(prefix: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path, path
     )
 
 
+def input_diagnostics_output_path(prefix: pathlib.Path) -> pathlib.Path:
+    return pathlib.Path(f"{prefix}-input-diagnostics.csv")
+
+
 def write_midi_csv(path: pathlib.Path, events: list[MidiEvent]) -> None:
     first_time_ns = events[0].host_time_ns if events else 0
     previous_clock_ns: int | None = None
@@ -284,10 +291,12 @@ def main() -> int:
         raise RuntimeError("--output-prefix is required unless --list-midi-ports is used")
 
     midi_path, diagnostics_path, summary_path = output_paths(args.output_prefix)
-    existing = [path for path in (midi_path, diagnostics_path, summary_path) if path.exists()]
+    input_diagnostics_path = input_diagnostics_output_path(args.output_prefix)
+    output_files = (midi_path, diagnostics_path, summary_path, input_diagnostics_path)
+    existing = [path for path in output_files if path.exists()]
     if existing:
         raise RuntimeError(f"refusing to overwrite {existing}")
-    for path in (midi_path, diagnostics_path, summary_path):
+    for path in output_files:
         path.parent.mkdir(parents=True, exist_ok=True)
 
     midi_port_index = choose_midi_port(ports, args.midi_port)
@@ -310,6 +319,7 @@ def main() -> int:
     print(f"Serial: {serial_port}", flush=True)
 
     row: str | None = None
+    input_row: str | None = None
     completed = False
     timeout_at = time.monotonic() + args.duration_seconds + 30.0
     try:
@@ -325,6 +335,8 @@ def main() -> int:
                 print(line, flush=True)
                 if is_diagnostics_data_row(line):
                     row = line
+                elif is_input_diagnostics_data_row(line):
+                    input_row = line
                 elif line == f"{CONTROL_PREFIX},run_complete":
                     completed = True
                     break
@@ -334,19 +346,34 @@ def main() -> int:
 
     if not completed:
         raise RuntimeError("timed run did not report completion")
-    if row is None:
-        raise RuntimeError("run completed without a diagnostics row")
+    if row is None or input_row is None:
+        raise RuntimeError("run completed without diagnostics and input diagnostics rows")
     diagnostics_version, diagnostics = parse_diagnostics_row(row)
+    input_diagnostics = parse_input_diagnostics_row(input_row)
     with event_lock:
         captured_events = list(events)
 
     summary = analyze_events(captured_events, args.bpm)
     summary_with_firmware = add_firmware_summary(summary, diagnostics, diagnostics_version)
+    summary_with_firmware.update(
+        {
+            "firmware_input_max_actual_encoder_sample_interval_us": input_diagnostics[
+                "max_actual_encoder_sample_interval_us"
+            ],
+            "firmware_input_encoder_sample_intervals_above_1250_us": input_diagnostics[
+                "encoder_sample_intervals_above_1250_us"
+            ],
+        }
+    )
     diagnostics_path.write_text(f"{diagnostics_header_for_row(row)}\n{row}\n", encoding="utf-8")
+    input_diagnostics_path.write_text(
+        f"{input_diagnostics_header_for_row(input_row)}\n{input_row}\n", encoding="utf-8"
+    )
     write_midi_csv(midi_path, captured_events)
     write_summary_csv(summary_path, summary_with_firmware)
     print(f"saved {midi_path}")
     print(f"saved {diagnostics_path}")
+    print(f"saved {input_diagnostics_path}")
     print(f"saved {summary_path}")
     print(
         f"Clock: host={summary_with_firmware['clock_count']}, "

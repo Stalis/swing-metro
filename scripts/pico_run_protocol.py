@@ -8,6 +8,7 @@ import glob
 CONTROL_PREFIX = "swing_metro_control_v1"
 V2_DIAGNOSTICS_PREFIX = "swing_metro_diagnostics_v2"
 V3_DIAGNOSTICS_PREFIX = "swing_metro_diagnostics_v3"
+INPUT_DIAGNOSTICS_PREFIX = "swing_metro_input_diagnostics_v1"
 V2_COLUMNS = (
     V2_DIAGNOSTICS_PREFIX,
     "alarm_callback_invocations",
@@ -94,6 +95,11 @@ V3_COLUMNS = (
     "current_session_generation",
     *(f"session_ends_{reason}" for reason in _SESSION_END_REASONS),
 )
+INPUT_DIAGNOSTICS_COLUMNS = (
+    INPUT_DIAGNOSTICS_PREFIX,
+    "max_actual_encoder_sample_interval_us",
+    "encoder_sample_intervals_above_1250_us",
+)
 
 # Keep these names for callers that only know the original v2 protocol.
 DIAGNOSTICS_PREFIX = V2_DIAGNOSTICS_PREFIX
@@ -140,3 +146,33 @@ def parse_diagnostics_row(row: str) -> tuple[int, dict[str, int]]:
     except ValueError as error:
         raise RuntimeError("diagnostics row contains a non-integer value") from error
     return version, dict(zip(columns[1:], values, strict=True))
+
+
+def input_diagnostics_header_for_row(row: str) -> str:
+    input_diagnostics_columns_for_row(row)
+    return ",".join(INPUT_DIAGNOSTICS_COLUMNS)
+
+
+def input_diagnostics_columns_for_row(row: str) -> tuple[str, ...]:
+    fields = row.split(",")
+    if fields[0] != INPUT_DIAGNOSTICS_PREFIX or len(fields) != len(INPUT_DIAGNOSTICS_COLUMNS):
+        raise RuntimeError(f"unrecognized input diagnostics prefix or field count: {fields[0]!r}, {len(fields)}")
+    return INPUT_DIAGNOSTICS_COLUMNS
+
+
+def parse_input_diagnostics_row(row: str) -> dict[str, int]:
+    fields = row.split(",")
+    columns = input_diagnostics_columns_for_row(row)
+    try:
+        values = [int(value) for value in fields[1:]]
+    except ValueError as error:
+        raise RuntimeError("input diagnostics row contains a non-integer value") from error
+    return dict(zip(columns[1:], values, strict=True))
+
+
+def is_input_diagnostics_data_row(row: str) -> bool:
+    try:
+        parse_input_diagnostics_row(row)
+    except RuntimeError:
+        return False
+    return True

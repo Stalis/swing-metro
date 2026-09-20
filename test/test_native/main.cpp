@@ -19,6 +19,7 @@
 #include "../test/test_native/input/test_app_event_handler.h"
 #include "../test/test_native/input/test_app_input_coordinator.h"
 #include "../test/test_native/input/test_encoder_integration.h"
+#include "../test/test_native/input/test_encoder_sample_diagnostics.h"
 #include "../test/test_native/input/test_main_display_context.h"
 #include "../test/test_native/input/test_midi_clock_settings_context.h"
 #include "../test/test_native/input/test_periodic_scheduler.h"
@@ -69,6 +70,7 @@ int main() {
     test_app_event_handler_main();
     test_app_input_coordinator_main();
     test_encoder_integration_main();
+    test_encoder_sample_diagnostics_main();
     test_step_button_integration_main();
     test_time_debouncer_main();
     testProgramMain();

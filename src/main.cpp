@@ -7,6 +7,7 @@
 #include "input/app_event_handler.h"
 #include "input/app_input.h"
 #include "input/app_input_coordinator.h"
+#include "input/encoder_sample_diagnostics.h"
 #include "input/pad_button_ids.h"
 #include "input/periodic_scheduler.h"
 #include "input/serial_run_command.h"
@@ -61,6 +62,7 @@ ButtonMatrix<4, 4, SwingMetro::PadButtonIds> buttonMatrix(INPUT_PINS, OUTPUT_PIN
 SwingMetro::StepButtonInputs stepButtonInputs;
 SwingMetro::PeriodicScheduler<MATRIX_SCAN_PERIOD_MS> matrixScanScheduler;
 SwingMetro::PeriodicScheduler<ENCODER_SAMPLE_PERIOD_US> encoderSampleScheduler;
+SwingMetro::EncoderSampleDiagnostics encoderSampleDiagnostics;
 
 void tempoEncoderHandler(EncoderDirection direction);
 void tempoEncoderSwitchHandler(std::uint32_t nowUs);
@@ -314,6 +316,8 @@ void exportInternalTimingDiagnostics() {
               "max_remaining_internal_ticks_after_budget_pass,max_process_duration_us"));
         printDeliveryDiagnosticsHeader();
         Serial.println();
+        Serial.println(F("swing_metro_input_diagnostics_v1,max_actual_encoder_sample_interval_us,"
+                         "encoder_sample_intervals_above_1250_us"));
         diagnosticsHeaderPrinted = true;
     }
 
@@ -375,6 +379,10 @@ void exportInternalTimingDiagnostics() {
     print(transport.maxProcessDurationUs);
     printDeliveryDiagnostics(transport);
     Serial.println();
+    Serial.print(F("swing_metro_input_diagnostics_v1,"));
+    Serial.print(encoderSampleDiagnostics.maxActualIntervalUs());
+    Serial.print(',');
+    Serial.println(encoderSampleDiagnostics.intervalsAboveBound());
 }
 
 template <typename TAdapter>
@@ -440,10 +448,9 @@ void updateSerialRun() {
     }
 }
 
-void handleButtonBatch(const SwingMetro::StepButtonInputs::Batch& batch) {
+void handleButtonBatch(const SwingMetro::StepButtonInputs::Batch& batch, std::uint32_t nowUs) {
     for (std::size_t index = 0; index < batch.size(); ++index) {
         const auto& input = batch[index];
-        const auto nowUs = micros();
         if (const auto event = appInputCoordinator.dispatch(input, nowUs); event.has_value()) {
             handleProgramStorageEvent(*event, nowUs);
         }
@@ -451,16 +458,17 @@ void handleButtonBatch(const SwingMetro::StepButtonInputs::Batch& batch) {
 }
 
 void pollMatrixInputs(std::uint32_t nowMs) {
+    const auto nowUs = nowMs * 1'000U;
     buttonMatrix.readButtons(nowMs);
 
     for (int physicalIndex = 0; physicalIndex < STEPS_COUNT; ++physicalIndex) {
         const auto step = buttonMatrix.getButtonId(physicalIndex);
         if (buttonMatrix.isButtonJustPressed(physicalIndex)) {
-            handleButtonBatch(stepButtonInputs.onPressed(step, nowMs));
+            handleButtonBatch(stepButtonInputs.onPressed(step, nowMs), nowUs);
         } else if (buttonMatrix.isButtonJustReleased(physicalIndex)) {
-            handleButtonBatch(stepButtonInputs.onReleased(step, nowMs));
+            handleButtonBatch(stepButtonInputs.onReleased(step, nowMs), nowUs);
         } else if (buttonMatrix.isButtonHolding(physicalIndex)) {
-            handleButtonBatch(stepButtonInputs.update(step, nowMs));
+            handleButtonBatch(stepButtonInputs.update(step, nowMs), nowUs);
         }
     }
 
@@ -469,8 +477,8 @@ void pollMatrixInputs(std::uint32_t nowMs) {
 
 void pollEncoderInputs(std::uint32_t nowUs) {
     std::apply([nowUs](auto&... objects) { (objects.update(nowUs), ...); }, UPDATABLES);
-    handleButtonBatch(tempoSwitchInput.update(nowUs));
-    handleButtonBatch(volumeSwitchInput.update(nowUs));
+    handleButtonBatch(tempoSwitchInput.update(nowUs), nowUs);
+    handleButtonBatch(volumeSwitchInput.update(nowUs), nowUs);
 }
 
 void volumeEncoderHandler(EncoderDirection direction) {
@@ -486,19 +494,19 @@ void tempoEncoderHandler(EncoderDirection direction) {
 }
 
 void tempoEncoderSwitchHandler(std::uint32_t nowUs) {
-    handleButtonBatch(tempoSwitchInput.onPressed(nowUs));
+    handleButtonBatch(tempoSwitchInput.onPressed(nowUs), nowUs);
 }
 
 void tempoEncoderSwitchReleaseHandler(std::uint32_t nowUs) {
-    handleButtonBatch(tempoSwitchInput.onReleased(nowUs));
+    handleButtonBatch(tempoSwitchInput.onReleased(nowUs), nowUs);
 }
 
 void volumeEncoderSwitchHandler(std::uint32_t nowUs) {
-    handleButtonBatch(volumeSwitchInput.onPressed(nowUs));
+    handleButtonBatch(volumeSwitchInput.onPressed(nowUs), nowUs);
 }
 
 void volumeEncoderSwitchReleaseHandler(std::uint32_t nowUs) {
-    handleButtonBatch(volumeSwitchInput.onReleased(nowUs));
+    handleButtonBatch(volumeSwitchInput.onReleased(nowUs), nowUs);
 }
 
 void handleProgramStorageEvent(const SwingMetro::AppEvent& event, std::uint32_t nowUs) {
@@ -580,6 +588,7 @@ void loop() {
 
     const auto encoderNowUs = micros();
     if (encoderSampleScheduler.poll(encoderNowUs)) {
+        encoderSampleDiagnostics.recordSample(encoderNowUs);
         pollEncoderInputs(encoderNowUs);
     }
 

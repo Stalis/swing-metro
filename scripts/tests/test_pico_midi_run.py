@@ -13,14 +13,19 @@ from pico_midi_run import (
     analyze_events,
     choose_midi_port,
     event_name,
+    input_diagnostics_output_path,
     output_paths,
     write_summary_csv,
 )
+from pico_serial_run import input_output_path
 from pico_run_protocol import (
     V2_COLUMNS,
     V3_COLUMNS,
     diagnostics_header_for_row,
     is_diagnostics_data_row,
+    is_input_diagnostics_data_row,
+    input_diagnostics_header_for_row,
+    parse_input_diagnostics_row,
     parse_diagnostics_row,
 )
 
@@ -67,6 +72,13 @@ class PicoMidiRunTests(unittest.TestCase):
             ),
             output_paths(pathlib.Path("capture-minder")),
         )
+        self.assertEqual(
+            pathlib.Path("capture-minder-input-diagnostics.csv"),
+            input_diagnostics_output_path(pathlib.Path("capture-minder")),
+        )
+        self.assertEqual(
+            pathlib.Path("capture-input.csv"), input_output_path(pathlib.Path("capture.csv"))
+        )
 
     def test_parses_v2_diagnostics_row(self):
         columns = V2_COLUMNS
@@ -92,6 +104,24 @@ class PicoMidiRunTests(unittest.TestCase):
         self.assertFalse(is_diagnostics_data_row(",".join(V3_COLUMNS)))
         with self.assertRaises(RuntimeError):
             parse_diagnostics_row(",".join([V3_COLUMNS[0], *("1" for _ in V2_COLUMNS[1:])]))
+
+    def test_parses_strict_input_diagnostics_row(self):
+        row = "swing_metro_input_diagnostics_v1,1250,2"
+
+        parsed = parse_input_diagnostics_row(row)
+        self.assertEqual(1250, parsed["max_actual_encoder_sample_interval_us"])
+        self.assertEqual(2, parsed["encoder_sample_intervals_above_1250_us"])
+        self.assertEqual(
+            "swing_metro_input_diagnostics_v1,max_actual_encoder_sample_interval_us,encoder_sample_intervals_above_1250_us",
+            input_diagnostics_header_for_row(row),
+        )
+        self.assertTrue(is_input_diagnostics_data_row(row))
+        self.assertFalse(is_input_diagnostics_data_row("swing_metro_input_diagnostics_v1,1250"))
+        self.assertFalse(is_input_diagnostics_data_row("swing_metro_input_diagnostics_v1,one,2"))
+        with self.assertRaises(RuntimeError):
+            parse_input_diagnostics_row("swing_metro_input_diagnostics_v1,1250")
+        with self.assertRaises(RuntimeError):
+            parse_input_diagnostics_row("swing_metro_input_diagnostics_v1,one,2")
 
     def test_summary_supports_non_comparable_marker(self):
         with tempfile.TemporaryDirectory() as directory:
