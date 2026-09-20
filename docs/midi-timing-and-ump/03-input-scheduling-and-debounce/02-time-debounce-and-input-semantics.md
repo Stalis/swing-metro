@@ -1,6 +1,6 @@
 # Шаг 3.2. Debounce по времени и семантика input timestamps
 
-Статус: запланировано. Зависит от шага 3.1.
+Статус: выполнено 2026-09-20. Зависит от шага 3.1.
 
 ## Цель
 
@@ -35,10 +35,23 @@ batch/event ordering; её callers и tests нужно прочитать пер
 - Если raw state вернулся к current stable state до confirmation, candidate отменяется;
   одно физическое действие не порождает лишние stable edges.
 - Matrix и encoder switch имеют отдельно именованные debounce durations и единицы;
-  их значения, rationale и relation к periods шага 3.1 должны быть внесены сюда.
+  `MATRIX_DEBOUNCE_DURATION_MS = 15` и `ENCODER_SWITCH_DEBOUNCE_DURATION_US = 3_000`.
+  При periods шага 3.1 5 ms и 1,000 us это подтверждает состояние после трёх
+  intervals от первого candidate observation, как прежние четыре observations.
+- Matrix стартует в stable released state. Поэтому удерживаемая при загрузке кнопка
+  становится настоящим press candidate и подтверждается через 15 ms. `Encoder::init()`
+  намеренно инициализирует debouncer фактическим active-low switch state, не вызывая
+  startup callback. Явный reset также задаёт stable state без edge.
+- Возврат raw state к current stable state отменяет candidate. Duration `0` подтверждает
+  новый candidate на том же observation. Один timestamp полного matrix scan используется
+  для всех 16 observations; 20 us суммарных row-settle задержек пренебрежимо малы
+  относительно 15 ms debounce window.
 - Long press отсчитывается от timestamp подтверждённого press. При release после
   threshold, когда periodic holding update отсутствовал, release path обязан сохранить
   существующий результат: сгенерировать long press и не сгенерировать click.
+  Matrix path использует milliseconds и threshold 500 ms. Encoder switch path передаёт
+  scheduled confirmation timestamp в microseconds через callback в `ButtonInputAdapter`
+  и использует эквивалентный threshold 500,000 us; повторный вызов `millis()` отсутствует.
 - Одновременные matrix events сохраняют existing physical-index dispatch order. Context
   routing, Shift и capture получают только подтверждённые input events.
 

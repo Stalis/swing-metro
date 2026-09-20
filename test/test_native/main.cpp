@@ -24,6 +24,7 @@
 #include "../test/test_native/input/test_periodic_scheduler.h"
 #include "../test/test_native/input/test_serial_run_command.h"
 #include "../test/test_native/input/test_step_button_integration.h"
+#include "../test/test_native/input/test_time_debouncer.h"
 #include "../test/test_native/program/test_program.h"
 #include "../test/test_native/program/test_program_codec.h"
 #include "../test/test_native/program/test_program_slot_store.h"
@@ -69,6 +70,7 @@ int main() {
     test_app_input_coordinator_main();
     test_encoder_integration_main();
     test_step_button_integration_main();
+    test_time_debouncer_main();
     testProgramMain();
     testProgramCodecMain();
     testProgramSlotStoreMain();

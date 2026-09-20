@@ -1,0 +1,6 @@
+{
+  "name": "InputTiming",
+  "version": "0.1.0",
+  "description": "Hardware-independent input timing helpers.",
+  "platforms": "*"
+}

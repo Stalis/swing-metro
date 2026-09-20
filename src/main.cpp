@@ -57,14 +57,14 @@ constexpr std::array<uint8_t, 4> INPUT_PINS = {D0, D1, D2, D3};
 constexpr std::array<uint8_t, 4> OUTPUT_PINS = {D4, D5, D6, D7};
 constexpr std::uint32_t MATRIX_SCAN_PERIOD_MS = 5;
 constexpr std::uint32_t ENCODER_SAMPLE_PERIOD_US = 1'000;
-ButtonMatrix<4, 4, SwingMetro::PadButtonIds> buttonMatrix(INPUT_PINS, OUTPUT_PINS, 3);
+ButtonMatrix<4, 4, SwingMetro::PadButtonIds> buttonMatrix(INPUT_PINS, OUTPUT_PINS);
 SwingMetro::StepButtonInputs stepButtonInputs;
 SwingMetro::PeriodicScheduler<MATRIX_SCAN_PERIOD_MS> matrixScanScheduler;
 SwingMetro::PeriodicScheduler<ENCODER_SAMPLE_PERIOD_US> encoderSampleScheduler;
 
 void tempoEncoderHandler(EncoderDirection direction);
-void tempoEncoderSwitchHandler();
-void tempoEncoderSwitchReleaseHandler();
+void tempoEncoderSwitchHandler(std::uint32_t nowUs);
+void tempoEncoderSwitchReleaseHandler(std::uint32_t nowUs);
 constexpr EncoderSettings TEMPO_ENCODER_SETTINGS{
     .pinA = 16,
     .pinB = 17,
@@ -95,8 +95,8 @@ Counter<uint8_t> swingCounter({.step = 1,
                                .overflowBehavior = CounterOverflowBehavior::Clamp});
 
 void volumeEncoderHandler(EncoderDirection direction);
-void volumeEncoderSwitchHandler();
-void volumeEncoderSwitchReleaseHandler();
+void volumeEncoderSwitchHandler(std::uint32_t nowUs);
+void volumeEncoderSwitchReleaseHandler(std::uint32_t nowUs);
 constexpr EncoderSettings VOLUME_ENCODER_SETTINGS{
     .pinA = 22,
     .pinB = 26,
@@ -125,11 +125,11 @@ SwingMetro::AppInputCoordinator<INPUT_CONTEXT_CAPACITY> appInputCoordinator{
     &programStorageController};
 ContextInput::ButtonInputAdapter<SwingMetro::InputId> tempoSwitchInput{{
     SwingMetro::InputId::TempoSwitch,
-    500,
+    500'000,
 }};
 ContextInput::ButtonInputAdapter<SwingMetro::InputId> volumeSwitchInput{{
     SwingMetro::InputId::VolumeEncoder,
-    500,
+    500'000,
 }};
 
 constexpr const auto UPDATABLES = std::tie(tempoEncoder, swingEncoder, volumeEncoder);
@@ -451,7 +451,7 @@ void handleButtonBatch(const SwingMetro::StepButtonInputs::Batch& batch) {
 }
 
 void pollMatrixInputs(std::uint32_t nowMs) {
-    buttonMatrix.readButtons();
+    buttonMatrix.readButtons(nowMs);
 
     for (int physicalIndex = 0; physicalIndex < STEPS_COUNT; ++physicalIndex) {
         const auto step = buttonMatrix.getButtonId(physicalIndex);
@@ -467,11 +467,10 @@ void pollMatrixInputs(std::uint32_t nowMs) {
     buttonMatrix.update();
 }
 
-void pollEncoderInputs() {
-    std::apply([](auto&... objects) { (objects.update(), ...); }, UPDATABLES);
-    const auto nowMs = millis();
-    handleButtonBatch(tempoSwitchInput.update(nowMs));
-    handleButtonBatch(volumeSwitchInput.update(nowMs));
+void pollEncoderInputs(std::uint32_t nowUs) {
+    std::apply([nowUs](auto&... objects) { (objects.update(nowUs), ...); }, UPDATABLES);
+    handleButtonBatch(tempoSwitchInput.update(nowUs));
+    handleButtonBatch(volumeSwitchInput.update(nowUs));
 }
 
 void volumeEncoderHandler(EncoderDirection direction) {
@@ -486,16 +485,20 @@ void tempoEncoderHandler(EncoderDirection direction) {
     handleEncoderDirection(tempoInput, direction);
 }
 
-void tempoEncoderSwitchHandler() { handleButtonBatch(tempoSwitchInput.onPressed(millis())); }
-
-void tempoEncoderSwitchReleaseHandler() {
-    handleButtonBatch(tempoSwitchInput.onReleased(millis()));
+void tempoEncoderSwitchHandler(std::uint32_t nowUs) {
+    handleButtonBatch(tempoSwitchInput.onPressed(nowUs));
 }
 
-void volumeEncoderSwitchHandler() { handleButtonBatch(volumeSwitchInput.onPressed(millis())); }
+void tempoEncoderSwitchReleaseHandler(std::uint32_t nowUs) {
+    handleButtonBatch(tempoSwitchInput.onReleased(nowUs));
+}
 
-void volumeEncoderSwitchReleaseHandler() {
-    handleButtonBatch(volumeSwitchInput.onReleased(millis()));
+void volumeEncoderSwitchHandler(std::uint32_t nowUs) {
+    handleButtonBatch(volumeSwitchInput.onPressed(nowUs));
+}
+
+void volumeEncoderSwitchReleaseHandler(std::uint32_t nowUs) {
+    handleButtonBatch(volumeSwitchInput.onReleased(nowUs));
 }
 
 void handleProgramStorageEvent(const SwingMetro::AppEvent& event, std::uint32_t nowUs) {
@@ -577,7 +580,7 @@ void loop() {
 
     const auto encoderNowUs = micros();
     if (encoderSampleScheduler.poll(encoderNowUs)) {
-        pollEncoderInputs();
+        pollEncoderInputs(encoderNowUs);
     }
 
     updateSerialRun();

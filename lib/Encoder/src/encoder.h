@@ -1,5 +1,7 @@
 #pragma once
 
+#include <time_debouncer.h>
+
 #include <cstdint>
 #include <optional>
 
@@ -12,7 +14,9 @@ enum class EncoderDirection : std::uint8_t {
 };
 
 using EncoderHandler = void (*)(EncoderDirection direction);
-using SwitchHandler = void (*)();
+using SwitchHandler = void (*)(std::uint32_t nowUs);
+
+constexpr std::uint32_t ENCODER_SWITCH_DEBOUNCE_DURATION_US = 3'000;
 
 struct EncoderSettings {
     std::uint8_t pinA;
@@ -21,7 +25,6 @@ struct EncoderSettings {
 
     EncoderHandler handler = nullptr;
     SwitchHandler switchHandler = nullptr;
-    std::uint8_t switchDebouncing = 3;
     SwitchHandler switchReleaseHandler = nullptr;
 };
 
@@ -40,7 +43,7 @@ class Encoder {
 
     void init();
     // Call regularly from one context; switchHandler runs there on active-low press.
-    void update();
+    void update(std::uint32_t nowUs);
 
     [[nodiscard]] bool getPinA() const;
     [[nodiscard]] bool getPinB() const;
@@ -64,11 +67,7 @@ class Encoder {
     EncoderHandler _handler;
     SwitchHandler _switchHandler;
     SwitchHandler _switchReleaseHandler;
-    std::uint8_t _switchDebouncing;
-    std::uint8_t _currentSwitchDebouncing = 0;
-    bool _switchCandidateState = false;
-    bool _previousSwitchState = false;
-    bool _currentSwitchState = false;
+    InputTiming::TimeDebouncer _switchDebouncer;
 
-    void updateSwitch();
+    void updateSwitch(std::uint32_t nowUs);
 };

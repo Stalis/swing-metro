@@ -2,19 +2,12 @@
 #include "button_matrix.h"
 
 template <int INPUT_PINS, int OUTPUT_PINS, typename TButtonIds>
-ButtonMatrix<INPUT_PINS, OUTPUT_PINS, TButtonIds>::ButtonMatrix(const InputPins& inputPins,
-                                                                const OutputPins& outputPins,
-                                                                uint8_t debouncing) noexcept
-    : _inputPins(inputPins), _outputPins(outputPins), _debouncing(debouncing), _buttonStates() {}
+ButtonMatrix<INPUT_PINS, OUTPUT_PINS, TButtonIds>::ButtonMatrix(
+    const InputPins& inputPins, const OutputPins& outputPins) noexcept
+    : _inputPins(inputPins), _outputPins(outputPins), _buttonStates() {}
 
 template <int INPUT_PINS, int OUTPUT_PINS, typename TButtonIds>
 void ButtonMatrix<INPUT_PINS, OUTPUT_PINS, TButtonIds>::init() {
-    for (int input = 0; input < INPUT_PINS; ++input) {
-        for (int output = 0; output < OUTPUT_PINS; ++output) {
-            getButton(input, output).setDebounce(_debouncing);
-        }
-    }
-
     for (int input = 0; input < INPUT_PINS; ++input) {
         pinMode(_inputPins[input], INPUT_PULLUP);
     }
@@ -25,14 +18,14 @@ void ButtonMatrix<INPUT_PINS, OUTPUT_PINS, TButtonIds>::init() {
 }
 
 template <int INPUT_PINS, int OUTPUT_PINS, typename TButtonIds>
-void ButtonMatrix<INPUT_PINS, OUTPUT_PINS, TButtonIds>::readButtons() {
+void ButtonMatrix<INPUT_PINS, OUTPUT_PINS, TButtonIds>::readButtons(std::uint32_t nowMs) {
     for (uint8_t output = 0; output < OUTPUT_PINS; ++output) {
         digitalWrite(_outputPins[output], LOW);
         delayMicroseconds(5);
 
         for (uint8_t input = 0; input < INPUT_PINS; ++input) {
             bool buf = digitalRead(_inputPins[input]) == LOW;
-            getButton(input, output).newState(buf);
+            getButton(input, output).newState(buf, nowMs);
         }
 
         digitalWrite(_outputPins[output], HIGH);

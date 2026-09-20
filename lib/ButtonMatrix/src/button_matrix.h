@@ -21,13 +21,12 @@ class ButtonMatrix {
   public:
     using InputPins = std::array<uint8_t, INPUT_PINS>;
     using OutputPins = std::array<uint8_t, OUTPUT_PINS>;
-    ButtonMatrix(const InputPins& inputPins, const OutputPins& outputPins,
-                 uint8_t debouncing = 3) noexcept;
+    ButtonMatrix(const InputPins& inputPins, const OutputPins& outputPins) noexcept;
     void init();
     void update();
 
     // Call readButtons(), consume events, then update() from the same context.
-    void readButtons();
+    void readButtons(std::uint32_t nowMs);
     [[nodiscard]] bool isButtonJustPressed(int input, int output) const;
     [[nodiscard]] bool isButtonJustPressed(int number) const;
     [[nodiscard]] bool isButtonHolding(int input, int output) const;
@@ -53,8 +52,6 @@ class ButtonMatrix {
 
     const InputPins _inputPins;
     const OutputPins _outputPins;
-
-    const uint8_t _debouncing;
 
     std::array<std::array<ButtonState, OUTPUT_PINS>, INPUT_PINS> _buttonStates;
 };

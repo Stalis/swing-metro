@@ -80,25 +80,22 @@ EncoderDirection getDirectionFromStates(const EncoderState& previous, const Enco
 Encoder::Encoder(const EncoderSettings& settings) noexcept
     : _pinA(settings.pinA), _pinB(settings.pinB), _pinSwitch(settings.pinSwitch),
       _handler(settings.handler), _switchHandler(settings.switchHandler),
-      _switchReleaseHandler(settings.switchReleaseHandler),
-      _switchDebouncing(settings.switchDebouncing & 0x0F) {}
+      _switchReleaseHandler(settings.switchReleaseHandler), _switchDebouncer(false) {}
 
 void Encoder::init() {
     pinMode(_pinA, INPUT_PULLUP);
     pinMode(_pinB, INPUT_PULLUP);
     if (_pinSwitch.has_value()) {
         pinMode(_pinSwitch.value(), INPUT_PULLUP);
-        _switchCandidateState = !getSwitch();
-        _previousSwitchState = _switchCandidateState;
-        _currentSwitchState = _switchCandidateState;
+        _switchDebouncer.reset(!getSwitch());
     }
 
     _currentState = getState();
     _previousState = _currentState;
 }
 
-void Encoder::update() {
-    updateSwitch();
+void Encoder::update(std::uint32_t nowUs) {
+    updateSwitch(nowUs);
 
     auto state = getState();
 
@@ -137,31 +134,23 @@ void Encoder::update() {
     }
 }
 
-void Encoder::updateSwitch() {
+void Encoder::updateSwitch(std::uint32_t nowUs) {
     if (!_pinSwitch.has_value()) {
         return;
     }
 
-    const bool state = !getSwitch();
-    if (state != _switchCandidateState) {
-        _currentSwitchDebouncing = 0;
-        _switchCandidateState = state;
-    }
-
-    if (_currentSwitchDebouncing < _switchDebouncing) {
-        _currentSwitchDebouncing++;
+    const auto confirmed =
+        _switchDebouncer.observe(!getSwitch(), nowUs, ENCODER_SWITCH_DEBOUNCE_DURATION_US);
+    if (!confirmed.has_value()) {
         return;
     }
-    _currentSwitchDebouncing = 0;
-    _currentSwitchState = state;
 
-    if (!_previousSwitchState && _currentSwitchState && _switchHandler != nullptr) {
-        _switchHandler();
+    if (*confirmed && _switchHandler != nullptr) {
+        _switchHandler(nowUs);
     }
-    if (_previousSwitchState && !_currentSwitchState && _switchReleaseHandler != nullptr) {
-        _switchReleaseHandler();
+    if (!*confirmed && _switchReleaseHandler != nullptr) {
+        _switchReleaseHandler(nowUs);
     }
-    _previousSwitchState = _currentSwitchState;
 }
 
 bool Encoder::getPinA() const { return digitalRead(_pinA) > 0; }
