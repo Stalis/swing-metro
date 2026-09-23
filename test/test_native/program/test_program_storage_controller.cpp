@@ -57,6 +57,9 @@ struct State {
 void testControllerSavesAndLoadsSelectedSlot() {
     State state;
     state.volume.setValue(42);
+    auto steps = state.sequencer.steps();
+    steps[0].gate = 25;
+    state.sequencer.setSteps(steps);
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStoreStatus::Ok),
                             static_cast<std::uint8_t>(state.controller.perform(
                                 SwingMetro::ProgramStorageAction::Save, 3)));
@@ -65,6 +68,7 @@ void testControllerSavesAndLoadsSelectedSlot() {
                             static_cast<std::uint8_t>(state.controller.perform(
                                 SwingMetro::ProgramStorageAction::Load, 3)));
     TEST_ASSERT_EQUAL_UINT8(42, state.volume.getValue());
+    TEST_ASSERT_EQUAL_UINT8(25, *state.sequencer.getStepGate(0));
     TEST_ASSERT_EQUAL_UINT32(3, state.storage.writes);
 }
 
@@ -80,6 +84,9 @@ void testControllerRejectsRunningTransport() {
 void testControllerRestoresCurrentProgramAndDefaults() {
     State state;
     state.volume.setValue(42);
+    auto steps = state.sequencer.steps();
+    steps[0].gate = 75;
+    state.sequencer.setSteps(steps);
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStoreStatus::Ok),
                             static_cast<std::uint8_t>(state.controller.perform(
                                 SwingMetro::ProgramStorageAction::Save, 3)));
@@ -87,6 +94,7 @@ void testControllerRestoresCurrentProgramAndDefaults() {
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStoreStatus::Ok),
                             static_cast<std::uint8_t>(state.controller.restoreCurrentProgram()));
     TEST_ASSERT_EQUAL_UINT8(42, state.volume.getValue());
+    TEST_ASSERT_EQUAL_UINT8(75, *state.sequencer.getStepGate(0));
 
     State defaults;
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStoreStatus::Empty),

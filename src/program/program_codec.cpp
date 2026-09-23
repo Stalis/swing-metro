@@ -10,12 +10,14 @@ constexpr std::uint8_t TAG_SWING = 2;
 constexpr std::uint8_t TAG_VOLUME = 3;
 constexpr std::uint8_t TAG_MIDI_CLOCK_MODE = 4;
 constexpr std::uint8_t TAG_STEPS = 16;
-[[maybe_unused]] constexpr std::uint8_t TAG_STEP_GATE = 17;
+constexpr std::uint8_t TAG_STEP_GATE = 17;
 [[maybe_unused]] constexpr std::uint8_t TAG_STEP_REPEAT = 18;
 constexpr std::size_t STEP_PAYLOAD_SIZE = SwingMetro::PROGRAM_STEP_COUNT * 3;
+constexpr std::size_t STEP_GATE_PAYLOAD_SIZE = SwingMetro::PROGRAM_STEP_COUNT;
 constexpr std::uint8_t MAGIC[] = {'S', 'M', 'P', 'R'};
 
-static_assert(SwingMetro::PROGRAM_CURRENT_PAYLOAD_SIZE == 4 * 3 + 2 + STEP_PAYLOAD_SIZE);
+static_assert(SwingMetro::PROGRAM_CURRENT_PAYLOAD_SIZE ==
+              4 * 3 + 2 + STEP_PAYLOAD_SIZE + 2 + STEP_GATE_PAYLOAD_SIZE);
 
 auto writeU16(std::uint8_t* destination, std::uint16_t value) -> void {
     destination[0] = static_cast<std::uint8_t>(value);
@@ -89,6 +91,12 @@ auto encodeProgram(const Program& program, std::uint32_t revision, EncodedProgra
         steps[offset + 2] = program.steps[index].velocity;
     }
     appendTlv(TAG_STEPS, steps.data(), steps.size(), payload, payloadSize);
+
+    std::array<std::uint8_t, STEP_GATE_PAYLOAD_SIZE> gates{};
+    for (std::size_t index = 0; index < PROGRAM_STEP_COUNT; ++index) {
+        gates[index] = program.steps[index].gate;
+    }
+    appendTlv(TAG_STEP_GATE, gates.data(), gates.size(), payload, payloadSize);
     static_assert(PROGRAM_CURRENT_PAYLOAD_SIZE <= PROGRAM_MAX_PAYLOAD_SIZE);
 
     auto* header = encoded.bytes.data();
@@ -137,6 +145,8 @@ auto decodeProgram(const std::uint8_t* data, std::size_t size, Program& program,
     bool seenVolume = false;
     bool seenMidiClockMode = false;
     bool seenSteps = false;
+    bool seenStepGate = false;
+    std::array<std::uint8_t, STEP_GATE_PAYLOAD_SIZE> gates{};
     std::size_t offset = 0;
     const auto* payload = data + PROGRAM_HEADER_SIZE;
     while (offset < payloadSize) {
@@ -197,6 +207,20 @@ auto decodeProgram(const std::uint8_t* data, std::size_t size, Program& program,
             }
             seenSteps = true;
             break;
+        case TAG_STEP_GATE:
+            if (seenStepGate || length != STEP_GATE_PAYLOAD_SIZE) {
+                return ProgramCodecStatus::MalformedTlv;
+            }
+            for (std::size_t index = 0; index < PROGRAM_STEP_COUNT; ++index) {
+                if (value[index] < PROGRAM_MIN_GATE || value[index] > PROGRAM_MAX_GATE) {
+                    return ProgramCodecStatus::InvalidField;
+                }
+            }
+            for (std::size_t index = 0; index < PROGRAM_STEP_COUNT; ++index) {
+                gates[index] = value[index];
+            }
+            seenStepGate = true;
+            break;
         default:
             break;
         }
@@ -204,6 +228,11 @@ auto decodeProgram(const std::uint8_t* data, std::size_t size, Program& program,
 
     if (decoded.swing > PROGRAM_MAX_SWING && decoded.swing <= PROGRAM_LEGACY_MAX_SWING) {
         decoded.swing = PROGRAM_MAX_SWING;
+    }
+    if (seenStepGate) {
+        for (std::size_t index = 0; index < PROGRAM_STEP_COUNT; ++index) {
+            decoded.steps[index].gate = gates[index];
+        }
     }
     if (!isValid(decoded)) {
         return ProgramCodecStatus::InvalidField;

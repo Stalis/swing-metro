@@ -26,11 +26,15 @@ constexpr std::uint8_t PROGRAM_MAX_NOTE = 127;
 constexpr std::uint8_t PROGRAM_DEFAULT_VELOCITY = 127;
 constexpr std::uint8_t PROGRAM_MIN_VELOCITY = 1;
 constexpr std::uint8_t PROGRAM_MAX_VELOCITY = 127;
+constexpr std::uint8_t PROGRAM_DEFAULT_GATE = 100;
+constexpr std::uint8_t PROGRAM_MIN_GATE = 1;
+constexpr std::uint8_t PROGRAM_MAX_GATE = 100;
 
 struct ProgramStep {
     bool enabled = false;
     std::uint8_t note = PROGRAM_DEFAULT_NOTE;
     std::uint8_t velocity = PROGRAM_DEFAULT_VELOCITY;
+    std::uint8_t gate = PROGRAM_DEFAULT_GATE;
 };
 
 struct Program {
@@ -48,7 +52,8 @@ struct Program {
 
 [[nodiscard]] constexpr auto isValid(const ProgramStep& step) -> bool {
     return step.note >= PROGRAM_MIN_NOTE && step.note <= PROGRAM_MAX_NOTE &&
-           step.velocity >= PROGRAM_MIN_VELOCITY && step.velocity <= PROGRAM_MAX_VELOCITY;
+           step.velocity >= PROGRAM_MIN_VELOCITY && step.velocity <= PROGRAM_MAX_VELOCITY &&
+           step.gate >= PROGRAM_MIN_GATE && step.gate <= PROGRAM_MAX_GATE;
 }
 
 [[nodiscard]] constexpr auto isValid(const Program& program) -> bool {

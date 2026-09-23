@@ -21,7 +21,7 @@ enum class ProgramCodecStatus : std::uint8_t {
 };
 
 constexpr std::size_t PROGRAM_HEADER_SIZE = 16;
-constexpr std::size_t PROGRAM_CURRENT_PAYLOAD_SIZE = 62;
+constexpr std::size_t PROGRAM_CURRENT_PAYLOAD_SIZE = 80;
 constexpr std::size_t PROGRAM_MAX_PAYLOAD_SIZE = 255;
 constexpr std::size_t PROGRAM_MAX_ENCODED_SIZE = PROGRAM_HEADER_SIZE + PROGRAM_MAX_PAYLOAD_SIZE;
 

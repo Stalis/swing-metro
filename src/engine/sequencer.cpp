@@ -27,7 +27,12 @@ uint8_t Sequencer::getSwing() const { return _swing; }
 
 const std::array<SequencerStep, STEPS_COUNT>& Sequencer::steps() const { return _steps; }
 
-void Sequencer::setSteps(const std::array<SequencerStep, STEPS_COUNT>& steps) { _steps = steps; }
+void Sequencer::setSteps(const std::array<SequencerStep, STEPS_COUNT>& steps) {
+    _steps = steps;
+    for (auto& step : _steps) {
+        step.gate = std::clamp(step.gate, STEP_MIN_GATE, STEP_MAX_GATE);
+    }
+}
 
 std::bitset<STEPS_COUNT> Sequencer::getStepsEnabled() const {
     std::bitset<STEPS_COUNT> res{};
@@ -94,6 +99,24 @@ bool Sequencer::adjustStepVelocity(StepIndex index, int8_t delta) {
     constexpr int maxVelocity = 127;
     const int next = static_cast<int>(_steps[index].velocity) + delta;
     _steps[index].velocity = static_cast<uint8_t>(std::clamp(next, minVelocity, maxVelocity));
+    return true;
+}
+
+std::optional<uint8_t> Sequencer::getStepGate(StepIndex index) const {
+    if (index >= STEPS_COUNT) {
+        return std::nullopt;
+    }
+    return _steps[index].gate;
+}
+
+bool Sequencer::adjustStepGate(StepIndex index, int8_t delta) {
+    if (index >= STEPS_COUNT) {
+        return false;
+    }
+
+    const int next = static_cast<int>(_steps[index].gate) + delta;
+    _steps[index].gate = static_cast<uint8_t>(
+        std::clamp(next, static_cast<int>(STEP_MIN_GATE), static_cast<int>(STEP_MAX_GATE)));
     return true;
 }
 

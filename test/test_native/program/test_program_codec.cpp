@@ -12,6 +12,9 @@ constexpr std::size_t HEADER_CRC_OFFSET = 12;
 constexpr std::size_t PAYLOAD_OFFSET = 16;
 constexpr std::size_t SWING_TLV_OFFSET = 19;
 constexpr std::size_t STEPS_VALUE_OFFSET = 30;
+constexpr std::size_t GATE_TLV_OFFSET = 78;
+constexpr std::size_t GATE_VALUE_OFFSET = 80;
+constexpr std::size_t GATE_TLV_SIZE = 18;
 
 auto sampleProgram() -> SwingMetro::Program {
     SwingMetro::Program program{
@@ -20,8 +23,11 @@ auto sampleProgram() -> SwingMetro::Program {
         .volume = 75,
         .midiClockMode = SwingMetro::MidiClockMode::External,
     };
-    program.steps[0] = {.enabled = true, .note = 48, .velocity = 64};
-    program.steps[15] = {.enabled = true, .note = 127, .velocity = 1};
+    program.steps[0] = {.enabled = true, .note = 48, .velocity = 64, .gate = 1};
+    program.steps[1] = {.enabled = true, .note = 49, .velocity = 65, .gate = 25};
+    program.steps[2] = {.enabled = true, .note = 50, .velocity = 66, .gate = 50};
+    program.steps[3] = {.enabled = true, .note = 51, .velocity = 67, .gate = 75};
+    program.steps[15] = {.enabled = true, .note = 127, .velocity = 1, .gate = 100};
     return program;
 }
 
@@ -58,9 +64,17 @@ void testCodecRoundTripPreservesProgramAndRevision() {
         TEST_ASSERT_EQUAL(source.steps[index].enabled, decoded.steps[index].enabled);
         TEST_ASSERT_EQUAL_UINT8(source.steps[index].note, decoded.steps[index].note);
         TEST_ASSERT_EQUAL_UINT8(source.steps[index].velocity, decoded.steps[index].velocity);
+        TEST_ASSERT_EQUAL_UINT8(source.steps[index].gate, decoded.steps[index].gate);
     }
     TEST_ASSERT_EQUAL_UINT32(
         SwingMetro::PROGRAM_HEADER_SIZE + SwingMetro::PROGRAM_CURRENT_PAYLOAD_SIZE, encoded.size);
+    TEST_ASSERT_EQUAL_UINT8(16, encoded.bytes[28]);
+    TEST_ASSERT_EQUAL_UINT8(48, encoded.bytes[29]);
+    TEST_ASSERT_EQUAL_UINT8(1, encoded.bytes[30]);
+    TEST_ASSERT_EQUAL_UINT8(48, encoded.bytes[31]);
+    TEST_ASSERT_EQUAL_UINT8(64, encoded.bytes[32]);
+    TEST_ASSERT_EQUAL_UINT8(17, encoded.bytes[GATE_TLV_OFFSET]);
+    TEST_ASSERT_EQUAL_UINT8(16, encoded.bytes[GATE_TLV_OFFSET + 1]);
 }
 
 void testCodecIsDeterministicAndHasBoundedSize() {
@@ -82,6 +96,11 @@ void testCodecRejectsInvalidProgram() {
     invalid.tempo = 39;
     SwingMetro::EncodedProgram encoded;
 
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(SwingMetro::ProgramCodecStatus::InvalidProgram),
+        static_cast<std::uint8_t>(SwingMetro::encodeProgram(invalid, 1, encoded)));
+    invalid = sampleProgram();
+    invalid.steps[0].gate = 0;
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<std::uint8_t>(SwingMetro::ProgramCodecStatus::InvalidProgram),
         static_cast<std::uint8_t>(SwingMetro::encodeProgram(invalid, 1, encoded)));
@@ -137,6 +156,83 @@ void testCodecDefaultsMissingFieldsAndRewritesCurrentFormat() {
         static_cast<std::uint8_t>(SwingMetro::encodeProgram(decoded, revision, rewritten)));
     TEST_ASSERT_EQUAL_UINT32(
         SwingMetro::PROGRAM_HEADER_SIZE + SwingMetro::PROGRAM_CURRENT_PAYLOAD_SIZE, rewritten.size);
+}
+
+void testCodecMigratesLegacyPayloadWithoutGate() {
+    SwingMetro::EncodedProgram encoded;
+    (void)SwingMetro::encodeProgram(sampleProgram(), 3, encoded);
+    encoded.size -= GATE_TLV_SIZE;
+    encoded.bytes[10] = static_cast<std::uint8_t>(encoded.size - PAYLOAD_OFFSET);
+    encoded.bytes[11] = 0;
+    updateCrc(encoded);
+
+    SwingMetro::Program decoded;
+    std::uint32_t revision = 0;
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramCodecStatus::Ok),
+                            static_cast<std::uint8_t>(SwingMetro::decodeProgram(
+                                encoded.bytes.data(), encoded.size, decoded, revision)));
+    for (const auto& step : decoded.steps) {
+        TEST_ASSERT_EQUAL_UINT8(SwingMetro::PROGRAM_DEFAULT_GATE, step.gate);
+    }
+}
+
+void testCodecRejectsMalformedAndInvalidGateTlvs() {
+    SwingMetro::EncodedProgram encoded;
+    (void)SwingMetro::encodeProgram(sampleProgram(), 1, encoded);
+    SwingMetro::Program decoded;
+    std::uint32_t revision = 0;
+
+    for (const auto length : {0, 15, 17}) {
+        auto broken = encoded;
+        broken.bytes[GATE_TLV_OFFSET + 1] = length;
+        updateCrc(broken);
+        TEST_ASSERT_EQUAL_UINT8(
+            static_cast<std::uint8_t>(SwingMetro::ProgramCodecStatus::MalformedTlv),
+            static_cast<std::uint8_t>(
+                SwingMetro::decodeProgram(broken.bytes.data(), broken.size, decoded, revision)));
+    }
+
+    auto broken = encoded;
+    broken.bytes[GATE_VALUE_OFFSET] = 0;
+    updateCrc(broken);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramCodecStatus::InvalidField),
+                            static_cast<std::uint8_t>(SwingMetro::decodeProgram(
+                                broken.bytes.data(), broken.size, decoded, revision)));
+    broken = encoded;
+    broken.bytes[GATE_VALUE_OFFSET] = 101;
+    updateCrc(broken);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramCodecStatus::InvalidField),
+                            static_cast<std::uint8_t>(SwingMetro::decodeProgram(
+                                broken.bytes.data(), broken.size, decoded, revision)));
+
+    broken = encoded;
+    std::memcpy(broken.bytes.data() + broken.size, broken.bytes.data() + GATE_TLV_OFFSET,
+                GATE_TLV_SIZE);
+    broken.size += GATE_TLV_SIZE;
+    broken.bytes[10] = static_cast<std::uint8_t>(broken.size - PAYLOAD_OFFSET);
+    updateCrc(broken);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramCodecStatus::MalformedTlv),
+                            static_cast<std::uint8_t>(SwingMetro::decodeProgram(
+                                broken.bytes.data(), broken.size, decoded, revision)));
+}
+
+void testCodecReadsGateRegardlessOfTlvOrder() {
+    SwingMetro::EncodedProgram encoded;
+    (void)SwingMetro::encodeProgram(sampleProgram(), 1, encoded);
+    std::array<std::uint8_t, GATE_TLV_SIZE> gate{};
+    std::memcpy(gate.data(), encoded.bytes.data() + GATE_TLV_OFFSET, gate.size());
+    std::memmove(encoded.bytes.data() + PAYLOAD_OFFSET + gate.size(),
+                 encoded.bytes.data() + PAYLOAD_OFFSET, GATE_TLV_OFFSET - PAYLOAD_OFFSET);
+    std::memcpy(encoded.bytes.data() + PAYLOAD_OFFSET, gate.data(), gate.size());
+    updateCrc(encoded);
+
+    SwingMetro::Program decoded;
+    std::uint32_t revision = 0;
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramCodecStatus::Ok),
+                            static_cast<std::uint8_t>(SwingMetro::decodeProgram(
+                                encoded.bytes.data(), encoded.size, decoded, revision)));
+    TEST_ASSERT_EQUAL_UINT8(1, decoded.steps[0].gate);
+    TEST_ASSERT_EQUAL_UINT8(100, decoded.steps[15].gate);
 }
 
 void testCodecSkipsUnknownTlv() {
@@ -259,6 +355,9 @@ void testProgramCodecMain() {
     RUN_TEST(testCodecRejectsInvalidProgram);
     RUN_TEST(testCodecClampsLegacySwingOnDecode);
     RUN_TEST(testCodecDefaultsMissingFieldsAndRewritesCurrentFormat);
+    RUN_TEST(testCodecMigratesLegacyPayloadWithoutGate);
+    RUN_TEST(testCodecRejectsMalformedAndInvalidGateTlvs);
+    RUN_TEST(testCodecReadsGateRegardlessOfTlvOrder);
     RUN_TEST(testCodecSkipsUnknownTlv);
     RUN_TEST(testCodecRejectsInvalidMagicVersionLengthAndCrc);
     RUN_TEST(testCodecRejectsMalformedOrInvalidKnownTlvs);

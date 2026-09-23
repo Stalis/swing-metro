@@ -18,6 +18,7 @@ auto captureProgram(const Counter<std::uint8_t>& tempo, const Counter<std::uint8
             .enabled = steps[index].isEnabled,
             .note = steps[index].note,
             .velocity = steps[index].velocity,
+            .gate = steps[index].gate,
         };
     }
     return program;
@@ -41,6 +42,7 @@ auto applyProgram(const Program& program, Counter<std::uint8_t>& tempo,
             .isEnabled = normalized.steps[index].enabled,
             .note = normalized.steps[index].note,
             .velocity = normalized.steps[index].velocity,
+            .gate = normalized.steps[index].gate,
         };
     }
 

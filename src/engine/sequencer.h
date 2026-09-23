@@ -14,6 +14,9 @@ constexpr SwingMetro::TransportTick SCHEDULING_LOOKAHEAD_TICKS = 2;
 using MIDI_Note = uint8_t;
 constexpr const uint8_t NOTES_IN_OCTAVE = 12;
 constexpr const uint8_t MIDI_OFFSET = NOTES_IN_OCTAVE * 3;
+constexpr const uint8_t STEP_DEFAULT_GATE = 100;
+constexpr const uint8_t STEP_MIN_GATE = 1;
+constexpr const uint8_t STEP_MAX_GATE = 100;
 
 enum class Note : MIDI_Note {
     C,
@@ -42,12 +45,17 @@ struct SequencerStep {
     bool isEnabled = false;
     MIDI_Note note = getNote(Note::C, 0);
     uint8_t velocity = 127;
+    uint8_t gate = STEP_DEFAULT_GATE;
 
     void toggle() { isEnabled = !isEnabled; }
 
     void setNote(Note newNote, uint8_t octave) { note = getNote(newNote, octave); }
     void setNote(uint8_t newNote, uint8_t octave) { note = getNote(newNote, octave); }
 };
+
+[[nodiscard]] constexpr bool isValid(const SequencerStep& step) {
+    return step.gate >= STEP_MIN_GATE && step.gate <= STEP_MAX_GATE;
+}
 
 enum class RemoteNoteState : std::uint8_t { Clean, Unknown };
 
@@ -70,6 +78,8 @@ class Sequencer {
     bool adjustStepNote(StepIndex index, int16_t delta);
     [[nodiscard]] std::optional<uint8_t> getStepVelocity(StepIndex index) const;
     bool adjustStepVelocity(StepIndex index, int8_t delta);
+    [[nodiscard]] std::optional<uint8_t> getStepGate(StepIndex index) const;
+    bool adjustStepGate(StepIndex index, int8_t delta);
 
     [[nodiscard]] bool isRunning() const;
     std::optional<MIDI_Note> stop();

@@ -66,6 +66,7 @@ struct FakeStorage final : SwingMetro::ProgramStorageBackend {
 auto programWithVolume(std::uint8_t volume) -> SwingMetro::Program {
     SwingMetro::Program program;
     program.volume = volume;
+    program.steps[0].gate = volume + 1;
     return program;
 }
 
@@ -127,6 +128,7 @@ void testSaveAndLoadAllUserSlotsAndCurrentProgram() {
         TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(ProgramStoreStatus::Ok),
                                 static_cast<std::uint8_t>(store.load(slot, loaded)));
         TEST_ASSERT_EQUAL_UINT8(slot, loaded.volume);
+        TEST_ASSERT_EQUAL_UINT8(slot + 1, loaded.steps[0].gate);
         TEST_ASSERT_TRUE(storage.present[slot][copyIndex(ProgramStorageCopy::A)]);
         TEST_ASSERT_FALSE(storage.present[slot][copyIndex(ProgramStorageCopy::B)]);
     }
@@ -162,11 +164,13 @@ void testLoadChoosesNewerCopyAndFallsBackFromCorruptNewerCopy() {
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(ProgramStoreStatus::Ok),
                             static_cast<std::uint8_t>(store.load(0, loaded)));
     TEST_ASSERT_EQUAL_UINT8(22, loaded.volume);
+    TEST_ASSERT_EQUAL_UINT8(23, loaded.steps[0].gate);
 
     storage.images[0][copyIndex(ProgramStorageCopy::B)].bytes[0] ^= 1;
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(ProgramStoreStatus::Ok),
                             static_cast<std::uint8_t>(store.load(0, loaded)));
     TEST_ASSERT_EQUAL_UINT8(11, loaded.volume);
+    TEST_ASSERT_EQUAL_UINT8(12, loaded.steps[0].gate);
 }
 
 void testInterruptedOrFailedWritePreservesPreviousCopy() {

@@ -120,6 +120,29 @@ void test_legacy_timing_api_remains_compatible_until_stage_six() {
     TEST_ASSERT_EQUAL_UINT8(0, sequencer.getCurrentStepIndex());
 }
 
+void test_step_gate_defaults_clamps_and_adjusts() {
+    Sequencer sequencer;
+    TEST_ASSERT_TRUE(isValid(SequencerStep{}));
+    TEST_ASSERT_EQUAL_UINT8(STEP_DEFAULT_GATE, *sequencer.getStepGate(0));
+    TEST_ASSERT_FALSE(sequencer.getStepGate(STEPS_COUNT).has_value());
+    TEST_ASSERT_FALSE(sequencer.adjustStepGate(STEPS_COUNT, 1));
+
+    auto steps = sequencer.steps();
+    steps[0].gate = 0;
+    steps[1].gate = 101;
+    TEST_ASSERT_FALSE(isValid(steps[0]));
+    TEST_ASSERT_FALSE(isValid(steps[1]));
+    sequencer.setSteps(steps);
+    TEST_ASSERT_EQUAL_UINT8(STEP_MIN_GATE, *sequencer.getStepGate(0));
+    TEST_ASSERT_EQUAL_UINT8(STEP_MAX_GATE, *sequencer.getStepGate(1));
+    TEST_ASSERT_TRUE(sequencer.adjustStepGate(0, -1));
+    TEST_ASSERT_EQUAL_UINT8(STEP_MIN_GATE, *sequencer.getStepGate(0));
+    TEST_ASSERT_TRUE(sequencer.adjustStepGate(1, 1));
+    TEST_ASSERT_EQUAL_UINT8(STEP_MAX_GATE, *sequencer.getStepGate(1));
+    TEST_ASSERT_TRUE(sequencer.adjustStepGate(0, 24));
+    TEST_ASSERT_EQUAL_UINT8(25, *sequencer.getStepGate(0));
+}
+
 void test_swing_phase_is_literal_and_only_delays_odd_steps() {
     TEST_ASSERT_EQUAL_UINT16(0, SwingMetro::swingPhase(0, 75));
     TEST_ASSERT_EQUAL_UINT16(0, SwingMetro::swingPhase(1, 50));
@@ -200,6 +223,7 @@ void test_sequencer_main() {
     RUN_TEST(test_stop_returns_actual_not_projected_note);
     RUN_TEST(test_continue_preserves_next_boundary);
     RUN_TEST(test_legacy_timing_api_remains_compatible_until_stage_six);
+    RUN_TEST(test_step_gate_defaults_clamps_and_adjusts);
     RUN_TEST(test_swing_phase_is_literal_and_only_delays_odd_steps);
     RUN_TEST(test_swing_schedules_only_odd_note_ons_at_a_phase);
     RUN_TEST(test_actual_sounding_state_follows_transmitted_messages);

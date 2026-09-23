@@ -29,6 +29,7 @@ void testProgramDefaultsAreValid() {
         TEST_ASSERT_FALSE(step.enabled);
         TEST_ASSERT_EQUAL_UINT8(36, step.note);
         TEST_ASSERT_EQUAL_UINT8(127, step.velocity);
+        TEST_ASSERT_EQUAL_UINT8(100, step.gate);
     }
 }
 
@@ -38,8 +39,8 @@ void testCaptureProgramReadsAllRuntimeOwners() {
     auto volume = makeCounter(25, 0, 100);
     Sequencer sequencer;
     auto steps = sequencer.steps();
-    steps[0] = {.isEnabled = true, .note = 48, .velocity = 64};
-    steps[15] = {.isEnabled = true, .note = 127, .velocity = 1};
+    steps[0] = {.isEnabled = true, .note = 48, .velocity = 64, .gate = 25};
+    steps[15] = {.isEnabled = true, .note = 127, .velocity = 1, .gate = 75};
     sequencer.setSteps(steps);
     SwingMetro::MidiClockSettings midiClock;
     midiClock.apply(SwingMetro::MidiClockMode::External);
@@ -54,9 +55,11 @@ void testCaptureProgramReadsAllRuntimeOwners() {
     TEST_ASSERT_TRUE(program.steps[0].enabled);
     TEST_ASSERT_EQUAL_UINT8(48, program.steps[0].note);
     TEST_ASSERT_EQUAL_UINT8(64, program.steps[0].velocity);
+    TEST_ASSERT_EQUAL_UINT8(25, program.steps[0].gate);
     TEST_ASSERT_TRUE(program.steps[15].enabled);
     TEST_ASSERT_EQUAL_UINT8(127, program.steps[15].note);
     TEST_ASSERT_EQUAL_UINT8(1, program.steps[15].velocity);
+    TEST_ASSERT_EQUAL_UINT8(75, program.steps[15].gate);
 }
 
 void testApplyProgramReplacesAllPersistedRuntimeState() {
@@ -71,8 +74,8 @@ void testApplyProgramReplacesAllPersistedRuntimeState() {
         .volume = 33,
         .midiClockMode = SwingMetro::MidiClockMode::Internal,
     };
-    program.steps[0] = {.enabled = true, .note = 60, .velocity = 96};
-    program.steps[15] = {.enabled = true, .note = 127, .velocity = 1};
+    program.steps[0] = {.enabled = true, .note = 60, .velocity = 96, .gate = 50};
+    program.steps[15] = {.enabled = true, .note = 127, .velocity = 1, .gate = 100};
 
     TEST_ASSERT_TRUE(SwingMetro::applyProgram(program, tempo, swing, volume, sequencer, midiClock));
     TEST_ASSERT_EQUAL_UINT8(200, tempo.getValue());
@@ -86,10 +89,12 @@ void testApplyProgramReplacesAllPersistedRuntimeState() {
     TEST_ASSERT_TRUE(steps[0].isEnabled);
     TEST_ASSERT_EQUAL_UINT8(60, steps[0].note);
     TEST_ASSERT_EQUAL_UINT8(96, steps[0].velocity);
+    TEST_ASSERT_EQUAL_UINT8(50, steps[0].gate);
     TEST_ASSERT_FALSE(steps[1].isEnabled);
     TEST_ASSERT_TRUE(steps[15].isEnabled);
     TEST_ASSERT_EQUAL_UINT8(127, steps[15].note);
     TEST_ASSERT_EQUAL_UINT8(1, steps[15].velocity);
+    TEST_ASSERT_EQUAL_UINT8(100, steps[15].gate);
 }
 
 void testApplyProgramRejectsInvalidProgramWithoutChanges() {
@@ -109,6 +114,14 @@ void testApplyProgramRejectsInvalidProgramWithoutChanges() {
     TEST_ASSERT_EQUAL_UINT8(120, sequencer.getBpm());
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::Off),
                             static_cast<std::uint8_t>(midiClock.mode()));
+}
+
+void testProgramStepRejectsInvalidGate() {
+    SwingMetro::ProgramStep step;
+    step.gate = 0;
+    TEST_ASSERT_FALSE(SwingMetro::isValid(step));
+    step.gate = 101;
+    TEST_ASSERT_FALSE(SwingMetro::isValid(step));
 }
 
 void testApplyProgramClampsLegacySwing() {
@@ -132,5 +145,6 @@ void testProgramMain() {
     RUN_TEST(testCaptureProgramReadsAllRuntimeOwners);
     RUN_TEST(testApplyProgramReplacesAllPersistedRuntimeState);
     RUN_TEST(testApplyProgramRejectsInvalidProgramWithoutChanges);
+    RUN_TEST(testProgramStepRejectsInvalidGate);
     RUN_TEST(testApplyProgramClampsLegacySwing);
 }

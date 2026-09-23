@@ -24,7 +24,7 @@
 
 | Шаг | Документ | Результат |
 | --- | --- | --- |
-| 4.1 | [Домен Gate и persistence программы](04-note-gate/01-gate-domain-and-program-persistence.md) | Gate в модели и совместимый TLV codec/storage. |
+| 4.1 | [Домен Gate и persistence программы](04-note-gate/01-gate-domain-and-program-persistence.md) | Выполнено: Gate в модели и совместимый TLV codec/storage. |
 | 4.2 | [Deadline Gate и независимый Note Off](04-note-gate/02-gate-deadline-and-independent-note-off.md) | Точная phase-математика и парное scheduling. |
 | 4.3 | [Monophonic identity и delivery lifecycle](04-note-gate/03-monophonic-identity-and-delivery-lifecycle.md) | Финальные overlap, backpressure и session semantics. |
 | 4.4 | [Ввод и UI](04-note-gate/04-input-and-ui.md) | `AdjustGate`, снимок и экран Step Settings. |
