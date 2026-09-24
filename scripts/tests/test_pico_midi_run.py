@@ -122,6 +122,8 @@ class PicoMidiRunTests(unittest.TestCase):
         self.assertEqual(8, len([column for column in V3_COLUMNS if column.startswith("session_ends_")]))
         self.assertEqual(",".join(V3_COLUMNS), diagnostics_header_for_row(row))
         self.assertTrue(is_diagnostics_data_row(row))
+        self.assertIn("pending_removed_stale_gate_off_note", parsed)
+        self.assertIn("scheduled_removed_stale_gate_off_note", parsed)
         self.assertFalse(is_diagnostics_data_row(",".join(V3_COLUMNS)))
         with self.assertRaises(RuntimeError):
             parse_diagnostics_row(",".join([V3_COLUMNS[0], *("1" for _ in V2_COLUMNS[1:])]))

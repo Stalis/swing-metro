@@ -62,6 +62,7 @@ _INVALIDATION_REASONS = (
     "disconnected",
     "superseded_start",
     "scheduled_overdue",
+    "stale_gate_off",
 )
 _SESSION_END_REASONS = (
     "stop",

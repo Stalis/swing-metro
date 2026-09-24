@@ -28,7 +28,7 @@ void test_run_command_parses_duration_tempo_and_swing() {
 
 void test_run_command_accepts_crlf_and_documented_bounds() {
     SwingMetro::SerialRunCommandParser parser;
-    for (const char* byte = "RUN 1000 40 75\r"; *byte != '\0'; ++byte) {
+    for (const char* byte = "RUN 1000 40 90\r"; *byte != '\0'; ++byte) {
         TEST_ASSERT_EQUAL_INT(static_cast<int>(SwingMetro::SerialRunCommandStatus::Pending),
                               static_cast<int>(parser.push(*byte).status));
     }
@@ -45,7 +45,7 @@ void test_run_command_rejects_invalid_or_out_of_range_input() {
         "RUN 999 68 50",
         "RUN 1000 39 50",
         "RUN 1000 68 49",
-        "RUN 1000 68 76",
+        "RUN 1000 68 91",
         "RUN 1000 68 50 extra",
         "RUN 999999999999999999999 68 50",
     };

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "engine/transport.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -54,8 +56,8 @@ class SerialRunCommandParser {
     static constexpr std::uint32_t MAX_DURATION_MS = 3'600'000;
     static constexpr std::uint32_t MIN_BPM = 40;
     static constexpr std::uint32_t MAX_BPM = 240;
-    static constexpr std::uint32_t MIN_SWING = 50;
-    static constexpr std::uint32_t MAX_SWING = 75;
+    static constexpr std::uint32_t MIN_SWING = SWING_MIN_VALUE;
+    static constexpr std::uint32_t MAX_SWING = SWING_MAX_VALUE;
 
     [[nodiscard]] static auto consumeLiteral(const char*& cursor, const char* literal) noexcept
         -> bool {
