@@ -494,6 +494,7 @@ void test_process_duration_is_recorded_separately_from_service_interval() {
 void test_capacity_schedule_failure_stops_once_and_clears_queue() {
     Sequencer sequencer;
     enableFirstStep(sequencer);
+    sequencer.toggleStep(1);
     SwingMetro::MidiClockSettings settings;
     Sink sink;
     SwingMetro::MidiEventQueue queue;
@@ -504,11 +505,12 @@ void test_capacity_schedule_failure_stops_once_and_clears_queue() {
     controller.toggle(0);
     TEST_ASSERT_TRUE(ticks.publish({1'000, 20'000}));
     controller.process(1'000, ticks);
+    (void)queue.clear();
     for (std::size_t index = 0; index < SwingMetro::MidiEventQueue::CAPACITY; ++index) {
         TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
                           queue.enqueue({100 + index, 0}, noteOn(0, 1, 1)));
     }
-    for (std::uint32_t tick = 1; tick <= 4; ++tick) {
+    for (std::uint32_t tick = 1; tick <= 5; ++tick) {
         TEST_ASSERT_TRUE(ticks.publish({1'000 + tick * 20'000, 20'000}));
         controller.process(1'000 + tick * 20'000, ticks);
     }
@@ -524,6 +526,7 @@ void test_capacity_schedule_failure_stops_once_and_clears_queue() {
 void test_tick_quota_schedule_failure_stops_once_and_clears_queue() {
     Sequencer sequencer;
     enableFirstStep(sequencer);
+    sequencer.toggleStep(1);
     SwingMetro::MidiClockSettings settings;
     Sink sink;
     SwingMetro::MidiEventQueue queue;
@@ -534,11 +537,12 @@ void test_tick_quota_schedule_failure_stops_once_and_clears_queue() {
     controller.toggle(0);
     TEST_ASSERT_TRUE(ticks.publish({1'000, 20'000}));
     controller.process(1'000, ticks);
+    (void)queue.clear();
     for (std::size_t index = 0; index < 7; ++index) {
         TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
                           queue.enqueue({6, 0}, noteOn(0, 1, 1)));
     }
-    for (std::uint32_t tick = 1; tick <= 4; ++tick) {
+    for (std::uint32_t tick = 1; tick <= 5; ++tick) {
         TEST_ASSERT_TRUE(ticks.publish({1'000 + tick * 20'000, 20'000}));
         controller.process(1'000 + tick * 20'000, ticks);
     }

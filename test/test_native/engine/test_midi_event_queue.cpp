@@ -139,18 +139,33 @@ void test_phase_zero_prioritizes_clock_note_off_note_on_and_other_stably() {
     TEST_ASSERT_EQUAL(MidiMessageType::Start, result.events[5].message.type());
 }
 
-void test_nonzero_phase_preserves_insertion_order() {
+void test_nonzero_phase_prioritizes_clock_note_off_note_on_and_other_stably() {
     MidiEventQueue queue;
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
                       queue.enqueue({2, 50}, MidiMessage::start()));
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
                       queue.enqueue({2, 50}, MidiMessage::clock()));
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 50}, noteOff()));
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueue({2, 50}, noteOn()));
 
     const auto result = queue.drainAt({2, 50});
-    TEST_ASSERT_EQUAL(MidiMessageType::Start, result.events[0].message.type());
-    TEST_ASSERT_TRUE(result.events[1].message.isClock());
-    TEST_ASSERT_EQUAL(MidiMessageType::NoteOff, result.events[2].message.type());
+    TEST_ASSERT_TRUE(result.events[0].message.isClock());
+    TEST_ASSERT_EQUAL(MidiMessageType::NoteOff, result.events[1].message.type());
+    TEST_ASSERT_EQUAL(MidiMessageType::NoteOn, result.events[2].message.type());
+    TEST_ASSERT_EQUAL(MidiMessageType::Start, result.events[3].message.type());
+}
+
+void test_batch_preserves_shared_launch_identity() {
+    MidiEventQueue queue;
+    constexpr SwingMetro::MidiLaunchId launchId = 42;
+    const std::array<MidiEventRequest, 2> batch = {
+        MidiEventRequest{{2, 50}, noteOn(), launchId},
+        MidiEventRequest{{8, 50}, noteOff(), launchId},
+    };
+
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, queue.enqueueBatch(batch, batch.size()));
+    TEST_ASSERT_EQUAL_UINT32(launchId, queue.drainAt({2, 50}).events[0].launchId);
+    TEST_ASSERT_EQUAL_UINT32(launchId, queue.drainAt({8, 50}).events[0].launchId);
 }
 
 void test_drain_returns_late_events_and_preserves_message() {
@@ -231,7 +246,8 @@ void test_midi_event_queue_main() {
     RUN_TEST(test_enqueued_message_is_immutable_copy);
     RUN_TEST(test_drain_respects_phase_zero_fifty_and_seventy_five);
     RUN_TEST(test_phase_zero_prioritizes_clock_note_off_note_on_and_other_stably);
-    RUN_TEST(test_nonzero_phase_preserves_insertion_order);
+    RUN_TEST(test_nonzero_phase_prioritizes_clock_note_off_note_on_and_other_stably);
+    RUN_TEST(test_batch_preserves_shared_launch_identity);
     RUN_TEST(test_drain_returns_late_events_and_preserves_message);
     RUN_TEST(test_clear_removes_all_events);
     RUN_TEST(test_next_position_is_read_only_and_returns_the_earliest_event);

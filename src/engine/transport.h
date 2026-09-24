@@ -11,6 +11,7 @@ using TransportPhase = std::uint16_t;
 constexpr TransportTick TICKS_PER_QUARTER = 24;
 constexpr TransportTick TICKS_PER_SIXTEENTH = 6;
 constexpr TransportPhase PHASE_MAX = UINT16_MAX;
+constexpr std::uint64_t PHASE_COUNT = static_cast<std::uint64_t>(PHASE_MAX) + 1U;
 constexpr std::uint8_t SWING_MIN_VALUE = 50;
 constexpr std::uint8_t SWING_MAX_VALUE = 90;
 
@@ -56,6 +57,26 @@ struct TransportPosition {
     }
     return static_cast<TransportPhase>(static_cast<std::uint32_t>(percent) *
                                        (static_cast<std::uint32_t>(PHASE_MAX) + 1U) / 100U);
+}
+
+[[nodiscard]] constexpr auto gateDurationUnits(std::uint8_t gate) noexcept -> std::uint64_t {
+    return TICKS_PER_SIXTEENTH * PHASE_COUNT * gate / 100U;
+}
+
+[[nodiscard]] constexpr auto addPhaseUnits(TransportPosition position, std::uint64_t units) noexcept
+    -> TransportPosition {
+    const auto phaseUnits = units % PHASE_COUNT;
+    const auto phaseTotal = static_cast<std::uint64_t>(position.phase) + phaseUnits;
+    const auto tickDelta = units / PHASE_COUNT + phaseTotal / PHASE_COUNT;
+    if (tickDelta > std::numeric_limits<TransportTick>::max() - position.tick) {
+        return {std::numeric_limits<TransportTick>::max(), PHASE_MAX};
+    }
+    return {position.tick + tickDelta, static_cast<TransportPhase>(phaseTotal % PHASE_COUNT)};
+}
+
+[[nodiscard]] constexpr auto gateDeadline(TransportPosition onPosition, std::uint8_t gate) noexcept
+    -> TransportPosition {
+    return addPhaseUnits(onPosition, gateDurationUnits(gate));
 }
 
 [[nodiscard]] constexpr auto clampSwingValue(std::uint8_t swing) noexcept -> std::uint8_t {

@@ -1,6 +1,6 @@
 # Шаг 4.2. Deadline Gate и независимый Note Off
 
-Статус: запланировано. Зависит от шага 4.1.
+Статус: выполнено 2026-09-24. Зависит от шага 4.1.
 
 ## Цель
 
@@ -82,3 +82,9 @@ policy, UI, filesystem и hardware validation.
 Передать immutable launchId пары, absolute On/Off deadlines, atomic pair enqueue и точные
 capacity/reserve значения. Шаг 4.3 становится единственным владельцем lifecycle и решает,
 какие scheduled/pending events являются stale.
+
+Фактический контракт после реализации: scheduled queue сохраняет capacity 16 и максимум
+8 packets на tick, причём допускает не более 7 non-Clock packets, резервируя одно место
+для Clock. Sequencer добавляет On/Off только атомарной парой с общим ненулевым `launchId`;
+при отказе capacity либо tick quota его boundary остаётся retryable. Cancellation и stale
+identity намеренно не реализованы до шага 4.3.

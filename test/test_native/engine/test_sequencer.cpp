@@ -15,6 +15,12 @@ void enableStep(Sequencer& sequencer, StepIndex index, MIDI_Note note, uint8_t v
     sequencer.setSteps(steps);
 }
 
+void setGate(Sequencer& sequencer, StepIndex index, uint8_t gate) {
+    auto steps = sequencer.steps();
+    steps[index].gate = gate;
+    sequencer.setSteps(steps);
+}
+
 void test_start_schedules_tick_zero_and_two_tick_horizon() {
     Sequencer sequencer;
     MidiEventQueue queue;
@@ -23,7 +29,7 @@ void test_start_schedules_tick_zero_and_two_tick_horizon() {
 
     sequencer.start();
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, sequencer.scheduleThrough({0, 0}, queue));
-    TEST_ASSERT_EQUAL_UINT32(1, queue.size());
+    TEST_ASSERT_EQUAL_UINT32(2, queue.size());
     TEST_ASSERT_EQUAL_UINT64(0, queue.nextPosition()->tick);
     const auto first = queue.drainAt({0, 0});
     TEST_ASSERT_TRUE(first.events[0].message.isNoteOn());
@@ -109,7 +115,10 @@ void test_continue_preserves_next_boundary() {
     sequencer.continuePlayback();
 
     TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, sequencer.scheduleThrough({4, 0}, queue));
-    TEST_ASSERT_EQUAL_UINT8(61, queue.drainAt({6, 0}).events[0].message.note());
+    const auto events = queue.drainAt({6, 0});
+    TEST_ASSERT_EQUAL_UINT32(2, events.count);
+    TEST_ASSERT_TRUE(events.events[0].message.isNoteOffEquivalent());
+    TEST_ASSERT_EQUAL_UINT8(61, events.events[1].message.note());
 }
 
 void test_legacy_timing_api_remains_compatible_until_stage_six() {
@@ -175,9 +184,67 @@ void test_swing_schedules_only_odd_note_ons_at_a_phase() {
 
     (void)sequencer.scheduleThrough({10, 0}, queue);
     const auto next = queue.drainAt({12, 0});
-    TEST_ASSERT_EQUAL_UINT32(2, next.count);
-    TEST_ASSERT_TRUE(next.events[0].message.isNoteOffEquivalent());
-    TEST_ASSERT_TRUE(next.events[1].message.isNoteOn());
+    TEST_ASSERT_EQUAL_UINT32(1, next.count);
+    TEST_ASSERT_TRUE(next.events[0].message.isNoteOn());
+    const auto finalOff = queue.drainAt({12, SwingMetro::phaseFromPercent(75)});
+    TEST_ASSERT_EQUAL_UINT32(1, finalOff.count);
+    TEST_ASSERT_TRUE(finalOff.events[0].message.isNoteOffEquivalent());
+}
+
+void test_gate_pair_uses_swung_on_and_shared_immutable_identity() {
+    Sequencer sequencer;
+    MidiEventQueue queue;
+    enableStep(sequencer, 1, 61, 101);
+    setGate(sequencer, 1, 25);
+    sequencer.setSwing(75);
+    sequencer.start();
+
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, sequencer.scheduleThrough({4, 0}, queue));
+    const auto on = queue.drainAt({6, SwingMetro::phaseFromPercent(75)}).events[0];
+    const auto off = queue.drainAt({8, SwingMetro::phaseFromPercent(25)}).events[0];
+    TEST_ASSERT_TRUE(on.message.isNoteOn());
+    TEST_ASSERT_TRUE(off.message.isNoteOffEquivalent());
+    TEST_ASSERT_EQUAL_UINT8(61, off.message.note());
+    TEST_ASSERT_EQUAL_UINT32(on.launchId, off.launchId);
+    TEST_ASSERT_NOT_EQUAL_UINT32(0, on.launchId);
+}
+
+void test_gate_pair_capacity_rejection_keeps_both_events_retryable() {
+    Sequencer sequencer;
+    MidiEventQueue queue;
+    enableStep(sequencer, 0, 60, 100);
+    for (std::size_t index = 0; index < MidiEventQueue::CAPACITY - 1; ++index) {
+        TEST_ASSERT_EQUAL(
+            MidiEventQueueEnqueueResult::Ok,
+            queue.enqueue({100 + index, 0}, *SwingMetro::MidiMessage::noteOn(0, 1, 1)));
+    }
+    sequencer.start();
+
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::CapacityExceeded,
+                      sequencer.scheduleThrough({0, 0}, queue));
+    TEST_ASSERT_EQUAL_UINT32(MidiEventQueue::CAPACITY - 1, queue.size());
+    queue.clear();
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, sequencer.scheduleThrough({0, 0}, queue));
+    TEST_ASSERT_EQUAL_UINT32(2, queue.size());
+}
+
+void test_gate_pair_tick_quota_rejection_keeps_both_events_retryable() {
+    Sequencer sequencer;
+    MidiEventQueue queue;
+    enableStep(sequencer, 1, 61, 100);
+    for (std::size_t index = 0; index < MidiEventQueue::MAX_PACKETS_PER_TICK - 1; ++index) {
+        TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
+                          queue.enqueue({6, 0}, *SwingMetro::MidiMessage::noteOn(
+                                                    0, static_cast<uint8_t>(index), 1)));
+    }
+    sequencer.start();
+
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::TickQuotaExceeded,
+                      sequencer.scheduleThrough({4, 0}, queue));
+    TEST_ASSERT_EQUAL_UINT32(MidiEventQueue::MAX_PACKETS_PER_TICK - 1, queue.size());
+    queue.clear();
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, sequencer.scheduleThrough({4, 0}, queue));
+    TEST_ASSERT_EQUAL_UINT32(2, queue.size());
 }
 
 void test_actual_sounding_state_follows_transmitted_messages() {
@@ -226,6 +293,9 @@ void test_sequencer_main() {
     RUN_TEST(test_step_gate_defaults_clamps_and_adjusts);
     RUN_TEST(test_swing_phase_is_literal_and_only_delays_odd_steps);
     RUN_TEST(test_swing_schedules_only_odd_note_ons_at_a_phase);
+    RUN_TEST(test_gate_pair_uses_swung_on_and_shared_immutable_identity);
+    RUN_TEST(test_gate_pair_capacity_rejection_keeps_both_events_retryable);
+    RUN_TEST(test_gate_pair_tick_quota_rejection_keeps_both_events_retryable);
     RUN_TEST(test_actual_sounding_state_follows_transmitted_messages);
     RUN_TEST(test_cancelled_note_off_request_preserves_accepted_state_and_can_be_requested_again);
     RUN_TEST(test_disconnect_abandonment_is_not_note_off_acceptance);

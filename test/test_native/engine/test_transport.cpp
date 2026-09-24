@@ -87,6 +87,30 @@ void test_advance_tick_saturates_at_maximum_tick() {
     TEST_ASSERT_EQUAL_UINT64(std::numeric_limits<TransportTick>::max(), transport.position().tick);
 }
 
+void test_gate_duration_uses_full_phase_count_and_assigned_position() {
+    constexpr TransportPosition on{12, SwingMetro::phaseFromPercent(75)};
+    TEST_ASSERT_EQUAL_UINT64(3'932, SwingMetro::gateDurationUnits(1));
+    TEST_ASSERT_EQUAL_UINT64(98'304, SwingMetro::gateDurationUnits(25));
+    TEST_ASSERT_EQUAL_UINT64(196'608, SwingMetro::gateDurationUnits(50));
+    TEST_ASSERT_EQUAL_UINT64(294'912, SwingMetro::gateDurationUnits(75));
+    TEST_ASSERT_EQUAL_UINT64(393'216, SwingMetro::gateDurationUnits(100));
+
+    const auto deadline = SwingMetro::gateDeadline(on, 100);
+    TEST_ASSERT_EQUAL_UINT64(18, deadline.tick);
+    TEST_ASSERT_EQUAL_UINT16(on.phase, deadline.phase);
+}
+
+void test_phase_unit_addition_carries_and_saturates_without_overflow() {
+    const auto carried = SwingMetro::addPhaseUnits({7, SwingMetro::PHASE_MAX}, 1);
+    TEST_ASSERT_EQUAL_UINT64(8, carried.tick);
+    TEST_ASSERT_EQUAL_UINT16(0, carried.phase);
+
+    const auto saturated = SwingMetro::gateDeadline(
+        {std::numeric_limits<TransportTick>::max() - 1, SwingMetro::PHASE_MAX}, 100);
+    TEST_ASSERT_EQUAL_UINT64(std::numeric_limits<TransportTick>::max(), saturated.tick);
+    TEST_ASSERT_EQUAL_UINT16(SwingMetro::PHASE_MAX, saturated.phase);
+}
+
 } // namespace
 
 void test_transport_main() {
@@ -96,4 +120,6 @@ void test_transport_main() {
     RUN_TEST(test_start_stop_continue_and_reset_position);
     RUN_TEST(test_snapshot_tracks_ticks_within_sixteenth);
     RUN_TEST(test_advance_tick_saturates_at_maximum_tick);
+    RUN_TEST(test_gate_duration_uses_full_phase_count_and_assigned_position);
+    RUN_TEST(test_phase_unit_addition_carries_and_saturates_without_overflow);
 }

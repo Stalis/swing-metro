@@ -118,9 +118,10 @@ class Sequencer {
     bool _running = false;
     std::optional<MIDI_Note> _actualSoundingNote;
     std::optional<MIDI_Note> _requestedNoteOff;
-    std::optional<MIDI_Note> _projectedSoundingNote;
     RemoteNoteState _remoteNoteState = RemoteNoteState::Clean;
     SwingMetro::TransportTick _nextBoundaryTick = 0;
+    SwingMetro::MidiLaunchId _nextLaunchId = 1;
+    bool _schedulingComplete = false;
 
     uint32_t _stepPeriodUs;
     uint32_t _lastStepAt = 0;

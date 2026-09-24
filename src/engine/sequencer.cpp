@@ -1,6 +1,7 @@
 #include "sequencer.h"
 
 #include <algorithm>
+#include <limits>
 
 constexpr uint8_t DEFAULT_BPM = 120;
 constexpr uint8_t MIN_BPM = 40;
@@ -124,7 +125,6 @@ bool Sequencer::isRunning() const { return _running; }
 
 std::optional<MIDI_Note> Sequencer::stop() {
     _running = false;
-    _projectedSoundingNote.reset();
     if (_actualSoundingNote.has_value() && _requestedNoteOff != _actualSoundingNote) {
         _requestedNoteOff = _actualSoundingNote;
         return _actualSoundingNote;
@@ -150,8 +150,9 @@ void Sequencer::start() {
     _running = true;
     _currentStepIndex = 0;
     _hasCurrentStep = false;
-    _projectedSoundingNote.reset();
     _nextBoundaryTick = 0;
+    _nextLaunchId = 1;
+    _schedulingComplete = false;
 }
 
 void Sequencer::continuePlayback() { _running = true; }
@@ -159,31 +160,43 @@ void Sequencer::continuePlayback() { _running = true; }
 SwingMetro::MidiEventQueueEnqueueResult
 Sequencer::scheduleThrough(SwingMetro::TransportPosition position,
                            SwingMetro::MidiEventQueue& queue) {
-    if (!_running) {
+    if (!_running || _schedulingComplete) {
         return SwingMetro::MidiEventQueueEnqueueResult::Ok;
     }
-    const auto horizon = position.tick + SCHEDULING_LOOKAHEAD_TICKS;
+    const auto horizon = position.tick > std::numeric_limits<SwingMetro::TransportTick>::max() -
+                                             SCHEDULING_LOOKAHEAD_TICKS
+                             ? std::numeric_limits<SwingMetro::TransportTick>::max()
+                             : position.tick + SCHEDULING_LOOKAHEAD_TICKS;
     while (_nextBoundaryTick <= horizon) {
         const auto stepIndex = static_cast<StepIndex>(
             (_nextBoundaryTick / SwingMetro::TICKS_PER_SIXTEENTH) % STEPS_COUNT);
         const auto& step = _steps[stepIndex];
-        std::array<SwingMetro::MidiEventRequest, 2> requests{};
-        std::size_t count = 0;
-        if (_projectedSoundingNote.has_value()) {
-            requests[count++] = {{_nextBoundaryTick, 0},
-                                 *SwingMetro::MidiMessage::noteOff(0, *_projectedSoundingNote)};
-        }
-        std::optional<MIDI_Note> projected;
         if (step.isEnabled) {
-            projected = step.note;
-            requests[count++] = {{_nextBoundaryTick, SwingMetro::swingPhase(stepIndex, _swing)},
-                                 *SwingMetro::MidiMessage::noteOn(0, step.note, step.velocity)};
+            const SwingMetro::TransportPosition onPosition{
+                _nextBoundaryTick, SwingMetro::swingPhase(stepIndex, _swing)};
+            const auto launchId = _nextLaunchId;
+            const std::array<SwingMetro::MidiEventRequest, 2> requests = {
+                SwingMetro::MidiEventRequest{
+                    onPosition, *SwingMetro::MidiMessage::noteOn(0, step.note, step.velocity),
+                    launchId},
+                SwingMetro::MidiEventRequest{SwingMetro::gateDeadline(onPosition, step.gate),
+                                             *SwingMetro::MidiMessage::noteOff(0, step.note),
+                                             launchId},
+            };
+            const auto result = queue.enqueueBatch(requests, requests.size());
+            if (result != SwingMetro::MidiEventQueueEnqueueResult::Ok) {
+                return result;
+            }
+            ++_nextLaunchId;
+            if (_nextLaunchId == 0) {
+                ++_nextLaunchId;
+            }
         }
-        const auto result = queue.enqueueBatch(requests, count);
-        if (result != SwingMetro::MidiEventQueueEnqueueResult::Ok) {
-            return result;
+        if (_nextBoundaryTick > std::numeric_limits<SwingMetro::TransportTick>::max() -
+                                    SwingMetro::TICKS_PER_SIXTEENTH) {
+            _schedulingComplete = true;
+            break;
         }
-        _projectedSoundingNote = projected;
         _nextBoundaryTick += SwingMetro::TICKS_PER_SIXTEENTH;
     }
     return SwingMetro::MidiEventQueueEnqueueResult::Ok;

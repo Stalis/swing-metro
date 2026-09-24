@@ -10,15 +10,19 @@
 
 namespace SwingMetro {
 
+using MidiLaunchId = std::uint32_t;
+
 struct MidiEvent {
     TransportPosition target{};
     MidiMessage message{};
     std::size_t sequenceNumber = 0;
+    MidiLaunchId launchId = 0;
 };
 
 struct MidiEventRequest {
     TransportPosition target{};
     MidiMessage message{};
+    MidiLaunchId launchId = 0;
 };
 
 enum class MidiEventQueueEnqueueResult : std::uint8_t {
@@ -151,7 +155,8 @@ class MidiEventQueue {
 
   private:
     auto enqueueUnchecked(const MidiEventRequest& request) noexcept -> void {
-        const MidiEvent event{request.target, request.message, _nextSequenceNumber++};
+        const MidiEvent event{request.target, request.message, _nextSequenceNumber++,
+                              request.launchId};
         std::size_t insertAt = _count;
         while (insertAt > 0 && eventPrecedes(event, _events[insertAt - 1])) {
             _events[insertAt] = _events[insertAt - 1];
@@ -185,9 +190,6 @@ class MidiEventQueue {
         -> bool {
         if (left.target != right.target) {
             return left.target < right.target;
-        }
-        if (left.target.phase != 0) {
-            return left.sequenceNumber < right.sequenceNumber;
         }
         const auto leftPriority = priority(left);
         const auto rightPriority = priority(right);
