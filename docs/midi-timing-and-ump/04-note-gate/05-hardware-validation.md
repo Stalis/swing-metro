@@ -1,7 +1,6 @@
 # Шаг 4.5. Аппаратная проверка Gate
 
-Статус: частично выполнено 2026-09-24; автоматизированные Gate 100% прогоны завершены,
-физические UI/persistence сценарии ожидают доступа к устройству. Зависит от шагов 4.1–4.4.
+Статус: выполнено 2026-09-24. Зависит от шагов 4.1–4.4.
 
 ## Цель
 
@@ -75,14 +74,14 @@ firmware/test code ради измерения и добавление capture a
 Передать Stage 5 measured MIDI balance, timing/order, setup, artifact locations вне Git и
 все unresolved hardware limitations. Не переносить неподтверждённые external/disconnect claims.
 
-## Частичный аппаратный результат 2026-09-24
+## Аппаратный результат 2026-09-24
 
 Проверена сборка `f5ecad6` на одном Pico 2 W (USB serial
 `FA405FCD92DB59C2`, MIDI input `Pico 2W`) через
-`scripts/pico_midi_run.py`. Каждый измеряемый run длился 60 секунд и начинался после
-upload/reboot; параллельных MIDI/Serial monitor не было. До upload прошёл `make verify`:
-315 native tests, 14 Python tests и firmware build. Во время running run операции
-Save/Load не выполнялись.
+`scripts/pico_midi_run.py`. Baseline runs длились 60 секунд, Gate matrix runs — 30 секунд,
+live-edit run — 90 секунд; параллельных MIDI/Serial monitor не было. До upload прошёл
+`make verify`: 315 native tests, 14 Python tests и firmware build. Во время running run
+операции Save/Load не выполнялись.
 
 Первый реальный запуск обнаружил два расхождения validation tooling: host parser не знал
 добавленную в шаге 4.3 причину `stale_gate_off`, а Serial `RUN` ограничивал swing значением
@@ -104,15 +103,48 @@ swing 90 чередует собственный шеститактовый dead
 16,454 мс соседствует с одним коротким 4,816 мс; общий host/firmware count совпадает
 5760/5760, firmware retry равен нулю, поэтому это host timestamp bunching, а не потеря Clock.
 
+Для Gate matrix был оставлен один активный шаг, остальные 15 отключены. Это одновременно
+проверяет disabled-successor contract: пустая граница не создаёт ранний Off. Firmware
+counters между последовательными runs были cumulative, поэтому сравнивались их дельты,
+а MIDI balance и deadline — непосредственно в каждом отдельном host capture.
+
+| Gate | 68 BPM: On/Off, median / expected | 240 BPM: On/Off, median / expected |
+| ---: | --- | --- |
+| 1% | 9/9, 2,042 / 2,206 мс | 30/30, 0,550 / 0,625 мс |
+| 25% | 9/9, 54,927 / 55,147 мс | 30/30, 15,568 / 15,625 мс |
+| 50% | 9/9, 110,341 / 110,294 мс | 30/30, 31,714 / 31,250 мс |
+| 75% | 9/9, 165,212 / 165,441 мс | 30/30, 46,628 / 46,875 мс |
+| 100% | 9/9, 220,513 / 220,588 мс | 30/30, 62,570 / 62,500 мс |
+
+Все Gate matrix captures имеют полный On/Off balance без unexpected Off, duplicate Off или
+незакрытой ноты. Gate 1 остаётся положительным и завершается внутри одного Clock interval;
+Gate 100 с disabled successor во всех 39 парах имеет ровно шесть Clock между On и Off.
+Повторяющиеся проходы единственного шага подтверждают обычный sequencer/bar wrap; полный
+integer tick wrap аппаратно непрактичен и остаётся детерминированно покрыт native tests.
+
+UI проверен физически: в Step Settings VolumeEncoder меняет Gate и отображаемый процент;
+после закрытия Step Settings тот же encoder снова меняет global Volume. Tempo/Swing routing
+остаётся покрыт native input tests. В 90-секундном active run Gate был изменён с 100 до 50 без Save/Load:
+первые три host-пары имели 220,1–220,6 мс, следующие 23 — около 110,3 мс. Clock и On/Off
+остались сбалансированы, изменение применилось только к последующим launches.
+
+В stopped состоянии Gate 50 и pattern с одним активным шагом сохранены в user slot 1.
+После mutation до Gate 75 и включения второго шага Load восстановил Gate 50 и исходный
+pattern. Полный USB power-cycle восстановил те же значения из current program; отдельный
+fresh capture после reboot дал Clock 816/816, On/Off 9/9 и median 110,289 мс. Это
+подтверждает не только UI value, но и использование восстановленного Gate MIDI engine-ом.
+
 Локальные, исключённые из Git artifacts:
 
 - `data/midi-stage-4-5-gate100-68-swing50-run1-{midi,diagnostics,input-diagnostics,summary}.csv`;
 - `data/midi-stage-4-5-gate100-240-swing50-fresh-run1-{midi,diagnostics,input-diagnostics,summary}.csv`;
 - `data/midi-stage-4-5-gate100-68-swing90-fresh-run1-{midi,diagnostics,input-diagnostics,summary}.csv`;
 - `data/midi-stage-4-5-gate100-240-swing90-fresh-run1-{midi,diagnostics,input-diagnostics,summary}.csv`.
+- `data/midi-stage-4-5-gate{1,25,50,75}-{68,240}-swing50-run1-{midi,diagnostics,input-diagnostics,summary}.csv`;
+- `data/midi-stage-4-5-gate100-disabled-{68,240}-swing50-run1-{midi,diagnostics,input-diagnostics,summary}.csv`;
+- `data/midi-stage-4-5-live-gate100-to50-68-run1-{midi,diagnostics,input-diagnostics,summary}.csv`;
+- `data/midi-stage-4-5-persisted-gate50-after-reboot-68-run1-{midi,diagnostics,input-diagnostics,summary}.csv`.
 
-Пока недоступны без физического управления энкодерами/кнопками: Gate 1/25/50/75,
-disabled-step pattern, live Gate/step edit и проверка UI/Volume semantics, stopped
-save/load/reboot persistence. External clock и воспроизводимый disconnect также отмечены
-`unavailable`: валидного входного clock/disconnect setup в этом run не было. Эти случаи
-остаются обязательными для завершения шага 4.5; software/native coverage их не заменяет.
+External clock и воспроизводимый USB disconnect отмечены `unavailable`: валидного входного
+clock/disconnect setup в этих runs не было. Они не подменялись симуляцией. Остальные readiness
+conditions шага выполнены; локальные artifacts остаются исключёнными из Git.

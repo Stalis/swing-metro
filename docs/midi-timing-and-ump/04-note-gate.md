@@ -1,6 +1,6 @@
 # Этап 4. Gate Percent для ноты
 
-Статус: выполняется; шаги 4.1–4.4 завершены, автоматизированная часть 4.5 пройдена.
+Статус: выполнено 2026-09-24; шаги 4.1–4.5 завершены.
 Зависит от этапов 1–3; незавершённый IRQ/PIO follow-up этапа 3 не блокирует software work этапа 4.
 
 ## Цель
@@ -29,7 +29,7 @@
 | 4.2 | [Deadline Gate и независимый Note Off](04-note-gate/02-gate-deadline-and-independent-note-off.md) | Выполнено: точная phase-математика и атомарное парное scheduling. |
 | 4.3 | [Monophonic identity и delivery lifecycle](04-note-gate/03-monophonic-identity-and-delivery-lifecycle.md) | Выполнено: финальные overlap, backpressure и session semantics. |
 | 4.4 | [Ввод и UI](04-note-gate/04-input-and-ui.md) | Выполнено: `AdjustGate`, согласованный снимок и экран Step Settings. |
-| 4.5 | [Аппаратная проверка](04-note-gate/05-hardware-validation.md) | Частично: Gate 100% при 68/240 BPM и swing 50/90; физические сценарии ожидают доступа. |
+| 4.5 | [Аппаратная проверка](04-note-gate/05-hardware-validation.md) | Выполнено: Gate matrix, overlap/order, UI и persistence подтверждены на устройстве. |
 
 Шаги выполняются строго последовательно; каждый должен оставлять repository build и
 native suite зелёными. Шаг 4.2 намеренно является промежуточным scope: он не объявляет
