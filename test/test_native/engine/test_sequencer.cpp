@@ -281,6 +281,18 @@ void test_disconnect_abandonment_is_not_note_off_acceptance() {
                       static_cast<std::uint8_t>(sequencer.remoteNoteState()));
 }
 
+void test_same_pitch_old_launch_off_does_not_clear_replacement() {
+    Sequencer sequencer;
+    sequencer.beginCleanRemoteSession(2);
+    sequencer.notifyNoteOnAccepted({60, 1, 2});
+    sequencer.notifyNoteOnAccepted({60, 2, 2});
+    sequencer.notifyNoteOffAccepted({60, 1, 2});
+    TEST_ASSERT_EQUAL_UINT8(60, *sequencer.actualSoundingNote());
+    TEST_ASSERT_EQUAL_UINT32(2, sequencer.actualSoundingLaunch()->launchId);
+    sequencer.notifyNoteOffAccepted({60, 2, 2});
+    TEST_ASSERT_FALSE(sequencer.actualSoundingNote().has_value());
+}
+
 } // namespace
 
 void test_sequencer_main() {
@@ -299,4 +311,5 @@ void test_sequencer_main() {
     RUN_TEST(test_actual_sounding_state_follows_transmitted_messages);
     RUN_TEST(test_cancelled_note_off_request_preserves_accepted_state_and_can_be_requested_again);
     RUN_TEST(test_disconnect_abandonment_is_not_note_off_acceptance);
+    RUN_TEST(test_same_pitch_old_launch_off_does_not_clear_replacement);
 }

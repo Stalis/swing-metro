@@ -17,12 +17,16 @@ struct MidiEvent {
     MidiMessage message{};
     std::size_t sequenceNumber = 0;
     MidiLaunchId launchId = 0;
+    std::uint32_t sessionGeneration = 0;
+    TransportPosition gateDeadline{};
 };
 
 struct MidiEventRequest {
     TransportPosition target{};
     MidiMessage message{};
     MidiLaunchId launchId = 0;
+    std::uint32_t sessionGeneration = 0;
+    TransportPosition gateDeadline{};
 };
 
 enum class MidiEventQueueEnqueueResult : std::uint8_t {
@@ -134,6 +138,21 @@ class MidiEventQueue {
         return summary;
     }
 
+    template <typename Predicate>
+    [[nodiscard]] auto removeIf(Predicate predicate) noexcept -> MidiMessageClassSummary {
+        MidiMessageClassSummary summary;
+        std::size_t write = 0;
+        for (std::size_t read = 0; read < _count; ++read) {
+            if (!predicate(_events[read])) {
+                _events[write++] = _events[read];
+                continue;
+            }
+            ++summary.counts[static_cast<std::size_t>(_events[read].message.messageClass())];
+        }
+        _count = write;
+        return summary;
+    }
+
     [[nodiscard]] auto size() const noexcept -> std::size_t { return _count; }
 
     [[nodiscard]] auto empty() const noexcept -> bool { return _count == 0; }
@@ -155,8 +174,8 @@ class MidiEventQueue {
 
   private:
     auto enqueueUnchecked(const MidiEventRequest& request) noexcept -> void {
-        const MidiEvent event{request.target, request.message, _nextSequenceNumber++,
-                              request.launchId};
+        const MidiEvent event{request.target,   request.message,           _nextSequenceNumber++,
+                              request.launchId, request.sessionGeneration, request.gateDeadline};
         std::size_t insertAt = _count;
         while (insertAt > 0 && eventPrecedes(event, _events[insertAt - 1])) {
             _events[insertAt] = _events[insertAt - 1];

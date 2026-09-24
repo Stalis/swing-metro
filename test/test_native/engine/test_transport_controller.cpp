@@ -1258,6 +1258,107 @@ void test_note_on_expires_at_retry_window_equality_without_acceptance() {
     assertOutboxBalance(diagnostics, SwingMetro::MidiMessageClass::Note);
 }
 
+void test_overlapping_same_pitch_replaces_with_identity_safe_off() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    dispatcher.start(false, 0);
+    sequencer.beginCleanRemoteSession(dispatcher.sessionGeneration());
+    const std::array<SwingMetro::MidiEventRequest, 4> events = {
+        SwingMetro::MidiEventRequest{
+            {0, 0}, noteOn(0, 60, 100), 1, dispatcher.sessionGeneration(), {12, 0}},
+        SwingMetro::MidiEventRequest{{12, 0},
+                                     *SwingMetro::MidiMessage::noteOff(0, 60),
+                                     1,
+                                     dispatcher.sessionGeneration(),
+                                     {12, 0}},
+        SwingMetro::MidiEventRequest{
+            {6, 0}, noteOn(0, 60, 100), 2, dispatcher.sessionGeneration(), {12, 0}},
+        SwingMetro::MidiEventRequest{{12, 0},
+                                     *SwingMetro::MidiMessage::noteOff(0, 60),
+                                     2,
+                                     dispatcher.sessionGeneration(),
+                                     {12, 0}},
+    };
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueueBatch(events.data(), events.size()));
+    dispatcher.consumeTick({1'000, 20'000}, false, 1'000);
+    for (std::uint32_t tick = 1; tick <= 6; ++tick) {
+        dispatcher.consumeTick({1'000 + tick * 20'000, 20'000}, false, 1'000 + tick * 20'000);
+    }
+    TEST_ASSERT_EQUAL_UINT32(3, sink.count);
+    TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[0][1]);
+    TEST_ASSERT_EQUAL_HEX8(0x80, sink.packets[1][1]);
+    TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[2][1]);
+    TEST_ASSERT_EQUAL_UINT32(2, sequencer.actualSoundingLaunch()->launchId);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.staleGateOffCount);
+    for (std::uint32_t tick = 7; tick <= 12; ++tick) {
+        dispatcher.consumeTick({1'000 + tick * 20'000, 20'000}, false, 1'000 + tick * 20'000);
+    }
+    TEST_ASSERT_EQUAL_UINT32(4, sink.count);
+    TEST_ASSERT_FALSE(sequencer.actualSoundingNote().has_value());
+}
+
+void test_retrying_swung_projection_gets_early_off_before_same_pitch_replacement() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    sink.results.fill(SwingMetro::SendResult::RetryLater);
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    dispatcher.start(false, 0);
+    sequencer.beginCleanRemoteSession(dispatcher.sessionGeneration());
+    const auto swung = SwingMetro::phaseFromPercent(75);
+    const std::array<SwingMetro::MidiEventRequest, 4> events = {
+        SwingMetro::MidiEventRequest{
+            {0, swung}, noteOn(0, 60, 100), 1, dispatcher.sessionGeneration(), {12, swung}},
+        SwingMetro::MidiEventRequest{{12, swung},
+                                     *SwingMetro::MidiMessage::noteOff(0, 60),
+                                     1,
+                                     dispatcher.sessionGeneration(),
+                                     {12, swung}},
+        SwingMetro::MidiEventRequest{
+            {6, 0}, noteOn(0, 60, 100), 2, dispatcher.sessionGeneration(), {12, 0}},
+        SwingMetro::MidiEventRequest{{12, 0},
+                                     *SwingMetro::MidiMessage::noteOff(0, 60),
+                                     2,
+                                     dispatcher.sessionGeneration(),
+                                     {12, 0}},
+    };
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueueBatch(events.data(), events.size()));
+    dispatcher.consumeTick({1'000, 20'000}, false, 1'000);
+    dispatcher.dispatchDue(16'000, 16'000);
+    for (std::uint32_t tick = 1; tick <= 6; ++tick) {
+        dispatcher.consumeTick({1'000 + tick * 20'000, 20'000}, false, 1'000 + tick * 20'000);
+    }
+
+    const auto recoveryStart = sink.count;
+    sink.results[sink.attemptCount] = SwingMetro::SendResult::Accepted;
+    sink.results[sink.attemptCount + 1] = SwingMetro::SendResult::Accepted;
+    sink.results[sink.attemptCount + 2] = SwingMetro::SendResult::Accepted;
+    dispatcher.beginPass(121'001);
+    dispatcher.finishPass(121'001);
+
+    TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[recoveryStart][1]);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.attempts[recoveryStart].launchId);
+    TEST_ASSERT_EQUAL_HEX8(0x80, sink.packets[recoveryStart + 1][1]);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.attempts[recoveryStart + 1].launchId);
+    TEST_ASSERT_EQUAL_HEX8(0x90, sink.packets[recoveryStart + 2][1]);
+    TEST_ASSERT_EQUAL_UINT32(2, sink.attempts[recoveryStart + 2].launchId);
+    TEST_ASSERT_EQUAL_UINT32(2, sequencer.actualSoundingLaunch()->launchId);
+
+    for (std::uint32_t tick = 7; tick < 12; ++tick) {
+        dispatcher.consumeTick({1'000 + tick * 20'000, 20'000}, false, 1'000 + tick * 20'000);
+    }
+    TEST_ASSERT_EQUAL_UINT32(recoveryStart + 3, sink.count);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.staleGateOffCount);
+}
+
 void test_retry_window_equality_causes_one_controlled_stop() {
     Sequencer sequencer;
     SwingMetro::MidiClockSettings settings;
@@ -1587,6 +1688,8 @@ void test_transport_controller_main() {
     RUN_TEST(test_clock_backpressure_coalesces_to_latest_without_burst);
     RUN_TEST(test_stale_clock_expires_instead_of_replaying);
     RUN_TEST(test_note_on_expires_at_retry_window_equality_without_acceptance);
+    RUN_TEST(test_overlapping_same_pitch_replaces_with_identity_safe_off);
+    RUN_TEST(test_retrying_swung_projection_gets_early_off_before_same_pitch_replacement);
     RUN_TEST(test_retry_window_equality_causes_one_controlled_stop);
     RUN_TEST(test_repeated_stop_retries_one_off_before_one_stop);
     RUN_TEST(test_stop_does_not_duplicate_an_already_pending_note_off);

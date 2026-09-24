@@ -39,6 +39,7 @@ enum class DeliveryRemovalReason : std::uint8_t {
     Disconnected,
     SupersededStart,
     ScheduledOverdue,
+    StaleGateOff,
     Count,
 };
 
@@ -212,13 +213,12 @@ class MidiPendingDeliveryQueue {
         return false;
     }
 
-    [[nodiscard]] auto hasNoteOff(std::uint8_t note, std::uint32_t generation) const noexcept
+    [[nodiscard]] auto hasNoteOff(std::uint32_t generation, MidiLaunchId launchId) const noexcept
         -> bool {
         for (std::size_t index = 0; index < _count; ++index) {
             const auto& pending = _events[(_head + index) % CAPACITY];
-            if (pending.sessionGeneration == generation &&
-                pending.event.message.isNoteOffEquivalent() &&
-                pending.event.message.note() == note) {
+            if (pending.sessionGeneration == generation && pending.event.launchId == launchId &&
+                pending.event.message.isNoteOffEquivalent()) {
                 return true;
             }
         }

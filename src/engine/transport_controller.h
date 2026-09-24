@@ -43,6 +43,7 @@ struct MidiDeliveryAttempt {
     std::uint32_t deadlineUs = 0;
     std::uint8_t attemptOrdinal = 0;
     bool firstAttempt = true;
+    MidiLaunchId launchId = 0;
 };
 
 class MidiMessageSink {
@@ -69,6 +70,7 @@ struct TransportDiagnostics {
     std::uint32_t clockCoalescedCount = 0;
     std::uint32_t clockExpiredCount = 0;
     std::uint32_t noteOnExpiredCount = 0;
+    std::uint32_t staleGateOffCount = 0;
     std::uint32_t terminalNoteOffAbandonedCount = 0;
     std::uint32_t terminalStopAbandonedCount = 0;
     std::array<DeliveryClassDiagnostics, DELIVERY_MESSAGE_CLASS_COUNT> delivery{};
@@ -156,8 +158,9 @@ class MidiDispatcher {
         _haveTick = false;
     }
 
-    auto stop(std::optional<MIDI_Note> note, std::uint32_t deadlineUs,
-              InvalidationReason reason = InvalidationReason::Stop, bool service = true) -> void {
+    auto stopLaunch(std::optional<NoteLaunch> launch, std::uint32_t deadlineUs,
+                    InvalidationReason reason = InvalidationReason::Stop, bool service = true)
+        -> void {
         if (_terminalGeneration != _sessionGeneration) {
             const auto summary = _pending.removeIf([this](const PendingMidiEvent& pending) {
                 if (pending.sessionGeneration != _sessionGeneration) {
@@ -168,9 +171,14 @@ class MidiDispatcher {
                        type == MidiMessageType::Start || type == MidiMessageType::Continue;
             });
             recordPendingRemoval(summary, deliveryRemovalReason(reason));
-            if (note.has_value() && !_pending.hasNoteOff(*note, _sessionGeneration)) {
-                enqueueDirect(*MidiMessage::noteOff(0, *note), deadlineUs, false,
-                              MidiAttemptLateness::None, true);
+            if (launch.has_value() &&
+                !_pending.hasNoteOff(launch->sessionGeneration, launch->launchId)) {
+                const MidiEvent event{{_transport.position().tick, 0},
+                                      *MidiMessage::noteOff(0, launch->note),
+                                      0,
+                                      launch->launchId,
+                                      launch->sessionGeneration};
+                enqueuePending(event, deadlineUs, false, MidiAttemptLateness::None, true);
             }
             if (_internalOutputActive &&
                 !_pending.hasTerminal(MidiMessageType::Stop, _sessionGeneration)) {
@@ -190,6 +198,14 @@ class MidiDispatcher {
         if (service) {
             serviceWhenStandalone(deadlineUs);
         }
+    }
+
+    auto stop(std::optional<MIDI_Note> note, std::uint32_t deadlineUs,
+              InvalidationReason reason = InvalidationReason::Stop, bool service = true) -> void {
+        const auto launch = note.has_value()
+                                ? std::optional<NoteLaunch>{{*note, 0, _sessionGeneration}}
+                                : std::nullopt;
+        stopLaunch(launch, deadlineUs, reason, service);
     }
 
     auto dispatchDue(std::uint32_t dueAtUs, std::uint32_t attemptAtUs) -> void {
@@ -265,6 +281,10 @@ class MidiDispatcher {
 
     [[nodiscard]] auto hasTerminalNoteOff() const noexcept -> bool {
         return _pending.hasTerminalNoteOff();
+    }
+
+    [[nodiscard]] auto sessionGeneration() const noexcept -> std::uint32_t {
+        return _sessionGeneration;
     }
 
     auto clearCapacityExceeded() noexcept -> void { _capacityExceeded = false; }
@@ -365,10 +385,13 @@ class MidiDispatcher {
                        terminal);
     }
 
-    auto enqueuePending(const MidiEvent& event, std::uint32_t deadlineUs,
+    auto enqueuePending(MidiEvent event, std::uint32_t deadlineUs,
                         bool countsAsInternalClockAttempt = false,
                         MidiAttemptLateness lateness = MidiAttemptLateness::QueuedEventAttempt,
-                        bool terminal = false) -> void {
+                        bool terminal = false) -> bool {
+        if (event.sessionGeneration == 0) {
+            event.sessionGeneration = _sessionGeneration;
+        }
         if (event.message.isClock()) {
             const auto summary = _pending.removeIf([this](const PendingMidiEvent& pending) {
                 return pending.sessionGeneration == _sessionGeneration &&
@@ -388,25 +411,57 @@ class MidiDispatcher {
         if (!inserted) {
             addOne(_diagnostics.outboxCapacityFailures);
             _capacityExceeded = true;
-            return;
+            return false;
         }
         ++_nextDeliverySequenceNumber;
         addOne(_diagnostics.outboxInserted[index(event.message.messageClass())]);
         updateOutboxDepth();
+        return true;
     }
 
     auto sendDue(TransportPosition position, std::uint32_t) -> void {
+        _deliveryPosition = position;
         while (const auto event = _queue.front()) {
             if (event->target > position) {
                 return;
             }
+            if (event->sessionGeneration != 0 && event->sessionGeneration != _sessionGeneration) {
+                recordScheduledRemoval(_queue.removeIf([event](const MidiEvent& candidate) {
+                    return candidate.sessionGeneration == event->sessionGeneration &&
+                           candidate.launchId == event->launchId;
+                }),
+                                       DeliveryRemovalReason::StaleGateOff);
+                addOne(_diagnostics.staleGateOffCount);
+                continue;
+            }
+            if (event->message.isNoteOn() && event->gateDeadline != TransportPosition{} &&
+                event->gateDeadline <= position) {
+                _sequencer.notifyNoteOnExpired(
+                    {event->message.note(), event->launchId, event->sessionGeneration});
+                recordScheduledRemoval(_queue.removeIf([event](const MidiEvent& candidate) {
+                    return candidate.sessionGeneration == event->sessionGeneration &&
+                           candidate.launchId == event->launchId;
+                }),
+                                       DeliveryRemovalReason::NoteOnExpired);
+                addOne(_diagnostics.noteOnExpiredCount);
+                continue;
+            }
+            if (event->message.isNoteOn() && !queueReplacementOff(*event, position)) {
+                return;
+            }
             const auto deadlineUs =
                 _tickStartUs + phaseOffsetUs(event->target.phase, _tickPeriodUs);
-            enqueuePending(*event, deadlineUs, false,
-                           event->message.isClock() ? MidiAttemptLateness::ClockAttempt
-                                                    : MidiAttemptLateness::QueuedEventAttempt);
-            if (_capacityExceeded) {
+            if (!enqueuePending(*event, deadlineUs, false,
+                                event->message.isClock()
+                                    ? MidiAttemptLateness::ClockAttempt
+                                    : MidiAttemptLateness::QueuedEventAttempt)) {
                 return;
+            }
+            if (event->message.isNoteOn()) {
+                _sequencer.notifyNoteOnQueued({event->message.note(), event->launchId,
+                                               event->sessionGeneration == 0
+                                                   ? _sessionGeneration
+                                                   : event->sessionGeneration});
             }
             _queue.popFront();
             addOne(_diagnostics.scheduledTransferred[index(event->message.messageClass())]);
@@ -474,7 +529,8 @@ class MidiDispatcher {
                 static_cast<std::uint8_t>(pending->attemptOrdinal == UINT8_MAX
                                               ? UINT8_MAX
                                               : pending->attemptOrdinal + 1U),
-                firstAttempt};
+                firstAttempt,
+                pending->event.launchId};
             const auto sendResult = _sink.send(attempt);
             if (sendResult == SendResult::Disconnected) {
                 addOne(delivery.disconnected);
@@ -501,9 +557,13 @@ class MidiDispatcher {
                 _clockRetryStartTick.reset();
             }
             if (pending->event.message.isNoteOn()) {
-                _sequencer.notifyNoteOnAccepted(pending->event.message.note());
+                _sequencer.notifyNoteOnAccepted({pending->event.message.note(),
+                                                 pending->event.launchId,
+                                                 pending->sessionGeneration});
             } else if (pending->event.message.isNoteOffEquivalent()) {
-                _sequencer.notifyNoteOffAccepted(pending->event.message.note());
+                _sequencer.notifyNoteOffAccepted({pending->event.message.note(),
+                                                  pending->event.launchId,
+                                                  pending->sessionGeneration});
             }
             _pending.popFront();
             updateOutboxDepth();
@@ -545,12 +605,19 @@ class MidiDispatcher {
         recordPendingRemoval(clocks, DeliveryRemovalReason::ClockExpired);
         addCount(_diagnostics.clockExpiredCount,
                  clocks.byClass.counts[static_cast<std::size_t>(MidiMessageClass::Clock)]);
-        const auto noteOns =
-            _pending.removeIf([this, currentTick](const PendingMidiEvent& pending) {
-                return pending.sessionGeneration == _sessionGeneration &&
-                       pending.event.message.isNoteOn() &&
-                       expiredAt(currentTick, pending.event.target.tick);
-            });
+        const auto noteOns = _pending.removeIf([this,
+                                                currentTick](const PendingMidiEvent& pending) {
+            const bool expired = pending.sessionGeneration == _sessionGeneration &&
+                                 pending.event.message.isNoteOn() &&
+                                 (pending.event.gateDeadline == TransportPosition{}
+                                      ? expiredAt(currentTick, pending.event.target.tick)
+                                      : _deliveryPosition >= pending.event.gateDeadline);
+            if (expired) {
+                _sequencer.notifyNoteOnExpired({pending.event.message.note(),
+                                                pending.event.launchId, pending.sessionGeneration});
+            }
+            return expired;
+        });
         recordPendingRemoval(noteOns, DeliveryRemovalReason::NoteOnExpired);
         addCount(_diagnostics.noteOnExpiredCount,
                  noteOns.byClass.counts[static_cast<std::size_t>(MidiMessageClass::Note)]);
@@ -564,6 +631,33 @@ class MidiDispatcher {
         _clockRetryStartTick.reset();
     }
 
+    auto queueReplacementOff(const MidiEvent& replacement, TransportPosition position) -> bool {
+        const auto active = _sequencer.projectedOrActualLaunch();
+        if (!active.has_value() || active->sessionGeneration != _sessionGeneration ||
+            active->launchId == replacement.launchId) {
+            return true;
+        }
+        if (_pending.hasNoteOff(active->sessionGeneration, active->launchId)) {
+            return true;
+        }
+        const auto summary = _queue.removeIf([active](const MidiEvent& candidate) {
+            return candidate.sessionGeneration == active->sessionGeneration &&
+                   candidate.launchId == active->launchId &&
+                   candidate.message.isNoteOffEquivalent();
+        });
+        recordScheduledRemoval(summary, DeliveryRemovalReason::StaleGateOff);
+        addCount(_diagnostics.staleGateOffCount,
+                 summary.counts[static_cast<std::size_t>(MidiMessageClass::Note)]);
+        const MidiEvent off{position,
+                            *MidiMessage::noteOff(0, active->note),
+                            0,
+                            active->launchId,
+                            active->sessionGeneration,
+                            position};
+        return enqueuePending(off, _tickStartUs + phaseOffsetUs(position.phase, _tickPeriodUs),
+                              false, MidiAttemptLateness::QueuedEventAttempt, true);
+    }
+
     MidiEventQueue& _queue;
     Transport& _transport;
     Sequencer& _sequencer;
@@ -571,6 +665,7 @@ class MidiDispatcher {
     TransportDiagnostics& _diagnostics;
     std::uint32_t _tickStartUs = 0;
     std::uint32_t _tickPeriodUs = 0;
+    TransportPosition _deliveryPosition{};
     MidiPendingDeliveryQueue _pending;
     std::size_t _nextDeliverySequenceNumber = 0;
     std::uint32_t _sessionGeneration = 1;
@@ -643,6 +738,7 @@ class TransportController {
             _sequencer.continuePlayback();
             _transport.continuePlayback();
             _dispatcher.continuePlayback();
+            _sequencer.setSessionGeneration(_dispatcher.sessionGeneration());
         }
         if (result.stopped) {
             stop(InternalTickDiscardReason::Stop, false, observedAtUs, true,
@@ -765,11 +861,11 @@ class TransportController {
 
     auto start(bool waitForExternalTick, std::uint32_t nowUs) -> void {
         _dispatcher.recordScheduledRemoval(_queue.clear(), DeliveryRemovalReason::Stop);
-        const auto note = _sequencer.stop();
-        _dispatcher.stop(note, nowUs);
-        _sequencer.beginCleanRemoteSession();
-        _sequencer.start();
+        (void)_sequencer.stop();
+        _dispatcher.stopLaunch(_sequencer.actualSoundingLaunch(), nowUs);
         _dispatcher.start(_settings.mode() == MidiClockMode::Internal, nowUs);
+        _sequencer.beginCleanRemoteSession(_dispatcher.sessionGeneration());
+        _sequencer.start();
         _internalTiming = !waitForExternalTick;
         _requiresExplicitStart = false;
         _internalTickDiscardReason = InternalTickDiscardReason::Stop;
@@ -797,8 +893,8 @@ class TransportController {
               bool resetExternal = true, std::uint32_t nowUs = 0, bool service = true,
               InvalidationReason reason = InvalidationReason::Stop) -> void {
         _dispatcher.recordScheduledRemoval(_queue.clear(), deliveryRemovalReason(reason));
-        const auto note = _sequencer.stop();
-        _dispatcher.stop(note, nowUs, reason, service);
+        (void)_sequencer.stop();
+        _dispatcher.stopLaunch(_sequencer.actualSoundingLaunch(), nowUs, reason, service);
         _internalTiming = false;
         _internalTickDiscardReason = discardReason;
         if (resetExternal) {

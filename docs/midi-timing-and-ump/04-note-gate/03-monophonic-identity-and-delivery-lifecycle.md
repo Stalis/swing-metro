@@ -1,6 +1,6 @@
 # Шаг 4.3. Monophonic identity и delivery lifecycle
 
-Статус: запланировано. Зависит от шага 4.2.
+Статус: выполнено 2026-09-24. Зависит от шага 4.2.
 
 ## Цель
 
@@ -84,3 +84,11 @@ hardware claim о host delivery.
 Передать final правило: редактирование Gate не меняет уже scheduled/accepted launch,
 а затрагивает только future unscheduled launches. UI отображает текущую настройку шага,
 не состояние pending ноты и не участвует в lifecycle.
+
+Фактический контракт после реализации: `(sessionGeneration, launchId)` сохраняется от
+scheduled event через pending delivery до accepted/projected состояния sequencer-а.
+Replacement удаляет старый scheduled Gate Off и ставит обязательный identity-bound Off
+перед новым On; это действует и когда старый On ещё находится в `RetryLater`. Pending
+queue сохраняет capacity 16, normal capacity 14 и два terminal-reserve места для
+replacement Off и Stop. Stale Gate Off и On expiry имеют отдельные diagnostics/removal
+reasons; session cleanup не использует pitch как identity.

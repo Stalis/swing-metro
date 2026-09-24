@@ -104,6 +104,14 @@ void test_pending_retry_ordinal_and_terminal_summary_are_bounded() {
     TEST_ASSERT_EQUAL_UINT32(1, removed.terminalStops);
 }
 
+void test_pending_note_off_lookup_uses_launch_identity() {
+    SwingMetro::MidiPendingDeliveryQueue queue;
+    const SwingMetro::MidiEvent oldOff{{0, 0}, *SwingMetro::MidiMessage::noteOff(0, 60), 0, 1, 2};
+    TEST_ASSERT_TRUE(queue.push(oldOff, 0, 0, false, SwingMetro::MidiAttemptLateness::None, 2));
+    TEST_ASSERT_TRUE(queue.hasNoteOff(2, 1));
+    TEST_ASSERT_FALSE(queue.hasNoteOff(2, 2));
+}
+
 } // namespace
 
 void test_midi_pending_delivery_queue_main() {
@@ -112,4 +120,5 @@ void test_midi_pending_delivery_queue_main() {
     RUN_TEST(test_pending_queue_wraps_and_clear_resets_storage);
     RUN_TEST(test_pending_queue_reserves_terminal_slots_and_filters_stably);
     RUN_TEST(test_pending_retry_ordinal_and_terminal_summary_are_bounded);
+    RUN_TEST(test_pending_note_off_lookup_uses_launch_identity);
 }

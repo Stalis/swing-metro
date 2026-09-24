@@ -94,6 +94,27 @@ void test_batch_accepts_note_off_note_on_in_dispatch_order() {
     TEST_ASSERT_TRUE(result.events[1].message.isNoteOn());
 }
 
+void test_remove_if_removes_only_matching_launch_gate_off() {
+    MidiEventQueue queue;
+    const std::array<MidiEventRequest, 3> batch = {
+        MidiEventRequest{{6, 0}, noteOff(60), 1, 2},
+        MidiEventRequest{{6, 0}, noteOff(60), 2, 2},
+        MidiEventRequest{{6, 0}, noteOn(60), 2, 2},
+    };
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueueBatch(batch.data(), batch.size()));
+    const auto removed = queue.removeIf([](const SwingMetro::MidiEvent& event) {
+        return event.sessionGeneration == 2 && event.launchId == 1 &&
+               event.message.isNoteOffEquivalent();
+    });
+    TEST_ASSERT_EQUAL_UINT32(
+        1, removed.counts[static_cast<std::size_t>(SwingMetro::MidiMessageClass::Note)]);
+    const auto events = queue.drainAt({6, 0});
+    TEST_ASSERT_EQUAL_UINT32(2, events.count);
+    TEST_ASSERT_EQUAL_UINT32(2, events.events[0].launchId);
+    TEST_ASSERT_EQUAL_UINT32(2, events.events[1].launchId);
+}
+
 void test_enqueued_message_is_immutable_copy() {
     MidiEventQueue queue;
     auto message = noteOn();
@@ -243,6 +264,7 @@ void test_midi_event_queue_main() {
     RUN_TEST(test_batch_rejects_capacity_without_inserting_any_packet);
     RUN_TEST(test_batch_rejects_tick_quota_without_inserting_any_packet);
     RUN_TEST(test_batch_accepts_note_off_note_on_in_dispatch_order);
+    RUN_TEST(test_remove_if_removes_only_matching_launch_gate_off);
     RUN_TEST(test_enqueued_message_is_immutable_copy);
     RUN_TEST(test_drain_respects_phase_zero_fifty_and_seventy_five);
     RUN_TEST(test_phase_zero_prioritizes_clock_note_off_note_on_and_other_stably);

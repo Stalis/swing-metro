@@ -161,7 +161,8 @@ constexpr std::array<const char*, SwingMetro::DELIVERY_REMOVAL_REASON_COUNT>
     DELIVERY_REMOVAL_NAMES = {
         "clock_coalesced",   "clock_expired", "note_on_expired",     "stop",
         "mode_switch",       "storage",       "external_clock_lost", "retry_window_exceeded",
-        "delivery_capacity", "disconnected",  "superseded_start",    "scheduled_overdue"};
+        "delivery_capacity", "disconnected",  "superseded_start",    "scheduled_overdue",
+        "stale_gate_off"};
 
 void printDeliveryDiagnosticsHeader() {
     for (const auto* messageClass : DELIVERY_CLASS_NAMES) {

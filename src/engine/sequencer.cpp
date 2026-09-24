@@ -125,9 +125,12 @@ bool Sequencer::isRunning() const { return _running; }
 
 std::optional<MIDI_Note> Sequencer::stop() {
     _running = false;
-    if (_actualSoundingNote.has_value() && _requestedNoteOff != _actualSoundingNote) {
-        _requestedNoteOff = _actualSoundingNote;
-        return _actualSoundingNote;
+    if (_actualSoundingLaunch.has_value() &&
+        (!_requestedNoteOff.has_value() ||
+         _requestedNoteOff->launchId != _actualSoundingLaunch->launchId ||
+         _requestedNoteOff->sessionGeneration != _actualSoundingLaunch->sessionGeneration)) {
+        _requestedNoteOff = _actualSoundingLaunch;
+        return _actualSoundingLaunch->note;
     }
     return std::nullopt;
 }
@@ -175,13 +178,14 @@ Sequencer::scheduleThrough(SwingMetro::TransportPosition position,
             const SwingMetro::TransportPosition onPosition{
                 _nextBoundaryTick, SwingMetro::swingPhase(stepIndex, _swing)};
             const auto launchId = _nextLaunchId;
+            const auto offPosition = SwingMetro::gateDeadline(onPosition, step.gate);
             const std::array<SwingMetro::MidiEventRequest, 2> requests = {
                 SwingMetro::MidiEventRequest{
                     onPosition, *SwingMetro::MidiMessage::noteOn(0, step.note, step.velocity),
-                    launchId},
-                SwingMetro::MidiEventRequest{SwingMetro::gateDeadline(onPosition, step.gate),
+                    launchId, _sessionGeneration, offPosition},
+                SwingMetro::MidiEventRequest{offPosition,
                                              *SwingMetro::MidiMessage::noteOff(0, step.note),
-                                             launchId},
+                                             launchId, _sessionGeneration, offPosition},
             };
             const auto result = queue.enqueueBatch(requests, requests.size());
             if (result != SwingMetro::MidiEventQueueEnqueueResult::Ok) {
@@ -209,35 +213,82 @@ void Sequencer::notifyBoundaryReached(SwingMetro::TransportTick tick) {
 }
 
 void Sequencer::notifyNoteOnAccepted(MIDI_Note note) {
-    _actualSoundingNote = note;
+    notifyNoteOnAccepted({note, 0, _sessionGeneration});
+}
+
+void Sequencer::notifyNoteOnAccepted(const NoteLaunch& launch) {
+    _actualSoundingLaunch = launch;
+    if (!_projectedLaunch.has_value() || _projectedLaunch->launchId == launch.launchId) {
+        _projectedLaunch = launch;
+    }
     _requestedNoteOff.reset();
 }
 
-void Sequencer::notifyNoteOffAccepted(MIDI_Note note) {
-    if (_actualSoundingNote == note) {
-        _actualSoundingNote.reset();
+void Sequencer::notifyNoteOnQueued(const NoteLaunch& launch) noexcept { _projectedLaunch = launch; }
+
+void Sequencer::notifyNoteOnExpired(const NoteLaunch& launch) noexcept {
+    if (_projectedLaunch.has_value() && _projectedLaunch->launchId == launch.launchId &&
+        _projectedLaunch->sessionGeneration == launch.sessionGeneration) {
+        _projectedLaunch.reset();
     }
-    if (_requestedNoteOff == note) {
+}
+
+void Sequencer::notifyNoteOffAccepted(MIDI_Note note) {
+    notifyNoteOffAccepted({note, 0, _sessionGeneration});
+}
+
+void Sequencer::notifyNoteOffAccepted(const NoteLaunch& launch) {
+    const auto matches = [&launch](const std::optional<NoteLaunch>& candidate) {
+        return candidate.has_value() && candidate->note == launch.note &&
+               (launch.launchId == 0 || candidate->launchId == launch.launchId) &&
+               (launch.sessionGeneration == 0 || candidate->sessionGeneration == 0 ||
+                candidate->sessionGeneration == launch.sessionGeneration);
+    };
+    if (matches(_actualSoundingLaunch)) {
+        _actualSoundingLaunch.reset();
+    }
+    if (matches(_requestedNoteOff)) {
         _requestedNoteOff.reset();
+    }
+    if (matches(_projectedLaunch)) {
+        _projectedLaunch.reset();
     }
 }
 
 void Sequencer::cancelRequestedNoteOff() noexcept { _requestedNoteOff.reset(); }
 
 void Sequencer::abandonRemoteNoteState() noexcept {
-    _actualSoundingNote.reset();
+    _actualSoundingLaunch.reset();
+    _projectedLaunch.reset();
     _requestedNoteOff.reset();
     _remoteNoteState = RemoteNoteState::Unknown;
 }
 
-std::optional<MIDI_Note> Sequencer::actualSoundingNote() const { return _actualSoundingNote; }
+std::optional<MIDI_Note> Sequencer::actualSoundingNote() const {
+    return _actualSoundingLaunch.has_value() ? std::optional<MIDI_Note>{_actualSoundingLaunch->note}
+                                             : std::nullopt;
+}
+
+std::optional<NoteLaunch> Sequencer::actualSoundingLaunch() const noexcept {
+    return _actualSoundingLaunch;
+}
+
+std::optional<NoteLaunch> Sequencer::projectedOrActualLaunch() const noexcept {
+    return _projectedLaunch.has_value() ? _projectedLaunch : _actualSoundingLaunch;
+}
 
 RemoteNoteState Sequencer::remoteNoteState() const noexcept { return _remoteNoteState; }
 
-void Sequencer::beginCleanRemoteSession() noexcept {
-    _actualSoundingNote.reset();
+void Sequencer::beginCleanRemoteSession(std::uint32_t generation) noexcept {
+    _actualSoundingLaunch.reset();
+    _projectedLaunch.reset();
     _requestedNoteOff.reset();
+    _sessionGeneration = generation;
     _remoteNoteState = RemoteNoteState::Clean;
+}
+
+void Sequencer::setSessionGeneration(std::uint32_t generation) noexcept {
+    _sessionGeneration = generation;
 }
 
 void Sequencer::sync(uint32_t micros) {

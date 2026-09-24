@@ -59,6 +59,12 @@ struct SequencerStep {
 
 enum class RemoteNoteState : std::uint8_t { Clean, Unknown };
 
+struct NoteLaunch {
+    MIDI_Note note = 0;
+    SwingMetro::MidiLaunchId launchId = 0;
+    std::uint32_t sessionGeneration = 0;
+};
+
 class Sequencer {
   public:
     Sequencer();
@@ -92,11 +98,18 @@ class Sequencer {
     void notifyBoundaryReached(SwingMetro::TransportTick tick);
     void notifyNoteOnAccepted(MIDI_Note note);
     void notifyNoteOffAccepted(MIDI_Note note);
+    void notifyNoteOnQueued(const NoteLaunch& launch) noexcept;
+    void notifyNoteOnExpired(const NoteLaunch& launch) noexcept;
+    void notifyNoteOnAccepted(const NoteLaunch& launch);
+    void notifyNoteOffAccepted(const NoteLaunch& launch);
     void cancelRequestedNoteOff() noexcept;
     void abandonRemoteNoteState() noexcept;
     [[nodiscard]] std::optional<MIDI_Note> actualSoundingNote() const;
+    [[nodiscard]] std::optional<NoteLaunch> actualSoundingLaunch() const noexcept;
+    [[nodiscard]] std::optional<NoteLaunch> projectedOrActualLaunch() const noexcept;
     [[nodiscard]] RemoteNoteState remoteNoteState() const noexcept;
-    void beginCleanRemoteSession() noexcept;
+    void beginCleanRemoteSession(std::uint32_t generation = 0) noexcept;
+    void setSessionGeneration(std::uint32_t generation) noexcept;
 
     void sync(uint32_t micros);
     bool update(uint32_t micros);
@@ -116,11 +129,13 @@ class Sequencer {
     uint8_t _bpm;
     uint8_t _swing = SwingMetro::SWING_MIN_VALUE;
     bool _running = false;
-    std::optional<MIDI_Note> _actualSoundingNote;
-    std::optional<MIDI_Note> _requestedNoteOff;
+    std::optional<NoteLaunch> _actualSoundingLaunch;
+    std::optional<NoteLaunch> _projectedLaunch;
+    std::optional<NoteLaunch> _requestedNoteOff;
     RemoteNoteState _remoteNoteState = RemoteNoteState::Clean;
     SwingMetro::TransportTick _nextBoundaryTick = 0;
     SwingMetro::MidiLaunchId _nextLaunchId = 1;
+    std::uint32_t _sessionGeneration = 0;
     bool _schedulingComplete = false;
 
     uint32_t _stepPeriodUs;
