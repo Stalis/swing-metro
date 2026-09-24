@@ -1,6 +1,7 @@
 # Шаг S.2. Арбитрация Shift long-press
 
-Статус: запланировано. Зависит от S.1 только по порядку поставки; логически независимо.
+Статус: выполнено программно 2026-09-24; аппаратная приёмка отложена до S.4. Зависит от S.1
+только по порядку поставки; логически независимо.
 
 ## Цель
 
@@ -62,8 +63,20 @@ page state в GlobalContext и не меняя универсальный Router
 - `make verify` проходит.
 - Ручная аппаратная проверка отложена до S.4.
 
+## Фактический результат
+
+`ShiftContext` при выбранном шаге поглощает только фазу `LongPressed` кнопки Volume Encoder.
+`Pressed` по-прежнему активирует Shift через `GlobalContext`, а `Released` проходит туда же и
+деактивирует его. При отсутствии выбранного шага событие LongPressed также проходит вниз и
+сохраняет существующий shortcut открытия Program Storage.
+
+Coordinator regressions воспроизводят настоящие batch-последовательности
+`Pressed → LongPressed → Released`: в Step Settings модалка не открывается, октавный Shift
+работает до release и затем возвращается semitone edit; на Main Display Save/Load открывается,
+Shift снимается, а остаток жеста подавляется capture-механизмом. `make verify` проходит: 320
+native tests, 14 script tests, clang-format, clang-tidy и firmware build для `rpipico2`.
+
 ## Вне объёма
 
 Отдельная физическая кнопка Shift, изменение long-press threshold, перенос энкодеров на 74HC165,
 новые Shift mappings и redesign context stack.
-

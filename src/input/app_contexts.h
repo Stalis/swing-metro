@@ -141,6 +141,12 @@ class ShiftContext {
                 return Result::emit(AppEvent{AdjustNote{semitones}});
             }
         }
+        if (_selectedStep.has_value() && input.source == InputId::VolumeEncoder) {
+            if (const auto* button = std::get_if<ContextInput::ButtonInput>(&input.payload);
+                button != nullptr && button->phase == ContextInput::ButtonPhase::LongPressed) {
+                return Result::consume();
+            }
+        }
         return Result::pass();
     }
 

@@ -41,6 +41,10 @@ struct State {
         SwingMetro::InputId::TempoSwitch,
         500,
     }};
+    ContextInput::ButtonInputAdapter<SwingMetro::InputId> volumeSwitch{{
+        SwingMetro::InputId::VolumeEncoder,
+        500,
+    }};
     ContextInput::TriggerInputAdapter<SwingMetro::InputId> shift{
         SwingMetro::InputId::ShiftSwitch,
     };
@@ -220,6 +224,49 @@ void test_shift_note_clamps_and_survives_step_navigation() {
     TEST_ASSERT_EQUAL_UINT8(121, state.tempo.getValue());
     setShift(state, false);
     TEST_ASSERT_EQUAL_UINT32(2, state.coordinator.stackSize());
+}
+
+void test_volume_hold_keeps_shift_in_step_settings_without_opening_storage() {
+    State state;
+    longPress(state, 0, 100);
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+
+    TEST_ASSERT_EQUAL_UINT32(1, routeBatch(state, state.volumeSwitch.onPressed(1'000)));
+    TEST_ASSERT_TRUE(state.coordinator.isShiftActive());
+    TEST_ASSERT_EQUAL_UINT32(4, state.coordinator.stackSize());
+    turn(state, SwingMetro::InputId::TempoEncoder, 1);
+    TEST_ASSERT_EQUAL_UINT8(48, *state.sequencer.getStepMidiNote(0));
+
+    TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.volumeSwitch.update(1'500)));
+    TEST_ASSERT_TRUE(state.coordinator.isShiftActive());
+    TEST_ASSERT_FALSE(state.coordinator.isProgramStorageModalOpen());
+    TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
+    TEST_ASSERT_EQUAL_UINT32(4, state.coordinator.stackSize());
+
+    TEST_ASSERT_EQUAL_UINT32(1, routeBatch(state, state.volumeSwitch.onReleased(1'600)));
+    TEST_ASSERT_FALSE(state.coordinator.isShiftActive());
+    TEST_ASSERT_FALSE(state.coordinator.isProgramStorageModalOpen());
+    TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+    turn(state, SwingMetro::InputId::TempoEncoder, 1);
+    TEST_ASSERT_EQUAL_UINT8(49, *state.sequencer.getStepMidiNote(0));
+}
+
+void test_volume_long_press_still_opens_storage_from_main_display() {
+    State state;
+    TEST_ASSERT_EQUAL_UINT32(1, routeBatch(state, state.volumeSwitch.onPressed(100)));
+    TEST_ASSERT_TRUE(state.coordinator.isShiftActive());
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+
+    TEST_ASSERT_EQUAL_UINT32(1, routeBatch(state, state.volumeSwitch.update(600)));
+    TEST_ASSERT_TRUE(state.coordinator.isProgramStorageModalOpen());
+    TEST_ASSERT_FALSE(state.coordinator.isShiftActive());
+    TEST_ASSERT_FALSE(state.coordinator.hasStepSettingsContext());
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+
+    TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.volumeSwitch.onReleased(700)));
+    TEST_ASSERT_TRUE(state.coordinator.isProgramStorageModalOpen());
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
 }
 
 void test_velocity_changes_only_selected_step_and_ui_snapshot() {
@@ -730,6 +777,8 @@ void test_app_input_coordinator_main() {
     RUN_TEST(test_encoder_changes_note_in_settings_and_tempo_after_close);
     RUN_TEST(test_shift_changes_note_by_octaves_only_while_editing_step);
     RUN_TEST(test_shift_note_clamps_and_survives_step_navigation);
+    RUN_TEST(test_volume_hold_keeps_shift_in_step_settings_without_opening_storage);
+    RUN_TEST(test_volume_long_press_still_opens_storage_from_main_display);
     RUN_TEST(test_velocity_changes_only_selected_step_and_ui_snapshot);
     RUN_TEST(test_gate_clamps_changes_only_selected_step_and_publishes_snapshot);
     RUN_TEST(test_click_in_settings_selects_step_without_toggling_it);
