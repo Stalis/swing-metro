@@ -1,6 +1,6 @@
 # Шаг 4.4. Ввод и UI
 
-Статус: запланировано. Зависит от шагов 4.1–4.3.
+Статус: выполнено 2026-09-24. Зависит от шагов 4.1–4.3.
 
 ## Цель
 
@@ -82,3 +82,12 @@ format и LittleFS operation во время playback.
 Передать exact interaction: открыть Step Settings, VolumeEncoder меняет Gate 1..100%,
 Tempo/Swing меняют note/velocity, main display сохраняет Volume. Hardware run проверяет
 только future launches после edit и использует lifecycle expectations шага 4.3.
+
+Фактический контракт после реализации: `AdjustGate` создаётся только маршрутом
+VolumeEncoder в Step Settings и применяется к выбранному шагу через `adjustStepGate`.
+Main Display сохраняет `AdjustVolume`, а Shift, MIDI-clock и program-storage contexts
+сохраняют прежний порядок и capture semantics. `selectedGate` публикуется отдельным
+atomic-полем внутри существующего generation seqlock, не меняя `navigationPacked`, и
+участвует в suppression equality. Экран Step Settings показывает `Gate: N%` только из
+UI snapshot. Native regression подтверждает, что изменение Gate не ретаймит уже
+запланированный launch; `make verify` проходит.

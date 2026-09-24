@@ -80,6 +80,7 @@ void test_ui_view_model_keeps_navigation_fields_together() {
                        .selectedStep = 7,
                        .selectedNote = 49,
                        .selectedVelocity = 96,
+                       .selectedGate = 75,
                        .transportRunning = false,
                        .shiftActive = true});
 
@@ -89,6 +90,7 @@ void test_ui_view_model_keeps_navigation_fields_together() {
     TEST_ASSERT_EQUAL_UINT8(7, settings.selectedStep);
     TEST_ASSERT_EQUAL_UINT8(49, settings.selectedNote);
     TEST_ASSERT_EQUAL_UINT8(96, settings.selectedVelocity);
+    TEST_ASSERT_EQUAL_UINT8(75, settings.selectedGate);
     TEST_ASSERT_FALSE(settings.transportRunning);
     TEST_ASSERT_TRUE(settings.shiftActive);
 }
@@ -104,6 +106,7 @@ void test_ui_view_model_reads_complete_concurrent_snapshots() {
                            .selectedStep = UINT8_MAX,
                            .selectedNote = 36,
                            .selectedVelocity = 127,
+                           .selectedGate = 100,
                            .transportRunning = true,
                            .shiftActive = false};
     const UiSettings second{.tempo = 180,
@@ -115,6 +118,7 @@ void test_ui_view_model_reads_complete_concurrent_snapshots() {
                             .selectedStep = 12,
                             .selectedNote = 61,
                             .selectedVelocity = 64,
+                            .selectedGate = 25,
                             .transportRunning = false,
                             .shiftActive = true};
     viewModel.publish(first);
@@ -134,6 +138,7 @@ void test_ui_view_model_reads_complete_concurrent_snapshots() {
             value.notesState == first.notesState && value.page == first.page &&
             value.selectedStep == first.selectedStep && value.selectedNote == first.selectedNote &&
             value.selectedVelocity == first.selectedVelocity &&
+            value.selectedGate == first.selectedGate &&
             value.transportRunning == first.transportRunning &&
             value.shiftActive == first.shiftActive;
         const bool matchesSecond =
@@ -143,6 +148,7 @@ void test_ui_view_model_reads_complete_concurrent_snapshots() {
             value.selectedStep == second.selectedStep &&
             value.selectedNote == second.selectedNote &&
             value.selectedVelocity == second.selectedVelocity &&
+            value.selectedGate == second.selectedGate &&
             value.transportRunning == second.transportRunning &&
             value.shiftActive == second.shiftActive;
         if (!matchesFirst && !matchesSecond) {
@@ -168,6 +174,21 @@ void test_ui_view_model_publishes_velocity_only_change() {
     settings.selectedVelocity = 126;
     viewModel.publish(settings);
     TEST_ASSERT_EQUAL_UINT8(126, viewModel.read().selectedVelocity);
+}
+
+void test_ui_view_model_publishes_gate_only_change() {
+    UiViewModel viewModel;
+    UiSettings settings{.tempo = 120,
+                        .swing = 50,
+                        .volume = 100,
+                        .activeNote = UINT8_MAX,
+                        .page = UiPage::StepSettings,
+                        .selectedStep = 0,
+                        .selectedGate = 100};
+    viewModel.publish(settings);
+    settings.selectedGate = 99;
+    viewModel.publish(settings);
+    TEST_ASSERT_EQUAL_UINT8(99, viewModel.read().selectedGate);
 }
 
 void test_ui_view_model_publishes_midi_clock_modal_snapshot() {
@@ -226,6 +247,7 @@ void test_ui_view_model_main() {
     RUN_TEST(test_ui_view_model_keeps_navigation_fields_together);
     RUN_TEST(test_ui_view_model_reads_complete_concurrent_snapshots);
     RUN_TEST(test_ui_view_model_publishes_velocity_only_change);
+    RUN_TEST(test_ui_view_model_publishes_gate_only_change);
     RUN_TEST(test_ui_view_model_publishes_midi_clock_modal_snapshot);
     RUN_TEST(test_ui_view_model_publishes_external_clock_snapshot);
     RUN_TEST(test_ui_view_model_publishes_program_storage_snapshot);

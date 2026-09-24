@@ -93,7 +93,7 @@ class StepSettingsContext {
                 return Result::emit(AppEvent{AdjustVelocity{encoder->delta}});
             }
             if (input.source == InputId::VolumeEncoder) {
-                return Result::consume();
+                return Result::emit(AppEvent{AdjustGate{encoder->delta}});
             }
             return Result::pass();
         }

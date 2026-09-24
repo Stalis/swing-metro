@@ -209,6 +209,22 @@ void test_gate_pair_uses_swung_on_and_shared_immutable_identity() {
     TEST_ASSERT_NOT_EQUAL_UINT32(0, on.launchId);
 }
 
+void test_adjusting_gate_does_not_retime_scheduled_launch() {
+    Sequencer sequencer;
+    MidiEventQueue queue;
+    enableStep(sequencer, 0, 60, 100);
+    setGate(sequencer, 0, 25);
+    sequencer.start();
+    TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok, sequencer.scheduleThrough({0, 0}, queue));
+    (void)queue.drainAt({0, 0});
+
+    TEST_ASSERT_TRUE(sequencer.adjustStepGate(0, 75));
+    const auto scheduledOffPosition = SwingMetro::gateDeadline({0, 0}, 25);
+    const auto scheduledOff = queue.drainAt(scheduledOffPosition);
+    TEST_ASSERT_EQUAL_UINT32(1, scheduledOff.count);
+    TEST_ASSERT_TRUE(scheduledOff.events[0].message.isNoteOffEquivalent());
+}
+
 void test_gate_pair_capacity_rejection_keeps_both_events_retryable() {
     Sequencer sequencer;
     MidiEventQueue queue;
@@ -306,6 +322,7 @@ void test_sequencer_main() {
     RUN_TEST(test_swing_phase_is_literal_and_only_delays_odd_steps);
     RUN_TEST(test_swing_schedules_only_odd_note_ons_at_a_phase);
     RUN_TEST(test_gate_pair_uses_swung_on_and_shared_immutable_identity);
+    RUN_TEST(test_adjusting_gate_does_not_retime_scheduled_launch);
     RUN_TEST(test_gate_pair_capacity_rejection_keeps_both_events_retryable);
     RUN_TEST(test_gate_pair_tick_quota_rejection_keeps_both_events_retryable);
     RUN_TEST(test_actual_sounding_state_follows_transmitted_messages);

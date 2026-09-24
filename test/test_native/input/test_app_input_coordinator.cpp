@@ -144,10 +144,13 @@ void test_encoder_changes_note_in_settings_and_tempo_after_close() {
     const auto velocityEvent = turn(state, SwingMetro::InputId::SwingEncoder, -1);
     TEST_ASSERT_TRUE(velocityEvent.has_value());
     TEST_ASSERT_TRUE(std::holds_alternative<SwingMetro::AdjustVelocity>(*velocityEvent));
-    TEST_ASSERT_FALSE(turn(state, SwingMetro::InputId::VolumeEncoder, -1).has_value());
+    const auto gateEvent = turn(state, SwingMetro::InputId::VolumeEncoder, -1);
+    TEST_ASSERT_TRUE(gateEvent.has_value());
+    TEST_ASSERT_TRUE(std::holds_alternative<SwingMetro::AdjustGate>(*gateEvent));
     TEST_ASSERT_EQUAL_UINT8(50, state.swing.getValue());
     TEST_ASSERT_EQUAL_UINT8(100, state.volume.getValue());
     TEST_ASSERT_EQUAL_UINT8(126, *state.sequencer.getStepVelocity(3));
+    TEST_ASSERT_EQUAL_UINT8(99, *state.sequencer.getStepGate(3));
 
     click(state, 3, 1000);
     TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().test(3));
@@ -155,6 +158,10 @@ void test_encoder_changes_note_in_settings_and_tempo_after_close() {
     longPress(state, 3, 2000);
     turn(state, SwingMetro::InputId::TempoEncoder, 1);
     TEST_ASSERT_EQUAL_UINT8(122, state.tempo.getValue());
+    const auto volumeEvent = turn(state, SwingMetro::InputId::VolumeEncoder, -1);
+    TEST_ASSERT_TRUE(volumeEvent.has_value());
+    TEST_ASSERT_TRUE(std::holds_alternative<SwingMetro::AdjustVolume>(*volumeEvent));
+    TEST_ASSERT_EQUAL_UINT8(99, state.volume.getValue());
 }
 
 void test_shift_changes_note_by_octaves_only_while_editing_step() {
@@ -234,6 +241,24 @@ void test_velocity_changes_only_selected_step_and_ui_snapshot() {
     TEST_ASSERT_EQUAL_UINT8(126, viewModel.read().selectedVelocity);
     TEST_ASSERT_EQUAL_UINT8(125, *state.sequencer.getStepVelocity(0));
     TEST_ASSERT_EQUAL_UINT8(50, state.swing.getValue());
+}
+
+void test_gate_clamps_changes_only_selected_step_and_publishes_snapshot() {
+    State state;
+    UiViewModel viewModel;
+    longPress(state, 0, 100);
+    turn(state, SwingMetro::InputId::VolumeEncoder, -127);
+    TEST_ASSERT_EQUAL_UINT8(STEP_MIN_GATE, *state.sequencer.getStepGate(0));
+    turn(state, SwingMetro::InputId::VolumeEncoder, 127);
+    TEST_ASSERT_EQUAL_UINT8(STEP_MAX_GATE, *state.sequencer.getStepGate(0));
+
+    click(state, 3, 1000);
+    turn(state, SwingMetro::InputId::VolumeEncoder, -1);
+    TEST_ASSERT_EQUAL_UINT8(99, *state.sequencer.getStepGate(3));
+    TEST_ASSERT_EQUAL_UINT8(STEP_MAX_GATE, *state.sequencer.getStepGate(0));
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    TEST_ASSERT_EQUAL_UINT8(3, viewModel.read().selectedStep);
+    TEST_ASSERT_EQUAL_UINT8(99, viewModel.read().selectedGate);
 }
 
 void test_click_in_settings_selects_step_without_toggling_it() {
@@ -428,6 +453,8 @@ void test_midi_clock_modal_clamps_confirms_and_publishes_snapshot() {
                             static_cast<std::uint8_t>(state.coordinator.midiClockPreviewMode()));
     TEST_ASSERT_EQUAL_UINT8(120, state.tempo.getValue());
     TEST_ASSERT_FALSE(turn(state, SwingMetro::InputId::SwingEncoder, 1).has_value());
+    TEST_ASSERT_FALSE(turn(state, SwingMetro::InputId::VolumeEncoder, 1).has_value());
+    TEST_ASSERT_EQUAL_UINT8(STEP_DEFAULT_GATE, *state.sequencer.getStepGate(0));
     TEST_ASSERT_EQUAL_UINT8(50, state.swing.getValue());
 
     viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
@@ -586,6 +613,8 @@ void test_inactive_navigation_and_note_events_are_no_ops() {
                                      1000);
     state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::AdjustVelocity{-1}}, nullptr,
                                      1000);
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::AdjustGate{-1}}, nullptr,
+                                     1000);
     state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::DeactivateShift{}}, nullptr,
                                      1000);
     TEST_ASSERT_EQUAL_UINT32(2, state.coordinator.stackSize());
@@ -593,6 +622,7 @@ void test_inactive_navigation_and_note_events_are_no_ops() {
     TEST_ASSERT_FALSE(state.coordinator.isShiftActive());
     TEST_ASSERT_EQUAL_UINT8(36, *state.sequencer.getStepMidiNote(0));
     TEST_ASSERT_EQUAL_UINT8(127, *state.sequencer.getStepVelocity(0));
+    TEST_ASSERT_EQUAL_UINT8(STEP_DEFAULT_GATE, *state.sequencer.getStepGate(0));
 }
 
 void test_apply_midi_clock_mode_changes_only_settings() {
@@ -667,6 +697,9 @@ void test_program_storage_modal_blocks_input_and_publishes_result() {
                                      nullptr, 1000);
     TEST_ASSERT_TRUE(state.coordinator.isProgramStorageModalOpen());
     TEST_ASSERT_FALSE(turn(state, SwingMetro::InputId::TempoEncoder, 1).has_value());
+    const auto volumeEvent = turn(state, SwingMetro::InputId::VolumeEncoder, 1);
+    TEST_ASSERT_TRUE(volumeEvent.has_value());
+    TEST_ASSERT_FALSE(std::holds_alternative<SwingMetro::AdjustGate>(*volumeEvent));
     TEST_ASSERT_EQUAL_UINT8(120, state.tempo.getValue());
 
     state.coordinator.handleAppEvent(
@@ -698,6 +731,7 @@ void test_app_input_coordinator_main() {
     RUN_TEST(test_shift_changes_note_by_octaves_only_while_editing_step);
     RUN_TEST(test_shift_note_clamps_and_survives_step_navigation);
     RUN_TEST(test_velocity_changes_only_selected_step_and_ui_snapshot);
+    RUN_TEST(test_gate_clamps_changes_only_selected_step_and_publishes_snapshot);
     RUN_TEST(test_click_in_settings_selects_step_without_toggling_it);
     RUN_TEST(test_settings_reselects_on_press_without_adding_context_and_releases_on_close);
     RUN_TEST(test_navigation_failure_preserves_main_page);

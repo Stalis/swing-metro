@@ -88,6 +88,11 @@ void LvglUi::readViewModel(const UiViewModel& viewModel) {
             lv_label_set_text_fmt(_selectedVelocityLabel, "Velocity: %u",
                                   static_cast<unsigned>(values.selectedVelocity));
         }
+        if (values.selectedGate != _displayedGate) {
+            _displayedGate = values.selectedGate;
+            lv_label_set_text_fmt(_selectedGateLabel, "Gate: %u%%",
+                                  static_cast<unsigned>(values.selectedGate));
+        }
     }
 
     if (values.page != _currentPage) {
@@ -170,6 +175,7 @@ void LvglUi::setExternalClock(SwingMetro::ExternalMidiClockStatus status, uint8_
 
 void LvglUi::initStepSettingsScreen() {
     constexpr int16_t velocityLabelY = 80;
+    constexpr int16_t gateLabelY = 110;
     _stepSettingsScreen = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(_stepSettingsScreen, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(_stepSettingsScreen, LV_OPA_COVER, 0);
@@ -188,6 +194,11 @@ void LvglUi::initStepSettingsScreen() {
     lv_obj_set_pos(_selectedVelocityLabel, 10, velocityLabelY);
     lv_obj_set_style_text_color(_selectedVelocityLabel, lv_color_white(), 0);
     lv_label_set_text(_selectedVelocityLabel, "Velocity: 127");
+
+    _selectedGateLabel = lv_label_create(_stepSettingsScreen);
+    lv_obj_set_pos(_selectedGateLabel, 10, gateLabelY);
+    lv_obj_set_style_text_color(_selectedGateLabel, lv_color_white(), 0);
+    lv_label_set_text(_selectedGateLabel, "Gate: 100%");
 }
 
 void LvglUi::initMidiClockModal() {

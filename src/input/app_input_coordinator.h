@@ -65,6 +65,10 @@ class AppInputCoordinator {
             if (_selectedStep.has_value()) {
                 (void)_sequencer.adjustStepVelocity(*_selectedStep, adjust->delta);
             }
+        } else if (const auto* adjust = std::get_if<AdjustGate>(&event)) {
+            if (_selectedStep.has_value()) {
+                (void)_sequencer.adjustStepGate(*_selectedStep, adjust->delta);
+            }
         } else if (std::holds_alternative<ToggleTransport>(event)) {
             if (_transport != nullptr) {
                 _transport->toggle(nowUs);
@@ -165,6 +169,10 @@ class AppInputCoordinator {
         settings.selectedVelocity = _selectedStep.has_value()
                                         ? _sequencer.getStepVelocity(*_selectedStep).value_or(127)
                                         : 127;
+        settings.selectedGate =
+            _selectedStep.has_value()
+                ? _sequencer.getStepGate(*_selectedStep).value_or(STEP_DEFAULT_GATE)
+                : STEP_DEFAULT_GATE;
         settings.transportRunning = _sequencer.isRunning();
         settings.shiftActive = isShiftActive();
         settings.midiClockModalOpen = _midiClockModalOpen;

@@ -85,6 +85,10 @@ struct AdjustVelocity {
     std::int8_t delta;
 };
 
+struct AdjustGate {
+    std::int8_t delta;
+};
+
 struct ToggleTransport {};
 struct ActivateShift {};
 struct DeactivateShift {};
@@ -110,8 +114,8 @@ struct CloseProgramStorage {};
 using InputEvent = ContextInput::InputEvent<InputId>;
 using AppEvent =
     std::variant<AdjustTempo, AdjustSwing, AdjustVolume, ToggleStep, OpenStepSettings,
-                 CloseStepSettings, AdjustNote, AdjustVelocity, ToggleTransport, ActivateShift,
-                 DeactivateShift, OpenMidiClockSettings, AdjustMidiClockPreview,
+                 CloseStepSettings, AdjustNote, AdjustVelocity, AdjustGate, ToggleTransport,
+                 ActivateShift, DeactivateShift, OpenMidiClockSettings, AdjustMidiClockPreview,
                  ConfirmMidiClockSettings, ApplyMidiClockMode, OpenProgramStorage,
                  SelectProgramStorageAction, ConfirmProgramStorageAction, SelectProgramStorageSlot,
                  ConfirmProgramStorageSlot, CloseProgramStorage>;

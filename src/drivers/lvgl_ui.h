@@ -52,10 +52,12 @@ class LvglUi {
     lv_obj_t* _selectedStepLabel;
     lv_obj_t* _selectedNoteLabel;
     lv_obj_t* _selectedVelocityLabel;
+    lv_obj_t* _selectedGateLabel;
     UiPage _currentPage = UiPage::MainDisplay;
     uint8_t _displayedStep = UINT8_MAX;
     uint8_t _displayedNote = UINT8_MAX;
     uint8_t _displayedVelocity = UINT8_MAX;
+    uint8_t _displayedGate = UINT8_MAX;
     lv_obj_t* _midiClockModal;
     lv_obj_t* _midiClockActiveLabel;
     std::array<lv_obj_t*, 3> _midiClockModeLabels{};

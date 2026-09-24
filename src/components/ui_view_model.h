@@ -26,6 +26,7 @@ struct UiSettings {
     uint8_t selectedStep = UINT8_MAX;
     uint8_t selectedNote = 36;
     uint8_t selectedVelocity = 127;
+    uint8_t selectedGate = 100;
     bool transportRunning = true;
     bool shiftActive = false;
     bool midiClockModalOpen = false;
@@ -68,6 +69,7 @@ class UiViewModel {
         _packed.store(packed, std::memory_order_seq_cst);
         _notesPacked.store(notesPacked, std::memory_order_seq_cst);
         _navigationPacked.store(navigationPacked, std::memory_order_seq_cst);
+        _selectedGate.store(settings.selectedGate, std::memory_order_seq_cst);
         _externalClockPacked.store(static_cast<uint32_t>(settings.externalTempo) |
                                        static_cast<uint32_t>(settings.externalClockStatus) << 8,
                                    std::memory_order_seq_cst);
@@ -90,6 +92,7 @@ class UiViewModel {
             const uint32_t packed = _packed.load(std::memory_order_seq_cst);
             const uint16_t notesPacked = _notesPacked.load(std::memory_order_seq_cst);
             const uint32_t navigationPacked = _navigationPacked.load(std::memory_order_seq_cst);
+            const uint8_t selectedGate = _selectedGate.load(std::memory_order_seq_cst);
             const uint32_t externalClockPacked =
                 _externalClockPacked.load(std::memory_order_seq_cst);
             const uint32_t programStoragePacked =
@@ -109,6 +112,7 @@ class UiViewModel {
                 .selectedStep = static_cast<uint8_t>(navigationPacked),
                 .selectedNote = static_cast<uint8_t>(navigationPacked >> 8),
                 .selectedVelocity = static_cast<uint8_t>(navigationPacked >> 19),
+                .selectedGate = selectedGate,
                 .transportRunning = ((navigationPacked >> 17) & 1U) != 0,
                 .shiftActive = ((navigationPacked >> 18) & 1U) != 0,
                 .midiClockModalOpen = ((navigationPacked >> 27) & 1U) != 0,
@@ -136,6 +140,7 @@ class UiViewModel {
                left.notesState == right.notesState && left.page == right.page &&
                left.selectedStep == right.selectedStep && left.selectedNote == right.selectedNote &&
                left.selectedVelocity == right.selectedVelocity &&
+               left.selectedGate == right.selectedGate &&
                left.transportRunning == right.transportRunning &&
                left.shiftActive == right.shiftActive &&
                left.midiClockModalOpen == right.midiClockModalOpen &&
@@ -152,6 +157,7 @@ class UiViewModel {
     std::atomic<uint32_t> _packed{0};
     std::atomic<uint16_t> _notesPacked{0};
     std::atomic<uint32_t> _navigationPacked{0};
+    std::atomic<uint8_t> _selectedGate{100};
     std::atomic<uint32_t> _externalClockPacked{0};
     std::atomic<uint32_t> _programStoragePacked{0};
     std::atomic<uint32_t> _generation{0};
