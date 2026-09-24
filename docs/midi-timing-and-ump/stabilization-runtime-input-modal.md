@@ -1,6 +1,7 @@
 # Стабилизация S. Live Tempo и модальный ввод
 
-Статус: запланировано 2026-09-24. Выполняется после завершённого этапа 4 и до этапа 5.
+Статус: S.1 выполнен программно 2026-09-24; S.2–S.4 запланированы. Выполняется после
+завершённого этапа 4 и до этапа 5.
 
 ## Цель
 
@@ -49,7 +50,7 @@ Program Storage хранит только `Save`/`Load`. В состояниях
 
 | Шаг | Документ | Результат |
 | --- | --- | --- |
-| S.1 | [Непрерывная смена Tempo](stabilization-runtime-input-modal/01-live-tempo-continuity.md) | Pending Clock boundary сохраняется при каждом BPM edit; быстрые detents не останавливают transport. |
+| S.1 | [Непрерывная смена Tempo](stabilization-runtime-input-modal/01-live-tempo-continuity.md) | **Выполнено программно:** BPM update сохраняет действующий alarm request и pending deadline без cancel/re-arm. |
 | S.2 | [Арбитрация Shift long-press](stabilization-runtime-input-modal/02-shift-long-press-arbitration.md) | Step Settings удерживает Shift без открытия Save/Load; Main Display сохраняет shortcut. |
 | S.3 | [Cancel в Program Storage](stabilization-runtime-input-modal/03-program-storage-cancel.md) | Action и Slot имеют безопасный Cancel без storage I/O. |
 | S.4 | [Интеграционная и аппаратная приёмка](stabilization-runtime-input-modal/04-integrated-validation.md) | Все три пользовательских сценария и MIDI continuity подтверждены на устройстве. |
@@ -75,4 +76,3 @@ S.4 не меняет product semantics; допустимы только тес�
 IRQ/PIO follow-up энкодеров этапа 3, изменение debounce threshold, новый физический Back,
 асинхронный LittleFS, возобновление transport после Cancel, redesign модалок, изменение swing,
 Gate, UMP или MIDI 2.0.
-

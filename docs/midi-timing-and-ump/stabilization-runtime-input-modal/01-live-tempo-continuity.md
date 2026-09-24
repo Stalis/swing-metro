@@ -1,6 +1,7 @@
 # Шаг S.1. Непрерывная смена Tempo
 
-Статус: запланировано. Зависит от завершённых этапов 1, 2 и 4.
+Статус: выполнено программно 2026-09-24; аппаратная приёмка отложена до S.4. Зависит от
+завершённых этапов 1, 2 и 4.
 
 ## Цель
 
@@ -29,24 +30,24 @@ callback переносит границу ещё на один полный п�
   ближайший Clock публикуется в прежней абсолютной позиции.
 - Новый BPM применяется к периоду, возвращаемому при этом callback, и ко всем последующим
   deadlines. Это boundary-safe изменение без частичного масштабирования текущего периода.
-- Update меняет generation, чтобы отменённый request нельзя было принять как актуальный;
-  драйвер переустанавливает alarm на тот же абсолютный deadline.
+- Update не меняет generation и не переустанавливает alarm: pending request остаётся
+  действительным, поскольку его deadline не меняется. Это исключает отдельную re-arm race около
+  уже наступившей границы.
 - Fractional remainder новой частоты начинается заново. Погрешность такого перехода меньше
   1 us и не накапливается при неизменном BPM.
 - Если source не активен, update только запоминает BPM и не создаёт request.
-- Повторная установка того же BPM является no-op на app/driver boundary и не должна создавать
-  лишнюю generation.
-- Update, пришедший после достижения deadline, не синтезирует Clock синхронно и не создаёт
-  burst. Existing overdue callback policy остаётся единственным владельцем skip accounting.
+- Повторная установка того же BPM является no-op и не меняет request.
+- Update и alarm callback сериализованы producer critical section. Если update получает его
+  первым, новый период применяется на ближайшей границе; если callback уже обработал границу —
+  на следующей. Ни один вариант не отменяет Clock и не создаёт burst.
 
 ## Работа
 
-1. Заменить контракт `setBpmAt()` на явно названный boundary-preserving update. Удалить
-   параметр времени, если он больше не нужен, и обновить driver call sites.
-2. При active update сохранить pending deadline, инвалидировать старый request и вернуть
-   актуальный request для повторного arm.
-3. В `PicoInternalTickAlarm::setBpm()` отменять/re-arm только когда BPM действительно изменён;
-   не расширять critical section и не выполнять внутри него I/O.
+1. Заменить `setBpmAt()` boundary-preserving update без параметра времени и обновить call sites.
+2. При active update сохранить pending deadline и generation, оставив существующий аппаратный
+   alarm действительным.
+3. В `PicoInternalTickAlarm::setBpm()` только обновить source под существующим critical section;
+   не cancel/re-arm alarm и не выполнять I/O.
 4. Сохранить existing diagnostics. Если для наблюдения tempo updates нужен новый counter,
    добавить bounded atomic counter и включить его в существующий snapshot/export; не печатать
    из callback.
@@ -56,8 +57,8 @@ callback переносит границу ещё на один полный п�
 
 - Start 120 BPM назначает первый deadline как раньше.
 - Несколько updates 121→180→240 до первого callback оставляют один и тот же deadline.
-- Старые requests после каждой generation считаются stale и не публикуют Clock.
-- Callback актуального request публикует один Clock; следующий deadline использует период
+- Request остаётся тем же и действительным после всей серии updates.
+- Его callback публикует один Clock; следующий deadline использует период
   последнего BPM, без burst.
 - Update после нескольких callbacks сохраняет текущую pending boundary.
 - Inactive update не создаёт alarm request; последующий start использует новый BPM.
@@ -76,8 +77,20 @@ callback переносит границу ещё на один полный п�
 - Native suite, format, tidy и firmware build проходят через `make verify`.
 - Hardware claim ещё не делается: он относится к S.4.
 
+## Фактический результат
+
+`InternalTickSource::setBpmAt(bpm, appliedAtUs)` заменён на `updateBpm(bpm)`. При реальном
+изменении обновляются BPM и fractional remainder, но текущие `generation` и
+`_nextDeadlineUs` остаются неизменными. `PicoInternalTickAlarm::setBpm()` больше не отменяет и
+не переустанавливает Pico alarm: update и callback используют прежний producer critical
+section, поэтому на границе безопасно побеждает одна из двух операций, без потерянного Clock.
+
+Native regressions подтверждают серию 121→180→240 BPM до одного callback, применение периода
+последнего BPM, no-op одинакового значения, inactive update, wraparound и прежний учёт stale
+requests/arm failures. `make verify` проходит: 318 native tests, 14 script tests, clang-format,
+clang-tidy и firmware build для `rpipico2`.
+
 ## Вне объёма
 
 Сглаживание BPM, encoder acceleration, внешний MIDI Clock, изменение PPQN, swing, display
 refresh, transport start/stop и полный аппаратный прогон.
-

@@ -61,7 +61,7 @@ void test_grid_wrap_preserves_deadlines() {
     TEST_ASSERT_EQUAL_UINT32(first.deadlineUs + 10'417, source.alarmRequest().deadlineUs);
 }
 
-void test_start_stop_and_bpm_invalidate_old_requests() {
+void test_start_stop_invalidate_requests_and_bpm_preserves_pending_request() {
     InternalTickSource source;
     (void)source.start(1'000, 120);
     const auto old = source.alarmRequest();
@@ -73,12 +73,65 @@ void test_start_stop_and_bpm_invalidate_old_requests() {
 
     (void)source.start(10'000, 120);
     const auto beforeBpm = source.alarmRequest();
-    TEST_ASSERT_EQUAL_UINT32(25'000, source.setBpmAt(100, 10'000));
+    TEST_ASSERT_TRUE(source.updateBpm(100));
     const auto afterBpm = source.alarmRequest();
-    (void)source.onAlarm(beforeBpm, beforeBpm.deadlineUs);
-    TEST_ASSERT_EQUAL_UINT32(35'000, afterBpm.deadlineUs);
+    TEST_ASSERT_EQUAL_UINT32(beforeBpm.deadlineUs, afterBpm.deadlineUs);
+    TEST_ASSERT_EQUAL_UINT32(beforeBpm.generation, afterBpm.generation);
+    TEST_ASSERT_EQUAL_UINT32(25'000, source.onAlarm(beforeBpm, beforeBpm.deadlineUs));
+    TEST_ASSERT_EQUAL_UINT32(beforeBpm.deadlineUs + 25'000, source.alarmRequest().deadlineUs);
     TEST_ASSERT_EQUAL_UINT32(2, source.diagnostics().synchronousStartPublicationAttempts);
-    TEST_ASSERT_EQUAL_UINT32(2, source.diagnostics().staleAlarmCallbacks);
+    TEST_ASSERT_EQUAL_UINT32(1, source.diagnostics().staleAlarmCallbacks);
+}
+
+void test_rapid_bpm_updates_preserve_pending_boundary_and_apply_latest_period() {
+    InternalTickSource source;
+    (void)source.start(0, 120);
+    const auto initial = source.alarmRequest();
+
+    TEST_ASSERT_TRUE(source.updateBpm(121));
+    const auto at121 = source.alarmRequest();
+    TEST_ASSERT_TRUE(source.updateBpm(180));
+    const auto at180 = source.alarmRequest();
+    TEST_ASSERT_TRUE(source.updateBpm(240));
+    const auto at240 = source.alarmRequest();
+
+    TEST_ASSERT_EQUAL_UINT32(initial.deadlineUs, at121.deadlineUs);
+    TEST_ASSERT_EQUAL_UINT32(initial.deadlineUs, at180.deadlineUs);
+    TEST_ASSERT_EQUAL_UINT32(initial.deadlineUs, at240.deadlineUs);
+    TEST_ASSERT_EQUAL_UINT32(initial.generation, at121.generation);
+    TEST_ASSERT_EQUAL_UINT32(initial.generation, at180.generation);
+    TEST_ASSERT_EQUAL_UINT32(initial.generation, at240.generation);
+
+    TEST_ASSERT_EQUAL_UINT32(10'416, source.onAlarm(initial, initial.deadlineUs));
+    TEST_ASSERT_EQUAL_UINT32(at240.deadlineUs + 10'416, source.alarmRequest().deadlineUs);
+    TEST_ASSERT_EQUAL_UINT32(0, source.diagnostics().staleAlarmCallbacks);
+    TEST_ASSERT_EQUAL_UINT32(0, source.diagnostics().missedScheduledTargets);
+}
+
+void test_same_and_inactive_bpm_updates_do_not_create_alarm_requests() {
+    InternalTickSource source;
+    TEST_ASSERT_TRUE(source.updateBpm(180));
+    TEST_ASSERT_FALSE(source.alarmRequest().valid());
+    TEST_ASSERT_FALSE(source.updateBpm(180));
+
+    TEST_ASSERT_EQUAL_UINT32(13'888, source.start(1'000, 180));
+    const auto beforeNoOp = source.alarmRequest();
+    TEST_ASSERT_FALSE(source.updateBpm(180));
+    const auto afterNoOp = source.alarmRequest();
+    TEST_ASSERT_EQUAL_UINT32(beforeNoOp.generation, afterNoOp.generation);
+    TEST_ASSERT_EQUAL_UINT32(beforeNoOp.deadlineUs, afterNoOp.deadlineUs);
+}
+
+void test_bpm_update_preserves_wrapped_pending_boundary() {
+    InternalTickSource source;
+    constexpr std::uint32_t START = UINT32_MAX - 10'000;
+    (void)source.start(START, 120);
+    const auto beforeUpdate = source.alarmRequest();
+    TEST_ASSERT_TRUE(source.updateBpm(240));
+    const auto afterUpdate = source.alarmRequest();
+    TEST_ASSERT_EQUAL_UINT32(beforeUpdate.deadlineUs, afterUpdate.deadlineUs);
+    TEST_ASSERT_EQUAL_UINT32(10'416, source.onAlarm(afterUpdate, afterUpdate.deadlineUs));
+    TEST_ASSERT_EQUAL_UINT32(afterUpdate.deadlineUs + 10'416, source.alarmRequest().deadlineUs);
 }
 
 void test_overdue_equality_skips_due_targets_without_a_burst() {
@@ -114,7 +167,8 @@ void test_overflow_and_arm_failures_are_accounted_by_request() {
     TEST_ASSERT_EQUAL_UINT32(1, source.diagnostics().failedPublications);
 
     const auto old = source.alarmRequest();
-    (void)source.setBpmAt(120, old.deadlineUs);
+    source.stop();
+    (void)source.start(old.deadlineUs, 100);
     const auto current = source.alarmRequest();
     source.onAlarmArmFailure(old);
     TEST_ASSERT_TRUE(source.alarmRequest().valid());
@@ -164,7 +218,10 @@ void test_internal_tick_main() {
     RUN_TEST(test_absolute_grid_ignores_callback_latency);
     RUN_TEST(test_fractional_grid_is_exact_over_long_run);
     RUN_TEST(test_grid_wrap_preserves_deadlines);
-    RUN_TEST(test_start_stop_and_bpm_invalidate_old_requests);
+    RUN_TEST(test_start_stop_invalidate_requests_and_bpm_preserves_pending_request);
+    RUN_TEST(test_rapid_bpm_updates_preserve_pending_boundary_and_apply_latest_period);
+    RUN_TEST(test_same_and_inactive_bpm_updates_do_not_create_alarm_requests);
+    RUN_TEST(test_bpm_update_preserves_wrapped_pending_boundary);
     RUN_TEST(test_overdue_equality_skips_due_targets_without_a_burst);
     RUN_TEST(test_out_of_horizon_callback_deactivates_grid);
     RUN_TEST(test_overflow_and_arm_failures_are_accounted_by_request);

@@ -85,24 +85,16 @@ class InternalTickSource {
         endDiagnosticsUpdate();
     }
 
-    auto setBpm(std::uint8_t bpm) noexcept -> void {
-        _bpm = clampBpm(bpm);
-        _fractionalUs = 0;
-    }
-
-    [[nodiscard]] auto setBpmAt(std::uint8_t bpm, std::uint32_t appliedAtUs) noexcept
-        -> std::uint32_t {
-        beginDiagnosticsUpdate();
-        setBpm(bpm);
-        if (_active) {
-            nextGeneration();
-            const auto periodUs = nextPeriodUs();
-            _nextDeadlineUs = appliedAtUs + periodUs;
-            endDiagnosticsUpdate();
-            return periodUs;
+    [[nodiscard]] auto updateBpm(std::uint8_t bpm) noexcept -> bool {
+        const auto clampedBpm = clampBpm(bpm);
+        if (clampedBpm == _bpm) {
+            return false;
         }
-        endDiagnosticsUpdate();
-        return 0;
+        // Keep the pending request valid and its absolute boundary unchanged. The
+        // callback and BPM updates are serialized by the driver's producer critical
+        // section, so the latest value safely applies at this or the next boundary.
+        setBpm(clampedBpm);
+        return true;
     }
 
     [[nodiscard]] auto alarmRequest() const noexcept -> InternalTickAlarmRequest {
@@ -226,6 +218,11 @@ class InternalTickSource {
         } else {
             addOne(_diagnostics.failedPublications);
         }
+    }
+
+    auto setBpm(std::uint8_t bpm) noexcept -> void {
+        _bpm = clampBpm(bpm);
+        _fractionalUs = 0;
     }
 
     auto addDiscards(InternalTickDiscardReason reason, std::size_t count) noexcept -> void {

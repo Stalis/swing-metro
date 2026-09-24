@@ -28,16 +28,9 @@ auto PicoInternalTickAlarm::stop(InternalTickDiscardReason discardReason) noexce
 
 auto PicoInternalTickAlarm::setBpm(std::uint8_t bpm) noexcept -> void {
     critical_section_enter_blocking(&_criticalSection);
-    if (_active) {
-        if (_alarmArmed) {
-            cancel_alarm(_alarmId);
-        }
-        _alarmArmed = false;
-        (void)_source.setBpmAt(bpm, time_us_32());
-        arm(_source.alarmRequest());
-    } else {
-        _source.setBpm(bpm);
-    }
+    // The pending alarm remains valid: changing its absolute deadline would let
+    // repeated encoder detents postpone Clock indefinitely.
+    (void)_source.updateBpm(bpm);
     critical_section_exit(&_criticalSection);
 }
 
