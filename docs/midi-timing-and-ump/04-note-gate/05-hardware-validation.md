@@ -1,6 +1,7 @@
 # Шаг 4.5. Аппаратная проверка Gate
 
-Статус: запланировано. Зависит от шагов 4.1–4.4.
+Статус: частично выполнено 2026-09-24; автоматизированные Gate 100% прогоны завершены,
+физические UI/persistence сценарии ожидают доступа к устройству. Зависит от шагов 4.1–4.4.
 
 ## Цель
 
@@ -73,3 +74,45 @@ firmware/test code ради измерения и добавление capture a
 
 Передать Stage 5 measured MIDI balance, timing/order, setup, artifact locations вне Git и
 все unresolved hardware limitations. Не переносить неподтверждённые external/disconnect claims.
+
+## Частичный аппаратный результат 2026-09-24
+
+Проверена сборка `f5ecad6` на одном Pico 2 W (USB serial
+`FA405FCD92DB59C2`, MIDI input `Pico 2W`) через
+`scripts/pico_midi_run.py`. Каждый измеряемый run длился 60 секунд и начинался после
+upload/reboot; параллельных MIDI/Serial monitor не было. До upload прошёл `make verify`:
+315 native tests, 14 Python tests и firmware build. Во время running run операции
+Save/Load не выполнялись.
+
+Первый реальный запуск обнаружил два расхождения validation tooling: host parser не знал
+добавленную в шаге 4.3 причину `stale_gate_off`, а Serial `RUN` ограничивал swing значением
+75 при доменном диапазоне 50–90. В `f5ecad6` schema синхронизирована с firmware, а границы
+Serial parser привязаны к `SWING_MIN_VALUE`/`SWING_MAX_VALUE`; оба случая покрыты тестами.
+
+| Gate | BPM / swing | Clock host / accepted | On / Off | Retry / disconnect | Наблюдение |
+| --- | --- | ---: | ---: | ---: | --- |
+| 100% | 68 / 50 | 1632 / 1632 | 272 / 272 | 0 / 0 | 271 обычная пара имеет ровно 6 Clock; последний Off вызван Stop. |
+| 100% | 240 / 50 | 5760 / 5760 | 960 / 960 | 0 / 0 | 959 обычных пар имеют ровно 6 Clock; последний Off вызван Stop. |
+| 100% | 68 / 90 | 1632 / 1632 | 272 / 272 | 0 / 0 | 135 старых scheduled Gate Off удалены при identity-safe replacement. |
+| 100% | 240 / 90 | 5760 / 5760 | 960 / 960 | 0 / 0 | 479 старых scheduled Gate Off удалены при identity-safe replacement. |
+
+Во всех четырёх capture нет unexpected Off, orphan On, duplicate Off, незакрытой ноты,
+expiry или safety stop. На всех non-terminal adjacent transitions наблюдается порядок
+Clock -> Note Off -> Note On. Straight Gate 100 подтверждает deadline ровно шесть Clock;
+swing 90 чередует собственный шеститактовый deadline с ранним Off перед replacement On,
+при этом поздний stale Off не доходит до host. На 240/90 один длинный host-интервал
+16,454 мс соседствует с одним коротким 4,816 мс; общий host/firmware count совпадает
+5760/5760, firmware retry равен нулю, поэтому это host timestamp bunching, а не потеря Clock.
+
+Локальные, исключённые из Git artifacts:
+
+- `data/midi-stage-4-5-gate100-68-swing50-run1-{midi,diagnostics,input-diagnostics,summary}.csv`;
+- `data/midi-stage-4-5-gate100-240-swing50-fresh-run1-{midi,diagnostics,input-diagnostics,summary}.csv`;
+- `data/midi-stage-4-5-gate100-68-swing90-fresh-run1-{midi,diagnostics,input-diagnostics,summary}.csv`;
+- `data/midi-stage-4-5-gate100-240-swing90-fresh-run1-{midi,diagnostics,input-diagnostics,summary}.csv`.
+
+Пока недоступны без физического управления энкодерами/кнопками: Gate 1/25/50/75,
+disabled-step pattern, live Gate/step edit и проверка UI/Volume semantics, stopped
+save/load/reboot persistence. External clock и воспроизводимый disconnect также отмечены
+`unavailable`: валидного входного clock/disconnect setup в этом run не было. Эти случаи
+остаются обязательными для завершения шага 4.5; software/native coverage их не заменяет.
