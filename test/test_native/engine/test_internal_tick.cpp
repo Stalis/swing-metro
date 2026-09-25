@@ -165,6 +165,9 @@ void test_overflow_and_arm_failures_are_accounted_by_request() {
     }
     TEST_ASSERT_EQUAL_UINT32(1, source.ticks().overflowCount());
     TEST_ASSERT_EQUAL_UINT32(1, source.diagnostics().failedPublications);
+    TEST_ASSERT_EQUAL_UINT32(15, source.diagnostics().observedTickQueueDepth);
+    TEST_ASSERT_EQUAL_UINT32(15, source.diagnostics().observedTickQueueHighWater);
+    TEST_ASSERT_EQUAL_UINT32(1, source.diagnostics().tickQueueOverflows);
 
     const auto old = source.alarmRequest();
     source.stop();

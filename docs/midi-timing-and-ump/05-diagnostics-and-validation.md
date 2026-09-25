@@ -1,6 +1,6 @@
 # Этап 5. Полная диагностика и нагрузочная проверка
 
-Статус: 5.1 выполнен программно; 5.2–5.5 запланированы. Зависит от этапов 1–4.
+Статус: 5.1 и 5.2 выполнены программно; 5.3–5.5 запланированы. Зависит от этапов 1–4.
 
 ## Цель
 
@@ -16,11 +16,16 @@ Bounded handler/flush и encoder-window diagnostics, coherent
 [01-runtime-observability.md](05-diagnostics-and-validation/01-runtime-observability.md).
 `make verify` проходит; аппаратная проверка остаётся частью 5.5.
 
+### 5.2 MIDI distributions и queue depth
+
+Строгая append-only schema `swing_metro_diagnostics_v4`, fixed lateness buckets,
+scheduled depth и наблюдения IRQ queue описаны в
+[02-midi-distributions-and-queue-depth.md](05-diagnostics-and-validation/02-midi-distributions-and-queue-depth.md).
+
 ### Следующие шаги
 
-5.2 добавит MIDI distributions и queue depth; 5.3 определит безопасную отчётность
-и стоимость instrumentation; 5.4 выполнит load/fault scenarios; 5.5 проведёт
-hardware validation. Эти шаги здесь не реализованы.
+5.3 определит безопасную отчётность и стоимость instrumentation; 5.4 выполнит
+load/fault scenarios; 5.5 проведёт hardware validation. Эти шаги здесь не реализованы.
 
 1. Дополнить базовые метрики: время `lv_timer_handler`, время каждого flush и
    сумма flush за период наблюдения, максимальный интервал опроса энкодеров.

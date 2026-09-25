@@ -175,7 +175,7 @@ def add_firmware_summary(
         )
         return combined
 
-    if diagnostics_version != 3:
+    if diagnostics_version not in (3, 4):
         raise RuntimeError(f"unsupported diagnostics version {diagnostics_version}")
     accepted = diagnostics["delivery_clock_accepted"]
     difference: int | str = "not_comparable_cumulative_firmware_counters"
@@ -193,6 +193,19 @@ def add_firmware_summary(
             "clock_accepted_minus_host": accepted_host_difference,
         }
     )
+    if diagnostics_version == 4:
+        for field, value in diagnostics.items():
+            if (
+                field in {
+                    "current_scheduled_depth_total",
+                    "max_scheduled_depth",
+                    "observed_internal_tick_queue_depth",
+                    "observed_internal_tick_queue_high_water",
+                    "internal_tick_queue_overflows",
+                }
+                or "_lateness_" in field
+            ):
+                combined[f"firmware_{field}"] = value
     return combined
 
 

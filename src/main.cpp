@@ -168,6 +168,11 @@ constexpr std::array<const char*, SwingMetro::DELIVERY_REMOVAL_REASON_COUNT>
         "mode_switch",       "storage",       "external_clock_lost", "retry_window_exceeded",
         "delivery_capacity", "disconnected",  "superseded_start",    "scheduled_overdue",
         "stale_gate_off"};
+constexpr std::array<const char*, 4> LATENESS_DISTRIBUTION_NAMES = {
+    "clock_attempt", "clock_accepted", "note_attempt", "note_accepted"};
+constexpr std::array<const char*, SwingMetro::LatenessDistribution::POSITIVE_BUCKET_COUNT>
+    LATENESS_BUCKET_NAMES = {"1_10",     "11_50",     "51_100",     "101_250",      "251_500",
+                             "501_1000", "1001_5000", "5001_20000", "20001_100000", "ge_100001"};
 
 void printDeliveryDiagnosticsHeader() {
     for (const auto* messageClass : DELIVERY_CLASS_NAMES) {
@@ -222,9 +227,28 @@ void printDeliveryDiagnosticsHeader() {
         Serial.print(F(",session_ends_"));
         Serial.print(reason);
     }
+    Serial.print(F(",current_scheduled_depth_total,max_scheduled_depth"));
+    for (const auto* distribution : LATENESS_DISTRIBUTION_NAMES) {
+        Serial.print(',');
+        Serial.print(distribution);
+        Serial.print(F("_lateness_early,"));
+        Serial.print(distribution);
+        Serial.print(F("_lateness_on_time,"));
+        Serial.print(distribution);
+        Serial.print(F("_lateness_unordered"));
+        for (const auto* bucket : LATENESS_BUCKET_NAMES) {
+            Serial.print(',');
+            Serial.print(distribution);
+            Serial.print(F("_lateness_"));
+            Serial.print(bucket);
+        }
+    }
+    Serial.print(F(",observed_internal_tick_queue_depth,"
+                   "observed_internal_tick_queue_high_water,internal_tick_queue_overflows"));
 }
 
-void printDeliveryDiagnostics(const SwingMetro::TransportDiagnostics& transport) {
+void printDeliveryDiagnostics(const SwingMetro::TransportDiagnostics& transport,
+                              const SwingMetro::InternalTickDiagnostics& producer) {
     const auto print = [](std::uint32_t value) { Serial.print(value); };
     for (const auto& delivery : transport.delivery) {
         Serial.print(',');
@@ -295,6 +319,32 @@ void printDeliveryDiagnostics(const SwingMetro::TransportDiagnostics& transport)
         Serial.print(',');
         print(count);
     }
+    Serial.print(',');
+    print(transport.currentScheduledDepthTotal);
+    Serial.print(',');
+    print(transport.maxScheduledDepth);
+    const auto printDistribution = [&print](const SwingMetro::LatenessDistribution& distribution) {
+        Serial.print(',');
+        print(distribution.early);
+        Serial.print(',');
+        print(distribution.onTime);
+        Serial.print(',');
+        print(distribution.unordered);
+        for (const auto bucket : distribution.positive) {
+            Serial.print(',');
+            print(bucket);
+        }
+    };
+    printDistribution(transport.clockAttemptLateness);
+    printDistribution(transport.clockAcceptedLateness);
+    printDistribution(transport.noteAttemptLateness);
+    printDistribution(transport.noteAcceptedLateness);
+    Serial.print(',');
+    print(producer.observedTickQueueDepth);
+    Serial.print(',');
+    print(producer.observedTickQueueHighWater);
+    Serial.print(',');
+    print(producer.tickQueueOverflows);
 }
 
 void exportInternalTimingDiagnostics(
@@ -309,7 +359,7 @@ void exportInternalTimingDiagnostics(
 
     if (!diagnosticsHeaderPrinted) {
         Serial.print(
-            F("swing_metro_diagnostics_v3,alarm_callback_invocations,"
+            F("swing_metro_diagnostics_v4,alarm_callback_invocations,"
               "synchronous_start_publication_attempts,successful_publications,"
               "failed_publications,tick_queue_overflows,stop_discards,mode_switch_discards,"
               "storage_discards,alarm_arm_failures,stale_alarm_callbacks,"
@@ -334,7 +384,7 @@ void exportInternalTimingDiagnostics(
         diagnosticsHeaderPrinted = true;
     }
 
-    Serial.print(F("swing_metro_diagnostics_v3,"));
+    Serial.print(F("swing_metro_diagnostics_v4,"));
     const auto print = [](std::uint32_t value) { Serial.print(value); };
     const auto separator = []() { Serial.print(','); };
     print(producer.alarmCallbackInvocations);
@@ -390,7 +440,7 @@ void exportInternalTimingDiagnostics(
     print(transport.maxRemainingInternalTicksAfterBudgetPass);
     separator();
     print(transport.maxProcessDurationUs);
-    printDeliveryDiagnostics(transport);
+    printDeliveryDiagnostics(transport, producer);
     Serial.println();
     Serial.print(F("swing_metro_input_diagnostics_v1,"));
     Serial.print(encoderSampleDiagnostics.maxActualIntervalUs());

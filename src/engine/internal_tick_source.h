@@ -42,6 +42,10 @@ struct InternalTickDiagnostics {
     std::uint32_t outOfHorizonAlarmCallbacks = 0;
     std::uint32_t maxActualCallbackIntervalUs = 0;
     std::uint32_t maxCallbackLatenessUs = 0;
+    // Producer observations, not a race-free instantaneous global queue maximum.
+    std::uint32_t observedTickQueueDepth = 0;
+    std::uint32_t observedTickQueueHighWater = 0;
+    std::uint32_t tickQueueOverflows = 0;
 };
 
 class InternalTickSource {
@@ -68,6 +72,7 @@ class InternalTickSource {
         setBpm(bpm);
         _haveCallbackTimestamp = false;
         addDiscards(discardReason, _ticks.discard());
+        observeQueue();
         const auto periodUs = nextPeriodUs();
         _nextDeadlineUs = timestampUs + periodUs;
         addOne(_diagnostics.synchronousStartPublicationAttempts);
@@ -82,6 +87,7 @@ class InternalTickSource {
         _active = false;
         nextGeneration();
         addDiscards(discardReason, _ticks.discard());
+        observeQueue();
         endDiagnosticsUpdate();
     }
 
@@ -181,6 +187,9 @@ class InternalTickSource {
         std::atomic<std::uint32_t> outOfHorizonAlarmCallbacks{0};
         std::atomic<std::uint32_t> maxActualCallbackIntervalUs{0};
         std::atomic<std::uint32_t> maxCallbackLatenessUs{0};
+        std::atomic<std::uint32_t> observedTickQueueDepth{0};
+        std::atomic<std::uint32_t> observedTickQueueHighWater{0};
+        std::atomic<std::uint32_t> tickQueueOverflows{0};
     };
 
     static auto addOne(std::atomic<std::uint32_t>& counter) noexcept -> void {
@@ -218,6 +227,14 @@ class InternalTickSource {
         } else {
             addOne(_diagnostics.failedPublications);
         }
+        observeQueue();
+    }
+
+    auto observeQueue() noexcept -> void {
+        const auto depth = static_cast<std::uint32_t>(_ticks.size());
+        _diagnostics.observedTickQueueDepth.store(depth, std::memory_order_relaxed);
+        updateMaximum(_diagnostics.observedTickQueueHighWater, depth);
+        _diagnostics.tickQueueOverflows.store(_ticks.overflowCount(), std::memory_order_relaxed);
     }
 
     auto setBpm(std::uint8_t bpm) noexcept -> void {
@@ -270,7 +287,10 @@ class InternalTickSource {
                 _diagnostics.missedScheduledTargets.load(std::memory_order_relaxed),
                 _diagnostics.outOfHorizonAlarmCallbacks.load(std::memory_order_relaxed),
                 _diagnostics.maxActualCallbackIntervalUs.load(std::memory_order_relaxed),
-                _diagnostics.maxCallbackLatenessUs.load(std::memory_order_relaxed)};
+                _diagnostics.maxCallbackLatenessUs.load(std::memory_order_relaxed),
+                _diagnostics.observedTickQueueDepth.load(std::memory_order_relaxed),
+                _diagnostics.observedTickQueueHighWater.load(std::memory_order_relaxed),
+                _diagnostics.tickQueueOverflows.load(std::memory_order_relaxed)};
     }
 
     auto nextGeneration() noexcept -> void {

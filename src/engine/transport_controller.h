@@ -25,6 +25,14 @@ enum class SendResult : std::uint8_t {
 using DeliveryMessageClass = MidiMessageClass;
 static constexpr std::size_t DELIVERY_MESSAGE_CLASS_COUNT = MIDI_MESSAGE_CLASS_COUNT;
 
+struct LatenessDistribution {
+    static constexpr std::size_t POSITIVE_BUCKET_COUNT = 10;
+    std::uint32_t early = 0;
+    std::uint32_t onTime = 0;
+    std::uint32_t unordered = 0;
+    std::array<std::uint32_t, POSITIVE_BUCKET_COUNT> positive{};
+};
+
 struct DeliveryClassDiagnostics {
     std::uint32_t attempts = 0;
     std::uint32_t accepted = 0;
@@ -84,6 +92,8 @@ struct TransportDiagnostics {
     std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT> scheduledTransferred{};
     std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT> outboxInserted{};
     std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT> currentScheduledDepth{};
+    std::uint32_t currentScheduledDepthTotal = 0;
+    std::uint32_t maxScheduledDepth = 0;
     std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT> currentOutboxDepthByClass{};
     std::uint32_t currentOutboxDepth = 0;
     std::uint32_t maxOutboxDepth = 0;
@@ -97,6 +107,10 @@ struct TransportDiagnostics {
         sessionEnds{};
     std::uint32_t currentSessionGeneration = 1;
     InvalidationReason lastSessionEndReason = InvalidationReason::Stop;
+    LatenessDistribution clockAttemptLateness{};
+    LatenessDistribution clockAcceptedLateness{};
+    LatenessDistribution noteAttemptLateness{};
+    LatenessDistribution noteAcceptedLateness{};
 };
 
 enum class DeliveryLifecycleOutcome : std::uint8_t {
@@ -353,6 +367,52 @@ class MidiDispatcher {
             _diagnostics.currentScheduledDepth[messageClass] =
                 static_cast<std::uint32_t>(summary.counts[messageClass]);
         }
+        _diagnostics.currentScheduledDepthTotal = static_cast<std::uint32_t>(_queue.size());
+        if (_diagnostics.currentScheduledDepthTotal > _diagnostics.maxScheduledDepth) {
+            _diagnostics.maxScheduledDepth = _diagnostics.currentScheduledDepthTotal;
+        }
+    }
+
+    static auto recordLateness(LatenessDistribution& distribution, std::uint32_t attemptAtUs,
+                               std::uint32_t deadlineUs) noexcept -> void {
+        const auto difference = attemptAtUs - deadlineUs;
+        if (difference == 0) {
+            addOne(distribution.onTime);
+            return;
+        }
+        if (difference == TIMESTAMP_COMPARISON_HORIZON_US) {
+            addOne(distribution.unordered);
+            return;
+        }
+        if (!timestampReached(attemptAtUs, deadlineUs)) {
+            addOne(distribution.early);
+            return;
+        }
+        constexpr std::array<std::uint32_t, LatenessDistribution::POSITIVE_BUCKET_COUNT - 1>
+            upperBounds = {10, 50, 100, 250, 500, 1'000, 5'000, 20'000, 100'000};
+        std::size_t bucket = 0;
+        while (bucket < upperBounds.size() && difference > upperBounds[bucket]) {
+            ++bucket;
+        }
+        addOne(distribution.positive[bucket]);
+    }
+
+    auto recordDistributionAttempt(const PendingMidiEvent& pending,
+                                   std::uint32_t attemptAtUs) noexcept -> void {
+        if (pending.event.message.isClock()) {
+            recordLateness(_diagnostics.clockAttemptLateness, attemptAtUs, pending.deadlineUs);
+        } else if (pending.event.message.messageClass() == MidiMessageClass::Note) {
+            recordLateness(_diagnostics.noteAttemptLateness, attemptAtUs, pending.deadlineUs);
+        }
+    }
+
+    auto recordDistributionAccepted(const PendingMidiEvent& pending,
+                                    std::uint32_t attemptAtUs) noexcept -> void {
+        if (pending.event.message.isClock()) {
+            recordLateness(_diagnostics.clockAcceptedLateness, attemptAtUs, pending.deadlineUs);
+        } else if (pending.event.message.messageClass() == MidiMessageClass::Note) {
+            recordLateness(_diagnostics.noteAcceptedLateness, attemptAtUs, pending.deadlineUs);
+        }
     }
     static auto updateLateness(std::uint32_t& maximum, std::uint32_t attemptAtUs,
                                std::uint32_t deadlineUs) noexcept -> void {
@@ -531,6 +591,7 @@ class MidiDispatcher {
                                               : pending->attemptOrdinal + 1U),
                 firstAttempt,
                 pending->event.launchId};
+            recordDistributionAttempt(*pending, attemptAtUs);
             const auto sendResult = _sink.send(attempt);
             if (sendResult == SendResult::Disconnected) {
                 addOne(delivery.disconnected);
@@ -549,6 +610,7 @@ class MidiDispatcher {
                 return;
             }
             addOne(delivery.accepted);
+            recordDistributionAccepted(*pending, attemptAtUs);
             if (pending->retrySeen) {
                 addOne(delivery.retryRecovered);
             }

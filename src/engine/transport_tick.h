@@ -21,7 +21,10 @@ class TransportTickStore {
         const auto write = _write.load(std::memory_order_relaxed);
         const auto next = static_cast<std::uint8_t>((write + 1) % Capacity);
         if (next == _read.load(std::memory_order_acquire)) {
-            ++_overflowCount;
+            const auto overflowCount = _overflowCount.load(std::memory_order_relaxed);
+            if (overflowCount != UINT32_MAX) {
+                _overflowCount.store(overflowCount + 1U, std::memory_order_relaxed);
+            }
             return false;
         }
         _records[write] = record;

@@ -1160,6 +1160,101 @@ void test_lifecycle_expiry_and_generation_helpers_are_exact_and_saturating() {
     TEST_ASSERT_EQUAL_UINT32(2, SwingMetro::MidiDispatcher::nextSessionGeneration(1));
 }
 
+void test_lateness_distributions_cover_edges_wrap_and_message_classes() {
+    constexpr std::array<std::uint32_t, 19> lateness = {
+        1,   10,    11,    50,    51,    100,    101,    250,     251,    500,
+        501, 1'000, 1'001, 5'000, 5'001, 20'000, 20'001, 100'000, 100'001};
+    for (std::size_t index = 0; index < lateness.size(); ++index) {
+        Sequencer sequencer;
+        SwingMetro::MidiEventQueue queue;
+        SwingMetro::Transport transport;
+        Sink sink;
+        SwingMetro::TransportDiagnostics diagnostics;
+        SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+        TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                          queue.enqueue({0, 0}, noteOn(0, 60, 100)));
+        dispatcher.start(false);
+        dispatcher.consumeTick({1'000, 20'000}, false, 1'000 + lateness[index]);
+        const auto bucket = index / 2;
+        TEST_ASSERT_EQUAL_UINT32(1, diagnostics.noteAttemptLateness.positive[bucket]);
+        TEST_ASSERT_EQUAL_UINT32(1, diagnostics.noteAcceptedLateness.positive[bucket]);
+        TEST_ASSERT_EQUAL_UINT32(0, diagnostics.clockAttemptLateness.onTime);
+    }
+
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    dispatcher.start(false);
+    dispatcher.consumeTick({UINT32_MAX - 9, 20'000}, true, UINT32_MAX - 9);
+    dispatcher.consumeTick({UINT32_MAX - 9, 20'000}, true, UINT32_MAX - 19);
+    dispatcher.consumeTick({UINT32_MAX - 9, 20'000}, true,
+                           UINT32_MAX - 9 + SwingMetro::TIMESTAMP_COMPARISON_HORIZON_US);
+    dispatcher.consumeTick({UINT32_MAX - 9, 20'000}, true, 5);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.clockAttemptLateness.onTime);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.clockAcceptedLateness.onTime);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.clockAttemptLateness.early);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.clockAttemptLateness.unordered);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.clockAttemptLateness.positive[1]);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.clockAcceptedLateness.positive[1]);
+}
+
+void test_lateness_distributions_count_retry_once_per_attempt_and_acceptance() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    sink.results[0] = SwingMetro::SendResult::RetryLater;
+    sink.results[1] = SwingMetro::SendResult::Accepted;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, 0}, noteOn(0, 60, 100)));
+    dispatcher.start(false);
+    dispatcher.beginPass(1'010);
+    dispatcher.consumeTick({1'000, 20'000}, false, 1'010);
+    dispatcher.finishPass(1'010);
+    dispatcher.beginPass(1'025);
+    dispatcher.finishPass(1'025);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.noteAttemptLateness.positive[0]);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.noteAttemptLateness.positive[1]);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.noteAcceptedLateness.positive[1]);
+    TEST_ASSERT_EQUAL_UINT32(1'000, sink.attempts[0].deadlineUs);
+    TEST_ASSERT_EQUAL_UINT32(1'000, sink.attempts[1].deadlineUs);
+
+    diagnostics.noteAttemptLateness.onTime = UINT32_MAX;
+    diagnostics.noteAcceptedLateness.onTime = UINT32_MAX;
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({1, 0}, noteOn(0, 61, 100)));
+    dispatcher.beginPass(21'000);
+    dispatcher.consumeTick({21'000, 20'000}, false, 21'000);
+    dispatcher.finishPass(21'000);
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, diagnostics.noteAttemptLateness.onTime);
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, diagnostics.noteAcceptedLateness.onTime);
+}
+
+void test_scheduled_depth_tracks_current_and_high_water() {
+    Sequencer sequencer;
+    SwingMetro::MidiEventQueue queue;
+    SwingMetro::Transport transport;
+    Sink sink;
+    SwingMetro::TransportDiagnostics diagnostics;
+    SwingMetro::MidiDispatcher dispatcher{queue, transport, sequencer, sink, diagnostics};
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({0, 0}, noteOn(0, 60, 100)));
+    TEST_ASSERT_EQUAL(SwingMetro::MidiEventQueueEnqueueResult::Ok,
+                      queue.enqueue({1, 0}, noteOn(0, 61, 100)));
+    dispatcher.recordScheduledDepth();
+    TEST_ASSERT_EQUAL_UINT32(2, diagnostics.currentScheduledDepthTotal);
+    TEST_ASSERT_EQUAL_UINT32(2, diagnostics.maxScheduledDepth);
+    queue.popFront();
+    dispatcher.recordScheduledDepth();
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.currentScheduledDepthTotal);
+    TEST_ASSERT_EQUAL_UINT32(2, diagnostics.maxScheduledDepth);
+}
+
 void test_clock_backpressure_coalesces_to_latest_without_burst() {
     Sequencer sequencer;
     SwingMetro::MidiEventQueue queue;
@@ -1685,6 +1780,9 @@ void test_transport_controller_main() {
     RUN_TEST(test_capacity_stop_cancels_without_recursive_send_and_can_restart);
     RUN_TEST(test_direct_control_messages_do_not_change_stage_one_lateness_metrics);
     RUN_TEST(test_lifecycle_expiry_and_generation_helpers_are_exact_and_saturating);
+    RUN_TEST(test_lateness_distributions_cover_edges_wrap_and_message_classes);
+    RUN_TEST(test_lateness_distributions_count_retry_once_per_attempt_and_acceptance);
+    RUN_TEST(test_scheduled_depth_tracks_current_and_high_water);
     RUN_TEST(test_clock_backpressure_coalesces_to_latest_without_burst);
     RUN_TEST(test_stale_clock_expires_instead_of_replaying);
     RUN_TEST(test_note_on_expires_at_retry_window_equality_without_acceptance);

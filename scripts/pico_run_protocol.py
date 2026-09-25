@@ -8,6 +8,7 @@ import glob
 CONTROL_PREFIX = "swing_metro_control_v1"
 V2_DIAGNOSTICS_PREFIX = "swing_metro_diagnostics_v2"
 V3_DIAGNOSTICS_PREFIX = "swing_metro_diagnostics_v3"
+V4_DIAGNOSTICS_PREFIX = "swing_metro_diagnostics_v4"
 INPUT_DIAGNOSTICS_PREFIX = "swing_metro_input_diagnostics_v1"
 RUNTIME_DIAGNOSTICS_PREFIX = "swing_metro_runtime_diagnostics_v1"
 V2_COLUMNS = (
@@ -97,6 +98,33 @@ V3_COLUMNS = (
     "current_session_generation",
     *(f"session_ends_{reason}" for reason in _SESSION_END_REASONS),
 )
+_LATENESS_DISTRIBUTIONS = ("clock_attempt", "clock_accepted", "note_attempt", "note_accepted")
+_LATENESS_BUCKETS = (
+    "1_10",
+    "11_50",
+    "51_100",
+    "101_250",
+    "251_500",
+    "501_1000",
+    "1001_5000",
+    "5001_20000",
+    "20001_100000",
+    "ge_100001",
+)
+V4_COLUMNS = (
+    V4_DIAGNOSTICS_PREFIX,
+    *V3_COLUMNS[1:],
+    "current_scheduled_depth_total",
+    "max_scheduled_depth",
+    *(
+        f"{distribution}_lateness_{field}"
+        for distribution in _LATENESS_DISTRIBUTIONS
+        for field in ("early", "on_time", "unordered", *_LATENESS_BUCKETS)
+    ),
+    "observed_internal_tick_queue_depth",
+    "observed_internal_tick_queue_high_water",
+    "internal_tick_queue_overflows",
+)
 INPUT_DIAGNOSTICS_COLUMNS = (
     INPUT_DIAGNOSTICS_PREFIX,
     "max_actual_encoder_sample_interval_us",
@@ -122,7 +150,7 @@ DIAGNOSTICS_HEADER = ",".join(V2_COLUMNS)
 
 def diagnostics_columns_for_row(row: str) -> tuple[int, tuple[str, ...]]:
     fields = row.split(",")
-    schemas = ((2, V2_COLUMNS), (3, V3_COLUMNS))
+    schemas = ((2, V2_COLUMNS), (3, V3_COLUMNS), (4, V4_COLUMNS))
     for version, columns in schemas:
         if fields[0] == columns[0] and len(fields) == len(columns):
             return version, columns

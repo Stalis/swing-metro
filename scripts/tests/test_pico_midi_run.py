@@ -21,6 +21,7 @@ from pico_serial_run import input_output_path
 from pico_run_protocol import (
     V2_COLUMNS,
     V3_COLUMNS,
+    V4_COLUMNS,
     RUNTIME_DIAGNOSTICS_COLUMNS,
     diagnostics_header_for_row,
     is_diagnostics_data_row,
@@ -133,6 +134,19 @@ class PicoMidiRunTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             parse_diagnostics_row(",".join([V3_COLUMNS[0], *("1" for _ in V2_COLUMNS[1:])]))
 
+    def test_parses_strict_v4_diagnostics_row_without_changing_v2_or_v3(self):
+        row = ",".join([V4_COLUMNS[0], *(str(index) for index in range(1, len(V4_COLUMNS)))])
+        version, parsed = parse_diagnostics_row(row)
+        self.assertEqual(4, version)
+        self.assertEqual(",".join(V4_COLUMNS), diagnostics_header_for_row(row))
+        self.assertEqual(
+            V4_COLUMNS.index("clock_attempt_lateness_1_10"),
+            parsed["clock_attempt_lateness_1_10"],
+        )
+        self.assertIn("observed_internal_tick_queue_high_water", parsed)
+        with self.assertRaises(RuntimeError):
+            parse_diagnostics_row(",".join([V4_COLUMNS[0], *("1" for _ in V4_COLUMNS[2:])]))
+
     def test_parses_strict_input_diagnostics_row(self):
         row = "swing_metro_input_diagnostics_v1,1250,2"
 
@@ -232,6 +246,24 @@ class PicoMidiRunTests(unittest.TestCase):
             "not_comparable_cumulative_firmware_counters",
             combined["clock_accepted_minus_host"],
         )
+
+        diagnostics.update(
+            {
+                "clock_attempt_lateness_1_10": 7,
+                "note_accepted_lateness_101_250": 8,
+                "current_scheduled_depth_total": 2,
+                "max_scheduled_depth": 5,
+                "observed_internal_tick_queue_depth": 1,
+                "observed_internal_tick_queue_high_water": 4,
+                "internal_tick_queue_overflows": 0,
+            }
+        )
+        combined = add_firmware_summary(summary, diagnostics, 4)
+        self.assertEqual(58, combined["firmware_clock_stack_accepted_count"])
+        self.assertEqual(7, combined["firmware_clock_attempt_lateness_1_10"])
+        self.assertEqual(8, combined["firmware_note_accepted_lateness_101_250"])
+        self.assertEqual(5, combined["firmware_max_scheduled_depth"])
+        self.assertEqual(4, combined["firmware_observed_internal_tick_queue_high_water"])
 
     def test_v2_firmware_summary_marks_acceptance_unavailable(self):
         combined = add_firmware_summary(
