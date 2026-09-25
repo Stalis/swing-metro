@@ -3,6 +3,7 @@
 #include "drivers/lvgl_ui.h"
 #include "drivers/pico_internal_tick_alarm.h"
 #include "drivers/usb_midi_adapter.h"
+#include "engine/runtime_timing_diagnostics.h"
 #include "engine/transport_controller.h"
 #include "input/app_event_handler.h"
 #include "input/app_input.h"
@@ -63,6 +64,10 @@ SwingMetro::StepButtonInputs stepButtonInputs;
 SwingMetro::PeriodicScheduler<MATRIX_SCAN_PERIOD_MS> matrixScanScheduler;
 SwingMetro::PeriodicScheduler<ENCODER_SAMPLE_PERIOD_US> encoderSampleScheduler;
 SwingMetro::EncoderSampleDiagnostics encoderSampleDiagnostics;
+SwingMetro::RuntimeTimingDiagnostics runtimeTimingDiagnostics;
+SwingMetro::EncoderSampleWindowDiagnostics runtimeEncoderSnapshot;
+std::uint32_t runtimeDiagnosticsRequestGeneration = 0;
+bool runtimeDiagnosticsExportPending = false;
 
 void tempoEncoderHandler(EncoderDirection direction);
 void tempoEncoderSwitchHandler(std::uint32_t nowUs);
@@ -292,7 +297,9 @@ void printDeliveryDiagnostics(const SwingMetro::TransportDiagnostics& transport)
     }
 }
 
-void exportInternalTimingDiagnostics() {
+void exportInternalTimingDiagnostics(
+    const SwingMetro::RuntimeTimingSnapshot& runtime,
+    const SwingMetro::EncoderSampleWindowDiagnostics& encoderWindow) {
     if (transportController.usesInternalTiming() || transportController.isRunning()) {
         return;
     }
@@ -319,6 +326,11 @@ void exportInternalTimingDiagnostics() {
         Serial.println();
         Serial.println(F("swing_metro_input_diagnostics_v1,max_actual_encoder_sample_interval_us,"
                          "encoder_sample_intervals_above_1250_us"));
+        Serial.println(F("swing_metro_runtime_diagnostics_v1,lv_timer_handler_count,"
+                         "lv_timer_handler_inclusive_total_us,lv_timer_handler_inclusive_max_us,"
+                         "display_flush_count,display_flush_inclusive_total_us,"
+                         "display_flush_inclusive_max_us,encoder_sample_window_max_interval_us,"
+                         "encoder_sample_window_intervals_above_1250_us"));
         diagnosticsHeaderPrinted = true;
     }
 
@@ -384,6 +396,23 @@ void exportInternalTimingDiagnostics() {
     Serial.print(encoderSampleDiagnostics.maxActualIntervalUs());
     Serial.print(',');
     Serial.println(encoderSampleDiagnostics.intervalsAboveBound());
+    Serial.print(F("swing_metro_runtime_diagnostics_v1,"));
+    print(runtime.lvTimerHandlerCount);
+    separator();
+    print(runtime.lvTimerHandlerInclusiveTotalUs);
+    separator();
+    print(runtime.lvTimerHandlerInclusiveMaxUs);
+    separator();
+    print(runtime.displayFlushCount);
+    separator();
+    print(runtime.displayFlushInclusiveTotalUs);
+    separator();
+    print(runtime.displayFlushInclusiveMaxUs);
+    separator();
+    print(encoderWindow.maxActualIntervalUs);
+    separator();
+    print(encoderWindow.intervalsAboveBound);
+    Serial.println();
 }
 
 template <typename TAdapter>
@@ -522,6 +551,8 @@ void handleProgramStorageEvent(const SwingMetro::AppEvent& event, std::uint32_t 
 void syncInternalAlarm() {
     const bool shouldRun = transportController.usesInternalTiming();
     if (shouldRun && !internalAlarmActive) {
+        (void)runtimeTimingDiagnostics.requestSnapshot();
+        (void)encoderSampleDiagnostics.snapshotAndResetWindow();
         internalTickAlarm.start(mainSequencer.getBpm(),
                                 transportController.internalTickDiscardReason());
         internalAlarmActive = true;
@@ -529,7 +560,9 @@ void syncInternalAlarm() {
     } else if (!shouldRun && internalAlarmActive) {
         internalTickAlarm.stop(transportController.internalTickDiscardReason());
         internalAlarmActive = false;
-        exportInternalTimingDiagnostics();
+        runtimeEncoderSnapshot = encoderSampleDiagnostics.snapshotAndResetWindow();
+        runtimeDiagnosticsRequestGeneration = runtimeTimingDiagnostics.requestSnapshot();
+        runtimeDiagnosticsExportPending = true;
     } else if (shouldRun && internalAlarmBpm != mainSequencer.getBpm()) {
         internalTickAlarm.setBpm(mainSequencer.getBpm());
         internalAlarmBpm = mainSequencer.getBpm();
@@ -595,7 +628,14 @@ void loop() {
 
     updateSerialRun();
     syncInternalAlarm();
-    if (serialRunCompletionPending && !internalAlarmActive) {
+    SwingMetro::RuntimeTimingSnapshot runtimeSnapshot;
+    if (runtimeDiagnosticsExportPending && !transportController.isRunning() &&
+        runtimeTimingDiagnostics.readSnapshot(runtimeDiagnosticsRequestGeneration,
+                                              runtimeSnapshot)) {
+        exportInternalTimingDiagnostics(runtimeSnapshot, runtimeEncoderSnapshot);
+        runtimeDiagnosticsExportPending = false;
+    }
+    if (serialRunCompletionPending && !internalAlarmActive && !runtimeDiagnosticsExportPending) {
         Serial.println(F("swing_metro_control_v1,run_complete"));
         serialRunCompletionPending = false;
     }
@@ -617,7 +657,7 @@ void loop() {
  *
  */
 
-LvglUi uiProvider{};
+LvglUi uiProvider{runtimeTimingDiagnostics};
 
 void setup1() { uiProvider.setup(); }
 

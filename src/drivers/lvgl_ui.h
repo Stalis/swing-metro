@@ -5,6 +5,7 @@
 #include <lvgl.h>
 
 #include "components/ui_view_model.h"
+#include "engine/runtime_timing_diagnostics.h"
 
 constexpr const uint8_t DISPLAY_SPI_CLOCK_PIN = 10;
 constexpr const uint8_t DISPLAY_SPI_DATA_OUT_PIN = 11;
@@ -22,6 +23,9 @@ constexpr const uint8_t SEQUENCER_STEPS_COUNT = 16;
 
 class LvglUi {
   public:
+    explicit LvglUi(SwingMetro::RuntimeTimingDiagnostics& runtimeTimingDiagnostics)
+        : _runtimeTimingDiagnostics(runtimeTimingDiagnostics) {}
+
     void setup();
     void loop();
 
@@ -33,6 +37,7 @@ class LvglUi {
     void setSteps(std::bitset<SEQUENCER_STEPS_COUNT> stepsState, uint8_t activeStep);
 
   private:
+    SwingMetro::RuntimeTimingDiagnostics& _runtimeTimingDiagnostics;
     std::array<lv_color_t, BUFFER_SIZE> _drawBuffer{};
     lv_display_t* _display;
     Arduino_RPiPicoSPI _bus{DISPLAY_DATA_COMMAND_PIN,

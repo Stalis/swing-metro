@@ -66,6 +66,24 @@ void test_saturating_counter_seam_does_not_wrap() {
         maximum, SwingMetro::EncoderSampleDiagnostics::saturatingIncrement(maximum - 1U));
 }
 
+void test_window_snapshot_resets_without_changing_boot_cumulative_statistics() {
+    SwingMetro::EncoderSampleDiagnostics diagnostics;
+    diagnostics.recordSample(100);
+    diagnostics.recordSample(1'500);
+    diagnostics.recordSample(3'000);
+
+    const auto firstWindow = diagnostics.snapshotAndResetWindow();
+    TEST_ASSERT_EQUAL_UINT32(1'500, firstWindow.maxActualIntervalUs);
+    TEST_ASSERT_EQUAL_UINT32(2, firstWindow.intervalsAboveBound);
+    TEST_ASSERT_EQUAL_UINT32(1'500, diagnostics.maxActualIntervalUs());
+    TEST_ASSERT_EQUAL_UINT32(2, diagnostics.intervalsAboveBound());
+
+    diagnostics.recordSample(3'900);
+    const auto secondWindow = diagnostics.snapshotAndResetWindow();
+    TEST_ASSERT_EQUAL_UINT32(900, secondWindow.maxActualIntervalUs);
+    TEST_ASSERT_EQUAL_UINT32(0, secondWindow.intervalsAboveBound);
+}
+
 } // namespace
 
 void test_encoder_sample_diagnostics_main() {
@@ -74,4 +92,5 @@ void test_encoder_sample_diagnostics_main() {
     RUN_TEST(test_interval_equal_to_bound_does_not_cross_it);
     RUN_TEST(test_wraparound_and_uint32_max_interval_are_preserved);
     RUN_TEST(test_saturating_counter_seam_does_not_wrap);
+    RUN_TEST(test_window_snapshot_resets_without_changing_boot_cumulative_statistics);
 }

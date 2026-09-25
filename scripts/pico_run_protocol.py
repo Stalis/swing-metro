@@ -9,6 +9,7 @@ CONTROL_PREFIX = "swing_metro_control_v1"
 V2_DIAGNOSTICS_PREFIX = "swing_metro_diagnostics_v2"
 V3_DIAGNOSTICS_PREFIX = "swing_metro_diagnostics_v3"
 INPUT_DIAGNOSTICS_PREFIX = "swing_metro_input_diagnostics_v1"
+RUNTIME_DIAGNOSTICS_PREFIX = "swing_metro_runtime_diagnostics_v1"
 V2_COLUMNS = (
     V2_DIAGNOSTICS_PREFIX,
     "alarm_callback_invocations",
@@ -101,6 +102,17 @@ INPUT_DIAGNOSTICS_COLUMNS = (
     "max_actual_encoder_sample_interval_us",
     "encoder_sample_intervals_above_1250_us",
 )
+RUNTIME_DIAGNOSTICS_COLUMNS = (
+    RUNTIME_DIAGNOSTICS_PREFIX,
+    "lv_timer_handler_count",
+    "lv_timer_handler_inclusive_total_us",
+    "lv_timer_handler_inclusive_max_us",
+    "display_flush_count",
+    "display_flush_inclusive_total_us",
+    "display_flush_inclusive_max_us",
+    "encoder_sample_window_max_interval_us",
+    "encoder_sample_window_intervals_above_1250_us",
+)
 
 # Keep these names for callers that only know the original v2 protocol.
 DIAGNOSTICS_PREFIX = V2_DIAGNOSTICS_PREFIX
@@ -174,6 +186,38 @@ def parse_input_diagnostics_row(row: str) -> dict[str, int]:
 def is_input_diagnostics_data_row(row: str) -> bool:
     try:
         parse_input_diagnostics_row(row)
+    except RuntimeError:
+        return False
+    return True
+
+
+def runtime_diagnostics_header_for_row(row: str) -> str:
+    runtime_diagnostics_columns_for_row(row)
+    return ",".join(RUNTIME_DIAGNOSTICS_COLUMNS)
+
+
+def runtime_diagnostics_columns_for_row(row: str) -> tuple[str, ...]:
+    fields = row.split(",")
+    if fields[0] != RUNTIME_DIAGNOSTICS_PREFIX or len(fields) != len(RUNTIME_DIAGNOSTICS_COLUMNS):
+        raise RuntimeError(
+            f"unrecognized runtime diagnostics prefix or field count: {fields[0]!r}, {len(fields)}"
+        )
+    return RUNTIME_DIAGNOSTICS_COLUMNS
+
+
+def parse_runtime_diagnostics_row(row: str) -> dict[str, int]:
+    fields = row.split(",")
+    columns = runtime_diagnostics_columns_for_row(row)
+    try:
+        values = [int(value) for value in fields[1:]]
+    except ValueError as error:
+        raise RuntimeError("runtime diagnostics row contains a non-integer value") from error
+    return dict(zip(columns[1:], values, strict=True))
+
+
+def is_runtime_diagnostics_data_row(row: str) -> bool:
+    try:
+        parse_runtime_diagnostics_row(row)
     except RuntimeError:
         return False
     return True

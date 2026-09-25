@@ -20,8 +20,11 @@ from pico_run_protocol import (
     is_diagnostics_data_row,
     input_diagnostics_header_for_row,
     is_input_diagnostics_data_row,
+    is_runtime_diagnostics_data_row,
     parse_diagnostics_row,
     parse_input_diagnostics_row,
+    parse_runtime_diagnostics_row,
+    runtime_diagnostics_header_for_row,
 )
 
 
@@ -193,11 +196,14 @@ def add_firmware_summary(
     return combined
 
 
-def output_paths(prefix: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path, pathlib.Path]:
+def output_paths(
+    prefix: pathlib.Path,
+) -> tuple[pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path]:
     return (
         pathlib.Path(f"{prefix}-midi.csv"),
         pathlib.Path(f"{prefix}-diagnostics.csv"),
         pathlib.Path(f"{prefix}-summary.csv"),
+        pathlib.Path(f"{prefix}-runtime-diagnostics.csv"),
     )
 
 
@@ -300,9 +306,15 @@ def main() -> int:
     if args.output_prefix is None:
         raise RuntimeError("--output-prefix is required unless --list-midi-ports is used")
 
-    midi_path, diagnostics_path, summary_path = output_paths(args.output_prefix)
+    midi_path, diagnostics_path, summary_path, runtime_diagnostics_path = output_paths(args.output_prefix)
     input_diagnostics_path = input_diagnostics_output_path(args.output_prefix)
-    output_files = (midi_path, diagnostics_path, summary_path, input_diagnostics_path)
+    output_files = (
+        midi_path,
+        diagnostics_path,
+        summary_path,
+        input_diagnostics_path,
+        runtime_diagnostics_path,
+    )
     existing = [path for path in output_files if path.exists()]
     if existing:
         raise RuntimeError(f"refusing to overwrite {existing}")
@@ -330,6 +342,7 @@ def main() -> int:
 
     row: str | None = None
     input_row: str | None = None
+    runtime_row: str | None = None
     completed = False
     timeout_at = time.monotonic() + args.duration_seconds + 30.0
     try:
@@ -347,6 +360,8 @@ def main() -> int:
                     row = line
                 elif is_input_diagnostics_data_row(line):
                     input_row = line
+                elif is_runtime_diagnostics_data_row(line):
+                    runtime_row = line
                 elif line == f"{CONTROL_PREFIX},run_complete":
                     completed = True
                     break
@@ -356,10 +371,11 @@ def main() -> int:
 
     if not completed:
         raise RuntimeError("timed run did not report completion")
-    if row is None or input_row is None:
-        raise RuntimeError("run completed without diagnostics and input diagnostics rows")
+    if row is None or input_row is None or runtime_row is None:
+        raise RuntimeError("run completed without diagnostics, input, and runtime diagnostics rows")
     diagnostics_version, diagnostics = parse_diagnostics_row(row)
     input_diagnostics = parse_input_diagnostics_row(input_row)
+    runtime_diagnostics = parse_runtime_diagnostics_row(runtime_row)
     with event_lock:
         captured_events = list(events)
 
@@ -370,6 +386,26 @@ def main() -> int:
             "firmware_input_max_actual_encoder_sample_interval_us": input_diagnostics[
                 "max_actual_encoder_sample_interval_us"
             ],
+            "firmware_runtime_lv_timer_handler_count": runtime_diagnostics["lv_timer_handler_count"],
+            "firmware_runtime_lv_timer_handler_inclusive_total_us": runtime_diagnostics[
+                "lv_timer_handler_inclusive_total_us"
+            ],
+            "firmware_runtime_lv_timer_handler_inclusive_max_us": runtime_diagnostics[
+                "lv_timer_handler_inclusive_max_us"
+            ],
+            "firmware_runtime_display_flush_count": runtime_diagnostics["display_flush_count"],
+            "firmware_runtime_display_flush_inclusive_total_us": runtime_diagnostics[
+                "display_flush_inclusive_total_us"
+            ],
+            "firmware_runtime_display_flush_inclusive_max_us": runtime_diagnostics[
+                "display_flush_inclusive_max_us"
+            ],
+            "firmware_runtime_encoder_sample_window_max_interval_us": runtime_diagnostics[
+                "encoder_sample_window_max_interval_us"
+            ],
+            "firmware_runtime_encoder_sample_window_intervals_above_1250_us": runtime_diagnostics[
+                "encoder_sample_window_intervals_above_1250_us"
+            ],
             "firmware_input_encoder_sample_intervals_above_1250_us": input_diagnostics[
                 "encoder_sample_intervals_above_1250_us"
             ],
@@ -379,11 +415,15 @@ def main() -> int:
     input_diagnostics_path.write_text(
         f"{input_diagnostics_header_for_row(input_row)}\n{input_row}\n", encoding="utf-8"
     )
+    runtime_diagnostics_path.write_text(
+        f"{runtime_diagnostics_header_for_row(runtime_row)}\n{runtime_row}\n", encoding="utf-8"
+    )
     write_midi_csv(midi_path, captured_events)
     write_summary_csv(summary_path, summary_with_firmware)
     print(f"saved {midi_path}")
     print(f"saved {diagnostics_path}")
     print(f"saved {input_diagnostics_path}")
+    print(f"saved {runtime_diagnostics_path}")
     print(f"saved {summary_path}")
     print(
         f"Clock: host={summary_with_firmware['clock_count']}, "

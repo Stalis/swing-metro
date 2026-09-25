@@ -1,6 +1,6 @@
 # Этап 5. Полная диагностика и нагрузочная проверка
 
-Статус: запланировано. Зависит от этапов 1–4.
+Статус: 5.1 выполнен программно; 5.2–5.5 запланированы. Зависит от этапов 1–4.
 
 ## Цель
 
@@ -8,6 +8,19 @@
 экрана и проверить Gate с независимыми Note Off и запас для будущего потока expressive-контроллеров.
 
 ## Работа
+
+### 5.1 Runtime observability
+
+Bounded handler/flush и encoder-window diagnostics, coherent
+межъядерный snapshot и CSV export описаны в
+[01-runtime-observability.md](05-diagnostics-and-validation/01-runtime-observability.md).
+`make verify` проходит; аппаратная проверка остаётся частью 5.5.
+
+### Следующие шаги
+
+5.2 добавит MIDI distributions и queue depth; 5.3 определит безопасную отчётность
+и стоимость instrumentation; 5.4 выполнит load/fault scenarios; 5.5 проведёт
+hardware validation. Эти шаги здесь не реализованы.
 
 1. Дополнить базовые метрики: время `lv_timer_handler`, время каждого flush и
    сумма flush за период наблюдения, максимальный интервал опроса энкодеров.

@@ -21,12 +21,16 @@ from pico_serial_run import input_output_path
 from pico_run_protocol import (
     V2_COLUMNS,
     V3_COLUMNS,
+    RUNTIME_DIAGNOSTICS_COLUMNS,
     diagnostics_header_for_row,
     is_diagnostics_data_row,
     is_input_diagnostics_data_row,
+    is_runtime_diagnostics_data_row,
     input_diagnostics_header_for_row,
     parse_input_diagnostics_row,
+    parse_runtime_diagnostics_row,
     parse_diagnostics_row,
+    runtime_diagnostics_header_for_row,
 )
 
 
@@ -90,6 +94,7 @@ class PicoMidiRunTests(unittest.TestCase):
                 pathlib.Path("capture-minder-midi.csv"),
                 pathlib.Path("capture-minder-diagnostics.csv"),
                 pathlib.Path("capture-minder-summary.csv"),
+                pathlib.Path("capture-minder-runtime-diagnostics.csv"),
             ),
             output_paths(pathlib.Path("capture-minder")),
         )
@@ -145,6 +150,32 @@ class PicoMidiRunTests(unittest.TestCase):
             parse_input_diagnostics_row("swing_metro_input_diagnostics_v1,1250")
         with self.assertRaises(RuntimeError):
             parse_input_diagnostics_row("swing_metro_input_diagnostics_v1,one,2")
+
+    def test_parses_strict_runtime_diagnostics_row(self):
+        row = ",".join(
+            [
+                RUNTIME_DIAGNOSTICS_COLUMNS[0],
+                *(str(index) for index in range(1, len(RUNTIME_DIAGNOSTICS_COLUMNS))),
+            ]
+        )
+
+        parsed = parse_runtime_diagnostics_row(row)
+        self.assertEqual(1, parsed["lv_timer_handler_count"])
+        self.assertEqual(6, parsed["display_flush_inclusive_max_us"])
+        self.assertEqual(",".join(RUNTIME_DIAGNOSTICS_COLUMNS), runtime_diagnostics_header_for_row(row))
+        self.assertTrue(is_runtime_diagnostics_data_row(row))
+        self.assertFalse(
+            is_runtime_diagnostics_data_row(
+                ",".join([RUNTIME_DIAGNOSTICS_COLUMNS[0], "1"])
+            )
+        )
+        self.assertFalse(
+            is_runtime_diagnostics_data_row(
+                ",".join([RUNTIME_DIAGNOSTICS_COLUMNS[0], *("x" for _ in range(8))])
+            )
+        )
+        with self.assertRaises(RuntimeError):
+            parse_runtime_diagnostics_row(",".join([RUNTIME_DIAGNOSTICS_COLUMNS[0], "1"]))
 
     def test_summary_supports_non_comparable_marker(self):
         with tempfile.TemporaryDirectory() as directory:
