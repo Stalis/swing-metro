@@ -100,10 +100,11 @@ void LvglUi::readViewModel(const UiViewModel& viewModel) {
         lv_screen_load(_currentPage == UiPage::StepSettings ? _stepSettingsScreen : _mainScreen);
     }
 
-    setMidiClockModal(values.midiClockModalOpen, values.midiClockActive, values.midiClockPreview);
+    setMidiClockModal(values.midiClockModalOpen, values.midiClockActive, values.midiClockSelection);
     setExternalClock(values.externalClockStatus, values.externalTempo);
-    setProgramStorageModal(values.programStorageState, values.programStorageAction,
-                           values.programStorageSlot, values.programStorageStatus);
+    setProgramStorageModal(values.programStorageState, values.programStorageSelection,
+                           values.programStorageAction, values.programStorageSlot,
+                           values.programStorageStatus);
 }
 
 void LvglUi::setTempo(uint8_t value) { lv_subject_set_int(&_tempoSubject, value); }
@@ -218,22 +219,24 @@ void LvglUi::initMidiClockModal() {
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
 
     _midiClockActiveLabel = lv_label_create(_midiClockModal);
-    lv_obj_align(_midiClockActiveLabel, LV_ALIGN_TOP_MID, 0, 20);
+    lv_obj_set_style_text_font(_midiClockActiveLabel, &lv_font_montserrat_10, 0);
+    lv_obj_align(_midiClockActiveLabel, LV_ALIGN_TOP_MID, 0, 18);
 
-    static constexpr const char* modeNames[] = {"Off", "Internal", "External"};
+    static constexpr const char* modeNames[] = {"Off", "Internal", "External", "Cancel"};
     for (uint8_t index = 0; index < _midiClockModeLabels.size(); ++index) {
         auto* label = lv_label_create(_midiClockModal);
         _midiClockModeLabels[index] = label;
         lv_label_set_text(label, modeNames[index]);
         lv_obj_set_width(label, 92);
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_10, 0);
         lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_align(label, LV_ALIGN_TOP_MID, 0, static_cast<int16_t>(42 + index * 24));
+        lv_obj_align(label, LV_ALIGN_TOP_MID, 0, static_cast<int16_t>(36 + index * 18));
     }
     lv_obj_add_flag(_midiClockModal, LV_OBJ_FLAG_HIDDEN);
 }
 
 void LvglUi::setMidiClockModal(bool open, SwingMetro::MidiClockMode active,
-                               SwingMetro::MidiClockMode preview) {
+                               SwingMetro::MidiClockMenuItem selection) {
     const bool visibilityChanged = open != _midiClockModalVisible;
     if (visibilityChanged) {
         _midiClockModalVisible = open;
@@ -244,17 +247,17 @@ void LvglUi::setMidiClockModal(bool open, SwingMetro::MidiClockMode active,
         }
     }
     if (!open || (!visibilityChanged && active == _displayedMidiClockActive &&
-                  preview == _displayedMidiClockPreview)) {
+                  selection == _displayedMidiClockSelection)) {
         return;
     }
 
     static constexpr const char* modeNames[] = {"Off", "Internal", "External"};
     _displayedMidiClockActive = active;
-    _displayedMidiClockPreview = preview;
+    _displayedMidiClockSelection = selection;
     lv_label_set_text_fmt(_midiClockActiveLabel, "Active: %s",
                           modeNames[static_cast<uint8_t>(active)]);
     for (uint8_t index = 0; index < _midiClockModeLabels.size(); ++index) {
-        const bool selected = index == static_cast<uint8_t>(preview);
+        const bool selected = index == static_cast<uint8_t>(selection);
         lv_obj_set_style_text_color(_midiClockModeLabels[index],
                                     selected ? lv_color_hex(0xFFFF00) : lv_color_white(), 0);
         lv_obj_set_style_bg_color(_midiClockModeLabels[index],
@@ -280,28 +283,32 @@ void LvglUi::initProgramStorageModal() {
     lv_obj_align(_programStorageValueLabel, LV_ALIGN_CENTER, 0, 12);
     lv_obj_set_style_text_color(_programStorageValueLabel, lv_color_white(), 0);
 
-    static constexpr const char* actionNames[] = {"Save", "Load"};
+    static constexpr const char* actionNames[] = {"Save", "Load", "Cancel"};
     for (uint8_t index = 0; index < _programStorageActionLabels.size(); ++index) {
         auto* label = lv_label_create(_programStorageModal);
         _programStorageActionLabels[index] = label;
         lv_label_set_text(label, actionNames[index]);
         lv_obj_set_width(label, 92);
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_10, 0);
         lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_color(label, lv_color_white(), 0);
-        lv_obj_align(label, LV_ALIGN_TOP_MID, 0, static_cast<int16_t>(36 + index * 24));
+        lv_obj_align(label, LV_ALIGN_TOP_MID, 0, static_cast<int16_t>(34 + index * 18));
         lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
     }
     lv_obj_add_flag(_programStorageModal, LV_OBJ_FLAG_HIDDEN);
 }
 
 void LvglUi::setProgramStorageModal(SwingMetro::ProgramStorageModalState state,
+                                    SwingMetro::ProgramStorageMenuItem selection,
                                     SwingMetro::ProgramStorageAction action, uint8_t slot,
                                     SwingMetro::ProgramStoreStatus status) {
-    if (state == _displayedProgramStorageState && action == _displayedProgramStorageAction &&
-        slot == _displayedProgramStorageSlot && status == _displayedProgramStorageStatus) {
+    if (state == _displayedProgramStorageState && selection == _displayedProgramStorageSelection &&
+        action == _displayedProgramStorageAction && slot == _displayedProgramStorageSlot &&
+        status == _displayedProgramStorageStatus) {
         return;
     }
     _displayedProgramStorageState = state;
+    _displayedProgramStorageSelection = selection;
     _displayedProgramStorageAction = action;
     _displayedProgramStorageSlot = slot;
     _displayedProgramStorageStatus = status;
@@ -314,7 +321,7 @@ void LvglUi::setProgramStorageModal(SwingMetro::ProgramStorageModalState state,
         lv_label_set_text(_programStorageTitleLabel, "Save / Load");
         lv_obj_add_flag(_programStorageValueLabel, LV_OBJ_FLAG_HIDDEN);
         for (uint8_t index = 0; index < _programStorageActionLabels.size(); ++index) {
-            const bool selected = index == static_cast<uint8_t>(action);
+            const bool selected = index == static_cast<uint8_t>(selection);
             lv_obj_remove_flag(_programStorageActionLabels[index], LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_style_text_color(_programStorageActionLabels[index],
                                         selected ? lv_color_hex(0xFFFF00) : lv_color_white(), 0);
@@ -328,7 +335,12 @@ void LvglUi::setProgramStorageModal(SwingMetro::ProgramStorageModalState state,
         lv_label_set_text(_programStorageTitleLabel,
                           action == SwingMetro::ProgramStorageAction::Save ? "Save slot"
                                                                            : "Load slot");
-        lv_label_set_text_fmt(_programStorageValueLabel, "Slot %u", static_cast<unsigned>(slot));
+        if (slot == SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT) {
+            lv_label_set_text(_programStorageValueLabel, "Cancel");
+        } else {
+            lv_label_set_text_fmt(_programStorageValueLabel, "Slot %u",
+                                  static_cast<unsigned>(slot));
+        }
     } else if (state == SwingMetro::ProgramStorageModalState::Busy) {
         lv_obj_remove_flag(_programStorageValueLabel, LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(_programStorageTitleLabel, "Program Storage");

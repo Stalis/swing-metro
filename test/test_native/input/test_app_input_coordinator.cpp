@@ -486,18 +486,15 @@ void test_midi_clock_modal_clamps_confirms_and_publishes_snapshot() {
     UiViewModel viewModel;
     longPressTempo(state, 100);
     TEST_ASSERT_TRUE(state.coordinator.isMidiClockModalOpen());
-    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::Off),
-                            static_cast<std::uint8_t>(state.coordinator.midiClockPreviewMode()));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMenuItem::Off),
+                            static_cast<std::uint8_t>(state.coordinator.midiClockSelection()));
 
     turn(state, SwingMetro::InputId::TempoEncoder, -1);
-    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::Off),
-                            static_cast<std::uint8_t>(state.coordinator.midiClockPreviewMode()));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMenuItem::Off),
+                            static_cast<std::uint8_t>(state.coordinator.midiClockSelection()));
     turn(state, SwingMetro::InputId::TempoEncoder, 2);
-    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
-                            static_cast<std::uint8_t>(state.coordinator.midiClockPreviewMode()));
-    turn(state, SwingMetro::InputId::TempoEncoder, 1);
-    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
-                            static_cast<std::uint8_t>(state.coordinator.midiClockPreviewMode()));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMenuItem::External),
+                            static_cast<std::uint8_t>(state.coordinator.midiClockSelection()));
     TEST_ASSERT_EQUAL_UINT8(120, state.tempo.getValue());
     TEST_ASSERT_FALSE(turn(state, SwingMetro::InputId::SwingEncoder, 1).has_value());
     TEST_ASSERT_FALSE(turn(state, SwingMetro::InputId::VolumeEncoder, 1).has_value());
@@ -509,8 +506,8 @@ void test_midi_clock_modal_clamps_confirms_and_publishes_snapshot() {
     TEST_ASSERT_TRUE(openUi.midiClockModalOpen);
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::Off),
                             static_cast<std::uint8_t>(openUi.midiClockActive));
-    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
-                            static_cast<std::uint8_t>(openUi.midiClockPreview));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMenuItem::External),
+                            static_cast<std::uint8_t>(openUi.midiClockSelection));
 
     clickTempo(state, 1000);
     TEST_ASSERT_FALSE(state.coordinator.isMidiClockModalOpen());
@@ -521,6 +518,16 @@ void test_midi_clock_modal_clamps_confirms_and_publishes_snapshot() {
     TEST_ASSERT_FALSE(closedUi.midiClockModalOpen);
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
                             static_cast<std::uint8_t>(closedUi.midiClockActive));
+
+    longPressTempo(state, 2000);
+    turn(state, SwingMetro::InputId::TempoEncoder, 1);
+    turn(state, SwingMetro::InputId::TempoEncoder, 1);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMenuItem::Cancel),
+                            static_cast<std::uint8_t>(state.coordinator.midiClockSelection()));
+    clickTempo(state, 3000);
+    TEST_ASSERT_FALSE(state.coordinator.isMidiClockModalOpen());
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
+                            static_cast<std::uint8_t>(state.midiClock.mode()));
 }
 
 void test_modals_are_rejected_outside_their_host_page_and_cannot_stack() {
@@ -765,8 +772,6 @@ void test_program_storage_modal_blocks_input_and_publishes_result() {
     TEST_ASSERT_EQUAL_UINT8(120, state.tempo.getValue());
 
     state.coordinator.handleAppEvent(
-        SwingMetro::AppEvent{SwingMetro::SelectProgramStorageAction{1}}, nullptr, 1000);
-    state.coordinator.handleAppEvent(
         SwingMetro::AppEvent{SwingMetro::ConfirmProgramStorageAction{}}, nullptr, 1000);
     state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::SelectProgramStorageSlot{4}},
                                      nullptr, 1000);
@@ -781,6 +786,40 @@ void test_program_storage_modal_blocks_input_and_publishes_result() {
                             static_cast<std::uint8_t>(viewModel.read().programStorageState));
     state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::CloseProgramStorage{}},
                                      nullptr, 1000);
+    TEST_ASSERT_FALSE(state.coordinator.isProgramStorageModalOpen());
+    TEST_ASSERT_FALSE(state.sequencer.isRunning());
+}
+
+void test_program_storage_cancel_closes_without_pending_operation() {
+    State state;
+    UiViewModel viewModel;
+    state.sequencer.stop();
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::OpenProgramStorage{}},
+                                     nullptr, 1000);
+    state.coordinator.handleAppEvent(
+        SwingMetro::AppEvent{SwingMetro::SelectProgramStorageAction{2}}, nullptr, 1000);
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStorageMenuItem::Cancel),
+                            static_cast<std::uint8_t>(viewModel.read().programStorageSelection));
+    state.coordinator.handleAppEvent(
+        SwingMetro::AppEvent{SwingMetro::ConfirmProgramStorageAction{}}, nullptr, 1000);
+    TEST_ASSERT_FALSE(state.coordinator.isProgramStorageModalOpen());
+    state.coordinator.processProgramStorage();
+    TEST_ASSERT_FALSE(state.coordinator.isProgramStorageModalOpen());
+
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::OpenProgramStorage{}},
+                                     nullptr, 2000);
+    state.coordinator.handleAppEvent(
+        SwingMetro::AppEvent{SwingMetro::ConfirmProgramStorageAction{}}, nullptr, 2000);
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::SelectProgramStorageSlot{-1}},
+                                     nullptr, 2000);
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    TEST_ASSERT_EQUAL_UINT8(SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT,
+                            viewModel.read().programStorageSlot);
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::ConfirmProgramStorageSlot{}},
+                                     nullptr, 2000);
+    TEST_ASSERT_FALSE(state.coordinator.isProgramStorageModalOpen());
+    state.coordinator.processProgramStorage();
     TEST_ASSERT_FALSE(state.coordinator.isProgramStorageModalOpen());
     TEST_ASSERT_FALSE(state.sequencer.isRunning());
 }
@@ -813,4 +852,5 @@ void test_app_input_coordinator_main() {
     RUN_TEST(test_external_mode_ignores_local_tempo_and_transport);
     RUN_TEST(test_repeated_fast_navigation_keeps_only_one_settings_context);
     RUN_TEST(test_program_storage_modal_blocks_input_and_publishes_result);
+    RUN_TEST(test_program_storage_cancel_closes_without_pending_operation);
 }

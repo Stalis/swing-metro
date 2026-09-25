@@ -31,12 +31,14 @@ struct UiSettings {
     bool shiftActive = false;
     bool midiClockModalOpen = false;
     SwingMetro::MidiClockMode midiClockActive = SwingMetro::MidiClockMode::Off;
-    SwingMetro::MidiClockMode midiClockPreview = SwingMetro::MidiClockMode::Off;
+    SwingMetro::MidiClockMenuItem midiClockSelection = SwingMetro::MidiClockMenuItem::Off;
     SwingMetro::ExternalMidiClockStatus externalClockStatus =
         SwingMetro::ExternalMidiClockStatus::Waiting;
     uint8_t externalTempo = 0;
     SwingMetro::ProgramStorageModalState programStorageState =
         SwingMetro::ProgramStorageModalState::Closed;
+    SwingMetro::ProgramStorageMenuItem programStorageSelection =
+        SwingMetro::ProgramStorageMenuItem::Save;
     SwingMetro::ProgramStorageAction programStorageAction = SwingMetro::ProgramStorageAction::Save;
     uint8_t programStorageSlot = 0;
     SwingMetro::ProgramStoreStatus programStorageStatus = SwingMetro::ProgramStoreStatus::Ok;
@@ -63,7 +65,7 @@ class UiViewModel {
                                           static_cast<uint32_t>(settings.selectedVelocity) << 19 |
                                           static_cast<uint32_t>(settings.midiClockModalOpen) << 27 |
                                           static_cast<uint32_t>(settings.midiClockActive) << 28 |
-                                          static_cast<uint32_t>(settings.midiClockPreview) << 30;
+                                          static_cast<uint32_t>(settings.midiClockSelection) << 30;
 
         _generation.fetch_add(1, std::memory_order_seq_cst);
         _packed.store(packed, std::memory_order_seq_cst);
@@ -75,8 +77,10 @@ class UiViewModel {
                                    std::memory_order_seq_cst);
         _programStoragePacked.store(static_cast<uint32_t>(settings.programStorageState) |
                                         static_cast<uint32_t>(settings.programStorageAction) << 3 |
-                                        static_cast<uint32_t>(settings.programStorageSlot) << 4 |
-                                        static_cast<uint32_t>(settings.programStorageStatus) << 8,
+                                        static_cast<uint32_t>(settings.programStorageSelection)
+                                            << 4 |
+                                        static_cast<uint32_t>(settings.programStorageSlot) << 6 |
+                                        static_cast<uint32_t>(settings.programStorageStatus) << 14,
                                     std::memory_order_seq_cst);
         _generation.fetch_add(1, std::memory_order_seq_cst);
         _lastPublished = settings;
@@ -118,17 +122,20 @@ class UiViewModel {
                 .midiClockModalOpen = ((navigationPacked >> 27) & 1U) != 0,
                 .midiClockActive =
                     static_cast<SwingMetro::MidiClockMode>((navigationPacked >> 28) & 3U),
-                .midiClockPreview = static_cast<SwingMetro::MidiClockMode>(navigationPacked >> 30),
+                .midiClockSelection =
+                    static_cast<SwingMetro::MidiClockMenuItem>(navigationPacked >> 30),
                 .externalClockStatus = static_cast<SwingMetro::ExternalMidiClockStatus>(
                     (externalClockPacked >> 8) & 3U),
                 .externalTempo = static_cast<uint8_t>(externalClockPacked),
                 .programStorageState =
                     static_cast<SwingMetro::ProgramStorageModalState>(programStoragePacked & 7U),
+                .programStorageSelection = static_cast<SwingMetro::ProgramStorageMenuItem>(
+                    (programStoragePacked >> 4) & 3U),
                 .programStorageAction =
                     static_cast<SwingMetro::ProgramStorageAction>((programStoragePacked >> 3) & 1U),
-                .programStorageSlot = static_cast<uint8_t>((programStoragePacked >> 4) & 15U),
+                .programStorageSlot = static_cast<uint8_t>((programStoragePacked >> 6) & 255U),
                 .programStorageStatus =
-                    static_cast<SwingMetro::ProgramStoreStatus>(programStoragePacked >> 8),
+                    static_cast<SwingMetro::ProgramStoreStatus>(programStoragePacked >> 14),
             };
         }
     }
@@ -145,10 +152,11 @@ class UiViewModel {
                left.shiftActive == right.shiftActive &&
                left.midiClockModalOpen == right.midiClockModalOpen &&
                left.midiClockActive == right.midiClockActive &&
-               left.midiClockPreview == right.midiClockPreview &&
+               left.midiClockSelection == right.midiClockSelection &&
                left.externalClockStatus == right.externalClockStatus &&
                left.externalTempo == right.externalTempo &&
                left.programStorageState == right.programStorageState &&
+               left.programStorageSelection == right.programStorageSelection &&
                left.programStorageAction == right.programStorageAction &&
                left.programStorageSlot == right.programStorageSlot &&
                left.programStorageStatus == right.programStorageStatus;

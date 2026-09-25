@@ -1,6 +1,6 @@
 # Стабилизация S. Live Tempo и модальный ввод
 
-Статус: S.1–S.2 выполнены программно 2026-09-24; S.3–S.4 запланированы. Выполняется после
+Статус: S.1–S.3 выполнены программно; S.4 запланирован. Выполняется после
 завершённого этапа 4 и до этапа 5.
 
 ## Цель
@@ -10,7 +10,8 @@
 - вращение Tempo во время internal playback не должно откладывать MIDI Clock и визуальный
   переход шага до остановки ручки;
 - удержание Shift на Volume Encoder в Step Settings не должно открывать Save/Load;
-- пользователь должен иметь явный безопасный способ закрыть Save/Load до запуска операции.
+- пользователь должен иметь явный безопасный способ закрыть Save/Load или MIDI Clock chooser
+  без применения выбора.
 
 ## Подтверждённые причины
 
@@ -41,8 +42,9 @@ Program Storage хранит только `Save`/`Load`. В состояниях
 - Каждая модалка объявляет host page на app-level границе. MIDI Clock и Program Storage
   привязаны к Main Display, не открываются из Step Settings и не могут накладываться друг на
   друга.
-- Cancel является UI/navigation choice, а не `ProgramStorageAction`; он никогда не передаётся
-  в `ProgramStorageController::perform()` и не вызывает LittleFS.
+- Cancel является UI/navigation choice, а не `ProgramStorageAction` или `MidiClockMode`; он
+  никогда не передаётся в `ProgramStorageController::perform()`, не вызывает LittleFS и не
+  меняет активный Clock mode.
 - Cancel доступен и при выборе действия, и при выборе слота. Во время `Busy` отмены нет;
   synchronous storage operation должна завершиться.
 - Отмена закрывает modal с теми же transport semantics, что обычное закрытие: остановленный
@@ -55,7 +57,7 @@ Program Storage хранит только `Save`/`Load`. В состояниях
 | --- | --- | --- |
 | S.1 | [Непрерывная смена Tempo](stabilization-runtime-input-modal/01-live-tempo-continuity.md) | **Выполнено программно:** BPM update сохраняет действующий alarm request и pending deadline без cancel/re-arm. |
 | S.2 | [Арбитрация Shift long-press](stabilization-runtime-input-modal/02-shift-long-press-arbitration.md) | **Выполнено:** Shift hardware-подтверждён; обе модалки программно привязаны к Main Display. |
-| S.3 | [Cancel в Program Storage](stabilization-runtime-input-modal/03-program-storage-cancel.md) | Action и Slot имеют безопасный Cancel без storage I/O. |
+| S.3 | [Cancel в модальных меню](stabilization-runtime-input-modal/03-program-storage-cancel.md) | **Выполнено программно:** Program Storage Action/Slot и MIDI Clock chooser имеют безопасный Cancel; MIDI-меню уплотнено шрифтом 10 px. |
 | S.4 | [Интеграционная и аппаратная приёмка](stabilization-runtime-input-modal/04-integrated-validation.md) | Все три пользовательских сценария и MIDI continuity подтверждены на устройстве. |
 
 Шаги выполняются последовательно и по одному на ветку/коммит. S.1 меняет timing contract и
@@ -72,7 +74,7 @@ S.4 не меняет product semantics; допустимы только тес�
 - Для S.2/S.3 тестировать полные последовательности фаз кнопки через
   `AppInputCoordinator`, а не только отдельный context handler.
 - В S.4 записать USB MIDI и internal timing diagnostics при вращении Tempo; отдельно вручную
-  подтвердить экран шага, Shift и оба Cancel path.
+  подтвердить экран шага, Shift, оба Program Storage Cancel path и MIDI Clock Cancel.
 
 ## Вне объёма
 

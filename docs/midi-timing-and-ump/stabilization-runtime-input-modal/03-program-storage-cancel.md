@@ -1,11 +1,12 @@
-# Шаг S.3. Cancel в Program Storage
+# Шаг S.3. Cancel в модальных меню
 
-Статус: запланировано. Зависит от S.2 по порядку изменения общего input coordinator.
+Статус: выполнено программно. Аппаратное UX-подтверждение относится к S.4.
 
 ## Цель
 
 Добавить явный Cancel, который закрывает Save/Load до запуска операции как с экрана выбора
-действия, так и с экрана выбора слота, не обращаясь к LittleFS.
+действия, так и с экрана выбора слота, не обращаясь к LittleFS. Добавить Cancel в MIDI Clock
+chooser, закрывающий его без смены активного Clock mode.
 
 ## Контекст текущего кода
 
@@ -13,7 +14,8 @@
 `ProgramStorageController::perform()`. Coordinator переключает action между двумя значениями,
 после подтверждения переходит к Slot, а подтверждение слота ставит `Busy/pending`. Контекст
 создаёт `CloseProgramStorage` только кликом в `Success`/`Error`; остальные события consume.
-LVGL создаёт массив ровно из двух labels.
+LVGL создаёт массив ровно из двух labels. MIDI Clock chooser содержит только три исполняемых
+режима и не имеет пути отмены.
 
 Расширять persistence action значением Cancel опасно: controller сейчас ветвится как
 `Save`, иначе `Load`. UI navigation не должна становиться допустимой storage operation.
@@ -31,6 +33,10 @@ LVGL создаёт массив ровно из двух labels.
 - После Cancel transport остаётся остановленным, external clock state не возобновляется и
   modal/context/UI snapshot согласованно переходят в Closed.
 - Повторное открытие начинает с `Save` и слота 0, независимо от прошлой отмены.
+- MIDI Clock использует отдельный `MidiClockMenuItem`, поэтому Cancel не представим как
+  `MidiClockMode`; confirm Cancel только закрывает chooser.
+- Четыре пункта MIDI Clock отображаются шрифтом Montserrat 10 px с шагом 18 px и помещаются в
+  существующую модалку без scroll.
 
 ## Работа
 
@@ -45,6 +51,8 @@ LVGL создаёт массив ровно из двух labels.
    быть визуально выбран тем же способом, что Save/Load.
 5. Дополнить coordinator, view-model и rendering/model tests; backend spy должен доказывать
    ноль операций при отмене.
+6. Аналогично разделить MIDI Clock menu selection и исполняемый mode, добавить четвёртый label
+   и уплотнить layout меньшим шрифтом.
 
 ## Детерминированные тесты
 
@@ -57,17 +65,18 @@ LVGL создаёт массив ровно из двух labels.
 - Повторное открытие сбрасывает selection; capture источника не протекает в Main Display.
 - UiViewModel публикует согласованный modal snapshot, LVGL не индексирует label arrays вне
   границ.
+- Confirm MIDI Clock Cancel закрывает chooser и сохраняет активный mode.
 
 ## Файлы в scope
 
-`src/program/program_storage_modal.h`, `src/input/app_contexts.h`,
+`src/program/program_storage_modal.h`, `src/engine/midi_clock_mode.h`, `src/input/app_contexts.h`,
 `src/input/app_input_coordinator.h`, `src/components/ui_view_model.h`,
 `src/drivers/lvgl_ui.{h,cpp}`, relevant coordinator/UI/storage tests. Сам codec и slot store не
 меняются.
 
 ## Готовность
 
-- Cancel видим и достижим в обоих pre-operation states.
+- Cancel видим и достижим в обоих Program Storage pre-operation states и в MIDI Clock chooser.
 - Типы не позволяют передать Cancel в storage controller.
 - `make verify` проходит; аппаратное UX-подтверждение относится к S.4.
 
@@ -75,4 +84,3 @@ LVGL создаёт массив ровно из двух labels.
 
 Отмена уже начатой synchronous flash operation, undo Load/Save, autosave redesign, новый Back
 button, восстановление playback и изменение формата программы.
-

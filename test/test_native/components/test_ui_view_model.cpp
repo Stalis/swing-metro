@@ -197,15 +197,15 @@ void test_ui_view_model_publishes_midi_clock_modal_snapshot() {
     viewModel.publish(settings);
     settings.midiClockModalOpen = true;
     settings.midiClockActive = SwingMetro::MidiClockMode::Internal;
-    settings.midiClockPreview = SwingMetro::MidiClockMode::External;
+    settings.midiClockSelection = SwingMetro::MidiClockMenuItem::Cancel;
     viewModel.publish(settings);
 
     const auto snapshot = viewModel.read();
     TEST_ASSERT_TRUE(snapshot.midiClockModalOpen);
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::MidiClockMode::Internal),
                             static_cast<uint8_t>(snapshot.midiClockActive));
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::MidiClockMode::External),
-                            static_cast<uint8_t>(snapshot.midiClockPreview));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::MidiClockMenuItem::Cancel),
+                            static_cast<uint8_t>(snapshot.midiClockSelection));
 }
 
 void test_ui_view_model_publishes_external_clock_snapshot() {
@@ -225,8 +225,9 @@ void test_ui_view_model_publishes_program_storage_snapshot() {
     UiViewModel viewModel;
     UiSettings settings{.tempo = 120, .swing = 50, .volume = 100, .activeNote = UINT8_MAX};
     settings.programStorageState = SwingMetro::ProgramStorageModalState::Slot;
+    settings.programStorageSelection = SwingMetro::ProgramStorageMenuItem::Cancel;
     settings.programStorageAction = SwingMetro::ProgramStorageAction::Load;
-    settings.programStorageSlot = 15;
+    settings.programStorageSlot = SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT;
     settings.programStorageStatus = SwingMetro::ProgramStoreStatus::Empty;
     viewModel.publish(settings);
     const auto snapshot = viewModel.read();
@@ -234,7 +235,9 @@ void test_ui_view_model_publishes_program_storage_snapshot() {
                             static_cast<uint8_t>(snapshot.programStorageState));
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramStorageAction::Load),
                             static_cast<uint8_t>(snapshot.programStorageAction));
-    TEST_ASSERT_EQUAL_UINT8(15, snapshot.programStorageSlot);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramStorageMenuItem::Cancel),
+                            static_cast<uint8_t>(snapshot.programStorageSelection));
+    TEST_ASSERT_EQUAL_UINT8(SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT, snapshot.programStorageSlot);
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramStoreStatus::Empty),
                             static_cast<uint8_t>(snapshot.programStorageStatus));
 }

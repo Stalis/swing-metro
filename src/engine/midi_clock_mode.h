@@ -5,6 +5,7 @@
 namespace SwingMetro {
 
 enum class MidiClockMode : std::uint8_t { Off, Internal, External };
+enum class MidiClockMenuItem : std::uint8_t { Off, Internal, External, Cancel };
 
 class MidiClockSettings {
   public:

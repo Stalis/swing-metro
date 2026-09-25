@@ -85,7 +85,11 @@ class AppInputCoordinator {
             adjustMidiClockPreview(adjust->delta);
         } else if (std::holds_alternative<ConfirmMidiClockSettings>(event)) {
             if (_midiClockModalOpen) {
-                handleAppEvent(AppEvent{ApplyMidiClockMode{_midiClockPreview}}, nullptr, nowUs);
+                if (_midiClockSelection != MidiClockMenuItem::Cancel) {
+                    handleAppEvent(AppEvent{ApplyMidiClockMode{
+                                       static_cast<MidiClockMode>(_midiClockSelection)}},
+                                   nullptr, nowUs);
+                }
                 contextChanged = closeMidiClockSettings();
             }
         } else if (const auto* apply = std::get_if<ApplyMidiClockMode>(&event)) {
@@ -100,16 +104,27 @@ class AppInputCoordinator {
             selectProgramStorageAction(select->delta);
         } else if (std::holds_alternative<ConfirmProgramStorageAction>(event)) {
             if (_programStorageState == ProgramStorageModalState::Action) {
-                _programStorageState = ProgramStorageModalState::Slot;
-                _programStorageContext.setState(_programStorageState);
+                if (_programStorageSelection == ProgramStorageMenuItem::Cancel) {
+                    contextChanged = closeProgramStorage();
+                } else {
+                    _programStorageAction =
+                        static_cast<ProgramStorageAction>(_programStorageSelection);
+                    _programStorageState = ProgramStorageModalState::Slot;
+                    _programStorageSlot = 0;
+                    _programStorageContext.setState(_programStorageState);
+                }
             }
         } else if (const auto* select = std::get_if<SelectProgramStorageSlot>(&event)) {
             selectProgramStorageSlot(select->delta);
         } else if (std::holds_alternative<ConfirmProgramStorageSlot>(event)) {
             if (_programStorageState == ProgramStorageModalState::Slot) {
-                _programStorageState = ProgramStorageModalState::Busy;
-                _programStorageContext.setState(_programStorageState);
-                _programStoragePending = true;
+                if (_programStorageSlot == PROGRAM_STORAGE_CANCEL_SLOT) {
+                    contextChanged = closeProgramStorage();
+                } else {
+                    _programStorageState = ProgramStorageModalState::Busy;
+                    _programStorageContext.setState(_programStorageState);
+                    _programStoragePending = true;
+                }
             }
         } else if (std::holds_alternative<CloseProgramStorage>(event)) {
             contextChanged = closeProgramStorage();
@@ -138,8 +153,8 @@ class AppInputCoordinator {
     [[nodiscard]] auto stackSize() const noexcept -> std::size_t { return _router.size(); }
     [[nodiscard]] auto midiClockMode() const noexcept -> MidiClockMode { return _midiClock.mode(); }
     [[nodiscard]] auto isMidiClockModalOpen() const noexcept -> bool { return _midiClockModalOpen; }
-    [[nodiscard]] auto midiClockPreviewMode() const noexcept -> MidiClockMode {
-        return _midiClockPreview;
+    [[nodiscard]] auto midiClockSelection() const noexcept -> MidiClockMenuItem {
+        return _midiClockSelection;
     }
     [[nodiscard]] auto isProgramStorageModalOpen() const noexcept -> bool {
         return _programStorageState != ProgramStorageModalState::Closed;
@@ -177,8 +192,9 @@ class AppInputCoordinator {
         settings.shiftActive = isShiftActive();
         settings.midiClockModalOpen = _midiClockModalOpen;
         settings.midiClockActive = _midiClock.mode();
-        settings.midiClockPreview = _midiClockPreview;
+        settings.midiClockSelection = _midiClockSelection;
         settings.programStorageState = _programStorageState;
+        settings.programStorageSelection = _programStorageSelection;
         settings.programStorageAction = _programStorageAction;
         settings.programStorageSlot = _programStorageSlot;
         settings.programStorageStatus = _programStorageStatus;
@@ -280,7 +296,7 @@ class AppInputCoordinator {
         }
 
         _midiClockModalOpen = true;
-        _midiClockPreview = _midiClock.mode();
+        _midiClockSelection = static_cast<MidiClockMenuItem>(_midiClock.mode());
         _restoreShiftAfterMidiClockModal = shiftWasActive;
         return true;
     }
@@ -304,13 +320,13 @@ class AppInputCoordinator {
             return;
         }
 
-        const auto candidate = static_cast<std::int16_t>(_midiClockPreview) + delta;
-        if (candidate <= static_cast<std::int16_t>(MidiClockMode::Off)) {
-            _midiClockPreview = MidiClockMode::Off;
-        } else if (candidate >= static_cast<std::int16_t>(MidiClockMode::External)) {
-            _midiClockPreview = MidiClockMode::External;
+        const auto candidate = static_cast<std::int16_t>(_midiClockSelection) + delta;
+        if (candidate <= static_cast<std::int16_t>(MidiClockMenuItem::Off)) {
+            _midiClockSelection = MidiClockMenuItem::Off;
+        } else if (candidate >= static_cast<std::int16_t>(MidiClockMenuItem::Cancel)) {
+            _midiClockSelection = MidiClockMenuItem::Cancel;
         } else {
-            _midiClockPreview = static_cast<MidiClockMode>(candidate);
+            _midiClockSelection = static_cast<MidiClockMenuItem>(candidate);
         }
     }
 
@@ -323,6 +339,7 @@ class AppInputCoordinator {
             return false;
         }
         _programStorageState = ProgramStorageModalState::Action;
+        _programStorageSelection = ProgramStorageMenuItem::Save;
         _programStorageAction = ProgramStorageAction::Save;
         _programStorageSlot = 0;
         _programStorageStatus = ProgramStoreStatus::Ok;
@@ -343,9 +360,10 @@ class AppInputCoordinator {
 
     auto selectProgramStorageAction(std::int8_t delta) noexcept -> void {
         if (_programStorageState == ProgramStorageModalState::Action && delta != 0) {
-            _programStorageAction = _programStorageAction == ProgramStorageAction::Save
-                                        ? ProgramStorageAction::Load
-                                        : ProgramStorageAction::Save;
+            const auto candidate = static_cast<int>(_programStorageSelection) + delta;
+            _programStorageSelection = static_cast<ProgramStorageMenuItem>(
+                std::clamp(candidate, static_cast<int>(ProgramStorageMenuItem::Save),
+                           static_cast<int>(ProgramStorageMenuItem::Cancel)));
         }
     }
 
@@ -353,9 +371,13 @@ class AppInputCoordinator {
         if (_programStorageState != ProgramStorageModalState::Slot || delta == 0) {
             return;
         }
-        const auto slot = static_cast<int>(_programStorageSlot) + delta;
-        _programStorageSlot = static_cast<std::uint8_t>(
-            std::clamp(slot, 0, static_cast<int>(PROGRAM_USER_SLOT_COUNT - 1)));
+        const auto current = _programStorageSlot == PROGRAM_STORAGE_CANCEL_SLOT
+                                 ? -1
+                                 : static_cast<int>(_programStorageSlot);
+        const auto selected =
+            std::clamp(current + delta, -1, static_cast<int>(PROGRAM_USER_SLOT_COUNT - 1));
+        _programStorageSlot =
+            selected < 0 ? PROGRAM_STORAGE_CANCEL_SLOT : static_cast<std::uint8_t>(selected);
     }
 
     AppEventHandler& _handler;
@@ -372,10 +394,11 @@ class AppInputCoordinator {
     ProgramStorageContext _programStorageContext;
     ContextInput::Router<InputEvent, AppEvent, Capacity> _router;
     std::bitset<256> _capturedButtons;
-    MidiClockMode _midiClockPreview = MidiClockMode::Off;
+    MidiClockMenuItem _midiClockSelection = MidiClockMenuItem::Off;
     bool _midiClockModalOpen = false;
     bool _restoreShiftAfterMidiClockModal = false;
     ProgramStorageModalState _programStorageState = ProgramStorageModalState::Closed;
+    ProgramStorageMenuItem _programStorageSelection = ProgramStorageMenuItem::Save;
     ProgramStorageAction _programStorageAction = ProgramStorageAction::Save;
     std::uint8_t _programStorageSlot = 0;
     ProgramStoreStatus _programStorageStatus = ProgramStoreStatus::Ok;

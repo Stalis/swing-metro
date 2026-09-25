@@ -60,10 +60,10 @@ class LvglUi {
     uint8_t _displayedGate = UINT8_MAX;
     lv_obj_t* _midiClockModal;
     lv_obj_t* _midiClockActiveLabel;
-    std::array<lv_obj_t*, 3> _midiClockModeLabels{};
+    std::array<lv_obj_t*, 4> _midiClockModeLabels{};
     bool _midiClockModalVisible = false;
     SwingMetro::MidiClockMode _displayedMidiClockActive = SwingMetro::MidiClockMode::Off;
-    SwingMetro::MidiClockMode _displayedMidiClockPreview = SwingMetro::MidiClockMode::Off;
+    SwingMetro::MidiClockMenuItem _displayedMidiClockSelection = SwingMetro::MidiClockMenuItem::Off;
     lv_obj_t* _externalClockLabel;
     SwingMetro::ExternalMidiClockStatus _displayedExternalClockStatus =
         SwingMetro::ExternalMidiClockStatus::Waiting;
@@ -71,11 +71,13 @@ class LvglUi {
     lv_obj_t* _programStorageModal;
     lv_obj_t* _programStorageTitleLabel;
     lv_obj_t* _programStorageValueLabel;
-    std::array<lv_obj_t*, 2> _programStorageActionLabels{};
+    std::array<lv_obj_t*, 3> _programStorageActionLabels{};
     SwingMetro::ProgramStorageModalState _displayedProgramStorageState =
         SwingMetro::ProgramStorageModalState::Closed;
     SwingMetro::ProgramStorageAction _displayedProgramStorageAction =
         SwingMetro::ProgramStorageAction::Save;
+    SwingMetro::ProgramStorageMenuItem _displayedProgramStorageSelection =
+        SwingMetro::ProgramStorageMenuItem::Save;
     uint8_t _displayedProgramStorageSlot = UINT8_MAX;
     SwingMetro::ProgramStoreStatus _displayedProgramStorageStatus =
         SwingMetro::ProgramStoreStatus::Ok;
@@ -87,10 +89,11 @@ class LvglUi {
     void initStepSettingsScreen();
     void initMidiClockModal();
     void setMidiClockModal(bool open, SwingMetro::MidiClockMode active,
-                           SwingMetro::MidiClockMode preview);
+                           SwingMetro::MidiClockMenuItem selection);
     void setExternalClock(SwingMetro::ExternalMidiClockStatus status, uint8_t tempo);
     void initProgramStorageModal();
     void setProgramStorageModal(SwingMetro::ProgramStorageModalState state,
+                                SwingMetro::ProgramStorageMenuItem selection,
                                 SwingMetro::ProgramStorageAction action, uint8_t slot,
                                 SwingMetro::ProgramStoreStatus status);
     void drawSequencerSteps();
