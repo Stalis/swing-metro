@@ -38,6 +38,9 @@ Program Storage хранит только `Save`/`Load`. В состояниях
 - Shift остаётся удерживаемым действием: `Pressed` активирует, `Released`/`Clicked`
   деактивирует. В Step Settings его `LongPressed` не имеет второго действия.
 - Save/Load по long-press остаётся доступен на Main Display.
+- Каждая модалка объявляет host page на app-level границе. MIDI Clock и Program Storage
+  привязаны к Main Display, не открываются из Step Settings и не могут накладываться друг на
+  друга.
 - Cancel является UI/navigation choice, а не `ProgramStorageAction`; он никогда не передаётся
   в `ProgramStorageController::perform()` и не вызывает LittleFS.
 - Cancel доступен и при выборе действия, и при выборе слота. Во время `Busy` отмены нет;
@@ -51,7 +54,7 @@ Program Storage хранит только `Save`/`Load`. В состояниях
 | Шаг | Документ | Результат |
 | --- | --- | --- |
 | S.1 | [Непрерывная смена Tempo](stabilization-runtime-input-modal/01-live-tempo-continuity.md) | **Выполнено программно:** BPM update сохраняет действующий alarm request и pending deadline без cancel/re-arm. |
-| S.2 | [Арбитрация Shift long-press](stabilization-runtime-input-modal/02-shift-long-press-arbitration.md) | **Выполнено программно:** Step Settings удерживает Shift без открытия Save/Load; Main Display сохраняет shortcut. |
+| S.2 | [Арбитрация Shift long-press](stabilization-runtime-input-modal/02-shift-long-press-arbitration.md) | **Выполнено:** Shift hardware-подтверждён; обе модалки программно привязаны к Main Display. |
 | S.3 | [Cancel в Program Storage](stabilization-runtime-input-modal/03-program-storage-cancel.md) | Action и Slot имеют безопасный Cancel без storage I/O. |
 | S.4 | [Интеграционная и аппаратная приёмка](stabilization-runtime-input-modal/04-integrated-validation.md) | Все три пользовательских сценария и MIDI continuity подтверждены на устройстве. |
 

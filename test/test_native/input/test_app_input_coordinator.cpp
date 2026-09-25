@@ -523,9 +523,8 @@ void test_midi_clock_modal_clamps_confirms_and_publishes_snapshot() {
                             static_cast<std::uint8_t>(closedUi.midiClockActive));
 }
 
-void test_midi_clock_modal_preserves_step_settings_and_restores_shift() {
+void test_modals_are_rejected_outside_their_host_page_and_cannot_stack() {
     State state;
-    state.sequencer.toggleRunning(0);
     longPress(state, 2, 100);
     setShift(state, true);
     TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
@@ -533,19 +532,35 @@ void test_midi_clock_modal_preserves_step_settings_and_restores_shift() {
     TEST_ASSERT_EQUAL_UINT32(4, state.coordinator.stackSize());
 
     longPressTempo(state, 1000);
-    TEST_ASSERT_TRUE(state.coordinator.isMidiClockModalOpen());
-    TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
-    TEST_ASSERT_FALSE(state.coordinator.isShiftActive());
-    TEST_ASSERT_EQUAL_UINT32(4, state.coordinator.stackSize());
-    TEST_ASSERT_FALSE(turn(state, SwingMetro::InputId::SwingEncoder, -1).has_value());
-    TEST_ASSERT_EQUAL_UINT8(127, *state.sequencer.getStepVelocity(2));
-
-    clickTempo(state, 2000);
     TEST_ASSERT_FALSE(state.coordinator.isMidiClockModalOpen());
     TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
-    TEST_ASSERT_TRUE(state.sequencer.isRunning());
     TEST_ASSERT_TRUE(state.coordinator.isShiftActive());
     TEST_ASSERT_EQUAL_UINT32(4, state.coordinator.stackSize());
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::OpenProgramStorage{}},
+                                     nullptr, 1'700);
+    TEST_ASSERT_FALSE(state.coordinator.isProgramStorageModalOpen());
+    TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
+    TEST_ASSERT_TRUE(state.coordinator.isShiftActive());
+
+    setShift(state, false);
+    longPress(state, 2, 2'000);
+    TEST_ASSERT_FALSE(state.coordinator.hasStepSettingsContext());
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::OpenMidiClockSettings{}},
+                                     nullptr, 3'000);
+    TEST_ASSERT_TRUE(state.coordinator.isMidiClockModalOpen());
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::OpenProgramStorage{}},
+                                     nullptr, 3'100);
+    TEST_ASSERT_FALSE(state.coordinator.isProgramStorageModalOpen());
+
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::ConfirmMidiClockSettings{}},
+                                     nullptr, 3'200);
+    TEST_ASSERT_FALSE(state.coordinator.isMidiClockModalOpen());
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::OpenProgramStorage{}},
+                                     nullptr, 3'300);
+    TEST_ASSERT_TRUE(state.coordinator.isProgramStorageModalOpen());
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::OpenMidiClockSettings{}},
+                                     nullptr, 3'400);
+    TEST_ASSERT_FALSE(state.coordinator.isMidiClockModalOpen());
 }
 
 void test_restart_runs_first_step_immediately_and_keeps_sixteenth_grid() {
@@ -788,7 +803,7 @@ void test_app_input_coordinator_main() {
     RUN_TEST(test_shift_lifecycle_is_independent_of_navigation);
     RUN_TEST(test_tempo_switch_click_toggles_transport_once_and_long_press_does_not);
     RUN_TEST(test_midi_clock_modal_clamps_confirms_and_publishes_snapshot);
-    RUN_TEST(test_midi_clock_modal_preserves_step_settings_and_restores_shift);
+    RUN_TEST(test_modals_are_rejected_outside_their_host_page_and_cannot_stack);
     RUN_TEST(test_restart_runs_first_step_immediately_and_keeps_sixteenth_grid);
     RUN_TEST(test_note_clamps_and_invalid_index);
     RUN_TEST(test_velocity_clamps_and_current_step_uses_edited_value);

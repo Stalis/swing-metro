@@ -161,7 +161,7 @@ class AppInputCoordinator {
     }
 
     [[nodiscard]] auto decorateUiSettings(UiSettings settings) const -> UiSettings {
-        settings.page = _selectedStep.has_value() ? UiPage::StepSettings : UiPage::MainDisplay;
+        settings.page = currentPage();
         settings.selectedStep = _selectedStep.value_or(UINT8_MAX);
         settings.selectedNote = _selectedStep.has_value()
                                     ? _sequencer.getStepMidiNote(*_selectedStep).value_or(36)
@@ -186,6 +186,32 @@ class AppInputCoordinator {
     }
 
   private:
+    enum class ModalId : std::uint8_t {
+        MidiClockSettings,
+        ProgramStorage,
+    };
+
+    [[nodiscard]] auto currentPage() const noexcept -> UiPage {
+        return _selectedStep.has_value() ? UiPage::StepSettings : UiPage::MainDisplay;
+    }
+
+    [[nodiscard]] static constexpr auto modalHostPage(ModalId modal) noexcept -> UiPage {
+        switch (modal) {
+        case ModalId::MidiClockSettings:
+        case ModalId::ProgramStorage:
+            return UiPage::MainDisplay;
+        }
+        return UiPage::MainDisplay;
+    }
+
+    [[nodiscard]] auto hasOpenModal() const noexcept -> bool {
+        return _midiClockModalOpen || isProgramStorageModalOpen();
+    }
+
+    [[nodiscard]] auto canOpenModal(ModalId modal) const noexcept -> bool {
+        return !hasOpenModal() && currentPage() == modalHostPage(modal);
+    }
+
     [[nodiscard]] auto openStepSettings(std::uint8_t step) -> bool {
         if (step >= STEPS_COUNT) {
             return false;
@@ -235,7 +261,7 @@ class AppInputCoordinator {
     }
 
     [[nodiscard]] auto openMidiClockSettings() -> bool {
-        if (_midiClockModalOpen) {
+        if (!canOpenModal(ModalId::MidiClockSettings)) {
             return false;
         }
 
@@ -289,7 +315,7 @@ class AppInputCoordinator {
     }
 
     [[nodiscard]] auto openProgramStorage() -> bool {
-        if (isProgramStorageModalOpen() || _router.size() == _router.capacity()) {
+        if (!canOpenModal(ModalId::ProgramStorage) || _router.size() == _router.capacity()) {
             return false;
         }
         (void)_router.releaseContext(_shiftContext);

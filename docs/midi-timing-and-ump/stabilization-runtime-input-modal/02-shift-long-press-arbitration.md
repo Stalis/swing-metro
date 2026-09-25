@@ -1,6 +1,7 @@
 # Шаг S.2. Арбитрация Shift long-press
 
-Статус: выполнено программно 2026-09-24; аппаратная приёмка отложена до S.4. Зависит от S.1
+Статус: основной Shift-сценарий аппаратно подтверждён пользователем 2026-09-25; follow-up
+привязки модалок выполнен программно и ожидает общей аппаратной приёмки S.4. Зависит от S.1
 только по порядку поставки; логически независимо.
 
 ## Цель
@@ -75,6 +76,22 @@ Coordinator regressions воспроизводят настоящие batch-по
 работает до release и затем возвращается semitone edit; на Main Display Save/Load открывается,
 Shift снимается, а остаток жеста подавляется capture-механизмом. `make verify` проходит: 320
 native tests, 14 script tests, clang-format, clang-tidy и firmware build для `rpipico2`.
+
+Пользователь подтвердил этот Shift-сценарий на устройстве 2026-09-25.
+
+## Follow-up: host page для модалок
+
+После аппаратной проверки принят общий контракт: доступность модалки определяется не её
+глобальным жестом, а централизованной app-level политикой `ModalId → UiPage` в
+`AppInputCoordinator`. `currentPage()` теперь является единым источником текущей страницы и для
+UI snapshot, и для проверки открытия. MIDI Clock Settings и Program Storage имеют host page
+`MainDisplay`; в `StepSettings` их open events отклоняются без изменения context stack, Shift,
+transport или UI state.
+
+`canOpenModal()` дополнительно запрещает открытие второй модалки поверх первой. Coordinator
+regression проверяет оба запрета, успешное открытие обеих модалок на Main Display и переход от
+одной к другой только после закрытия. Follow-up проходит полный `make verify`: 320 native tests,
+14 script tests, clang-format, clang-tidy и firmware build для `rpipico2`.
 
 ## Вне объёма
 
