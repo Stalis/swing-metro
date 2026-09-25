@@ -1,3 +1,4 @@
+import json
 import pathlib
 import sys
 import tempfile
@@ -18,6 +19,14 @@ from pico_midi_run import (
     write_summary_csv,
 )
 from pico_serial_run import input_output_path
+from pico_run_report import (
+    REPORT_SCHEMA,
+    TimedRunCapture,
+    build_timed_run_report,
+    load_report_metadata,
+    metadata_completeness,
+    report_output_path,
+)
 from pico_run_protocol import (
     V2_COLUMNS,
     V3_COLUMNS,
@@ -36,6 +45,21 @@ from pico_run_protocol import (
 
 
 class PicoMidiRunTests(unittest.TestCase):
+    @staticmethod
+    def complete_capture(attempts: int = 1) -> TimedRunCapture:
+        capture = TimedRunCapture(1_000, 120, 50)
+        capture.consume("swing_metro_control_v1,run_started,1000,120,50")
+        capture.consume(",".join(V4_COLUMNS))
+        values = [0 for _ in V4_COLUMNS[1:]]
+        values[V4_COLUMNS.index("synchronous_start_publication_attempts") - 1] = attempts
+        capture.consume(",".join([V4_COLUMNS[0], *(str(value) for value in values)]))
+        capture.consume("swing_metro_input_diagnostics_v1,1250,2")
+        capture.consume(
+            ",".join([RUNTIME_DIAGNOSTICS_COLUMNS[0], *("0" for _ in RUNTIME_DIAGNOSTICS_COLUMNS[1:])])
+        )
+        capture.consume("swing_metro_control_v1,run_complete")
+        return capture
+
     def test_selects_unique_named_midi_port(self):
         ports = ["Other Device", "Swing Metro MIDI"]
         self.assertEqual(1, choose_midi_port(ports, None))
@@ -105,6 +129,127 @@ class PicoMidiRunTests(unittest.TestCase):
         )
         self.assertEqual(
             pathlib.Path("capture-input.csv"), input_output_path(pathlib.Path("capture.csv"))
+        )
+        self.assertEqual(
+            pathlib.Path("capture-minder-report.json"),
+            report_output_path(pathlib.Path("capture-minder")),
+        )
+
+    def test_timed_run_capture_requires_exact_order_cardinality_and_parameters(self):
+        capture = self.complete_capture()
+        capture.require_complete()
+        with self.assertRaisesRegex(RuntimeError, "duplicate run_complete"):
+            capture.consume("swing_metro_control_v1,run_complete")
+
+        with self.assertRaisesRegex(RuntimeError, "mismatch"):
+            TimedRunCapture(1_000, 120, 50).consume(
+                "swing_metro_control_v1,run_started,1000,121,50"
+            )
+        with self.assertRaisesRegex(RuntimeError, "before run_started"):
+            TimedRunCapture(1_000, 120, 50).consume(
+                "swing_metro_input_diagnostics_v1,1250,2"
+            )
+
+        duplicate = TimedRunCapture(1_000, 120, 50)
+        duplicate.consume("swing_metro_control_v1,run_started,1000,120,50")
+        diagnostics_row = ",".join([V4_COLUMNS[0], *("0" for _ in V4_COLUMNS[1:])])
+        duplicate.consume(diagnostics_row)
+        with self.assertRaisesRegex(RuntimeError, "duplicate diagnostics_row"):
+            duplicate.consume(diagnostics_row)
+
+        incomplete = TimedRunCapture(1_000, 120, 50)
+        incomplete.consume("swing_metro_control_v1,run_started,1000,120,50")
+        with self.assertRaisesRegex(RuntimeError, "run_complete arrived before"):
+            incomplete.consume("swing_metro_control_v1,run_complete")
+
+    def test_metadata_validation_and_completeness_are_explicit(self):
+        complete = {
+            "run_id": "stage5-3-on-r01",
+            "scenario": {"id": "baseline"},
+            "firmware": {
+                "source_revision": "abc123",
+                "binary_sha256": "a" * 64,
+                "platformio_environment": "rpipico2",
+                "build_flags": ["-DUSE_TINYUSB"],
+                "toolchain": "arm-none-eabi 16.1.0",
+                "dependencies": ["lvgl 9.6.0", "GFX Library for Arduino 1.6.8"],
+            },
+            "instrumentation": {"stage5": "enabled"},
+            "hardware": {
+                "board": "Raspberry Pi Pico 2 W",
+                "cpu_frequency_hz": 150_000_000,
+                "usb_topology": "direct",
+            },
+        }
+        self.assertEqual((True, []), metadata_completeness(complete))
+        self.assertFalse(metadata_completeness({})[0])
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "metadata.json"
+            path.write_text(json.dumps(complete), encoding="utf-8")
+            self.assertEqual(complete, load_report_metadata(path))
+            path.write_text('{"firmware":{"binary_sha256":"bad"}}', encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "64 hexadecimal"):
+                load_report_metadata(path)
+
+    def test_report_separates_clock_domains_and_never_overstates_eligibility(self):
+        capture = self.complete_capture()
+        report = build_timed_run_report(
+            capture=capture,
+            metadata={},
+            serial_port="/dev/test",
+            midi_port="Swing Metro MIDI",
+            host_midi={"clock_count": 48},
+        )
+        self.assertEqual(REPORT_SCHEMA, report["schema"])
+        self.assertEqual("pico_micros_uint32", report["device_local"]["clock_domain"])
+        self.assertEqual("host_monotonic_ns", report["host_midi"]["clock_domain"])
+        self.assertFalse(report["reproducibility_complete"])
+        self.assertEqual("insufficient_metadata", report["comparison_eligibility"])
+
+        serial_report = build_timed_run_report(
+            capture=self.complete_capture(attempts=2),
+            metadata={},
+            serial_port="/dev/test",
+            midi_port=None,
+            host_midi=None,
+        )
+        self.assertFalse(serial_report["host_midi"]["available"])
+
+        complete_metadata = {
+            "run_id": "stage5-3-on-r01",
+            "scenario": {"id": "baseline"},
+            "firmware": {
+                "source_revision": "abc123",
+                "binary_sha256": "a" * 64,
+                "platformio_environment": "rpipico2",
+                "build_flags": ["-DUSE_TINYUSB"],
+                "toolchain": "arm-none-eabi 16.1.0",
+                "dependencies": ["lvgl 9.6.0", "GFX Library for Arduino 1.6.8"],
+            },
+            "instrumentation": {"stage5": "enabled"},
+            "hardware": {
+                "board": "Raspberry Pi Pico 2 W",
+                "cpu_frequency_hz": 150_000_000,
+                "usb_topology": "direct",
+            },
+        }
+        comparable = build_timed_run_report(
+            capture=self.complete_capture(),
+            metadata=complete_metadata,
+            serial_port="/dev/test",
+            midi_port=None,
+            host_midi=None,
+        )
+        self.assertEqual("paired_capture_candidate", comparable["comparison_eligibility"])
+        cumulative = build_timed_run_report(
+            capture=self.complete_capture(attempts=2),
+            metadata=complete_metadata,
+            serial_port="/dev/test",
+            midi_port=None,
+            host_midi=None,
+        )
+        self.assertEqual(
+            "boot_cumulative_not_run_comparable", cumulative["comparison_eligibility"]
         )
 
     def test_parses_v2_diagnostics_row(self):

@@ -31,5 +31,6 @@ allocation, locks, waits или logging.
 
 ## Excluded work
 
-5.3 instrumentation-cost/reporting work, 5.4 load/fault scenarios и 5.5 hardware validation
+5.3 добавляет compile-time A/B seam: в off build новые v4 distribution/high-water fields
+остаются в строгой схеме и равны нулю. 5.4 load/fault scenarios и 5.5 hardware validation
 явно не входят в 5.2.

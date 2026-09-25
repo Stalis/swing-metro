@@ -319,6 +319,7 @@ void printDeliveryDiagnostics(const SwingMetro::TransportDiagnostics& transport,
         Serial.print(',');
         print(count);
     }
+#if SWING_METRO_STAGE5_INSTRUMENTATION
     Serial.print(',');
     print(transport.currentScheduledDepthTotal);
     Serial.print(',');
@@ -339,6 +340,13 @@ void printDeliveryDiagnostics(const SwingMetro::TransportDiagnostics& transport,
     printDistribution(transport.clockAcceptedLateness);
     printDistribution(transport.noteAttemptLateness);
     printDistribution(transport.noteAcceptedLateness);
+#else
+    constexpr std::size_t stage5TransportFieldCount =
+        2 + (4 * (3 + SwingMetro::LatenessDistribution::POSITIVE_BUCKET_COUNT));
+    for (std::size_t field = 0; field < stage5TransportFieldCount; ++field) {
+        Serial.print(F(",0"));
+    }
+#endif
     Serial.print(',');
     print(producer.observedTickQueueDepth);
     Serial.print(',');

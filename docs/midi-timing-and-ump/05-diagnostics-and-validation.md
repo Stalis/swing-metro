@@ -1,6 +1,6 @@
 # Этап 5. Полная диагностика и нагрузочная проверка
 
-Статус: 5.1 и 5.2 выполнены программно; 5.3–5.5 запланированы. Зависит от этапов 1–4.
+Статус: 5.1–5.3 выполнены программно; 5.4–5.5 запланированы. Зависит от этапов 1–4.
 
 ## Цель
 
@@ -22,10 +22,17 @@ Bounded handler/flush и encoder-window diagnostics, coherent
 scheduled depth и наблюдения IRQ queue описаны в
 [02-midi-distributions-and-queue-depth.md](05-diagnostics-and-validation/02-midi-distributions-and-queue-depth.md).
 
+### 5.3 Safe reporting и instrumentation cost
+
+Строгая последовательность timed run, versioned JSON report и compile-time A/B seam описаны в
+[03-safe-reporting-and-instrumentation-cost.md](05-diagnostics-and-validation/03-safe-reporting-and-instrumentation-cost.md).
+Software-инфраструктура готова; фактическая runtime cost остаётся неизмеренной до парных
+аппаратных прогонов.
+
 ### Следующие шаги
 
-5.3 определит безопасную отчётность и стоимость instrumentation; 5.4 выполнит
-load/fault scenarios; 5.5 проведёт hardware validation. Эти шаги здесь не реализованы.
+5.4 выполнит load/fault scenarios; 5.5 проведёт hardware validation. Эти шаги здесь не
+реализованы.
 
 1. Дополнить базовые метрики: время `lv_timer_handler`, время каждого flush и
    сумма flush за период наблюдения, максимальный интервал опроса энкодеров.

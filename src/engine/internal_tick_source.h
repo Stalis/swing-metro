@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "stage5_instrumentation.h"
 #include "timestamp.h"
 #include "transport_tick.h"
 
@@ -187,9 +188,11 @@ class InternalTickSource {
         std::atomic<std::uint32_t> outOfHorizonAlarmCallbacks{0};
         std::atomic<std::uint32_t> maxActualCallbackIntervalUs{0};
         std::atomic<std::uint32_t> maxCallbackLatenessUs{0};
+#if SWING_METRO_STAGE5_INSTRUMENTATION
         std::atomic<std::uint32_t> observedTickQueueDepth{0};
         std::atomic<std::uint32_t> observedTickQueueHighWater{0};
         std::atomic<std::uint32_t> tickQueueOverflows{0};
+#endif
     };
 
     static auto addOne(std::atomic<std::uint32_t>& counter) noexcept -> void {
@@ -231,10 +234,12 @@ class InternalTickSource {
     }
 
     auto observeQueue() noexcept -> void {
+#if SWING_METRO_STAGE5_INSTRUMENTATION
         const auto depth = static_cast<std::uint32_t>(_ticks.size());
         _diagnostics.observedTickQueueDepth.store(depth, std::memory_order_relaxed);
         updateMaximum(_diagnostics.observedTickQueueHighWater, depth);
         _diagnostics.tickQueueOverflows.store(_ticks.overflowCount(), std::memory_order_relaxed);
+#endif
     }
 
     auto setBpm(std::uint8_t bpm) noexcept -> void {
@@ -288,9 +293,15 @@ class InternalTickSource {
                 _diagnostics.outOfHorizonAlarmCallbacks.load(std::memory_order_relaxed),
                 _diagnostics.maxActualCallbackIntervalUs.load(std::memory_order_relaxed),
                 _diagnostics.maxCallbackLatenessUs.load(std::memory_order_relaxed),
+#if SWING_METRO_STAGE5_INSTRUMENTATION
                 _diagnostics.observedTickQueueDepth.load(std::memory_order_relaxed),
                 _diagnostics.observedTickQueueHighWater.load(std::memory_order_relaxed),
                 _diagnostics.tickQueueOverflows.load(std::memory_order_relaxed)};
+#else
+                0,
+                0,
+                0};
+#endif
     }
 
     auto nextGeneration() noexcept -> void {

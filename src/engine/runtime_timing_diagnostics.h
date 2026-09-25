@@ -1,5 +1,7 @@
 #pragma once
 
+#include "stage5_instrumentation.h"
+
 #include <atomic>
 #include <cstdint>
 #include <limits>
@@ -18,11 +20,16 @@ struct RuntimeTimingSnapshot {
 class RuntimeTimingDiagnostics {
   public:
     [[nodiscard]] auto requestSnapshot() noexcept -> std::uint32_t {
+#if SWING_METRO_STAGE5_INSTRUMENTATION
         return _requestGeneration.fetch_add(1U, std::memory_order_release) + 1U;
+#else
+        return 0;
+#endif
     }
 
     [[nodiscard]] auto readSnapshot(std::uint32_t requestGeneration,
                                     RuntimeTimingSnapshot& snapshot) const noexcept -> bool {
+#if SWING_METRO_STAGE5_INSTRUMENTATION
         if (_acknowledgedGeneration.load(std::memory_order_acquire) != requestGeneration) {
             return false;
         }
@@ -48,30 +55,44 @@ class RuntimeTimingDiagnostics {
         }
         snapshot = candidate;
         return true;
+#else
+        (void)requestGeneration;
+        snapshot = {};
+        return true;
+#endif
     }
 
     // Core 1 only: flush durations are nested inside lv_timer_handler durations.
     auto recordLvTimerHandler(std::uint32_t durationUs) noexcept -> void {
+#if SWING_METRO_STAGE5_INSTRUMENTATION
         _local.lvTimerHandlerCount = saturatingIncrement(_local.lvTimerHandlerCount);
         _local.lvTimerHandlerInclusiveTotalUs =
             saturatingAdd(_local.lvTimerHandlerInclusiveTotalUs, durationUs);
         if (durationUs > _local.lvTimerHandlerInclusiveMaxUs) {
             _local.lvTimerHandlerInclusiveMaxUs = durationUs;
         }
+#else
+        (void)durationUs;
+#endif
     }
 
     // Core 1 only: this time is inclusive in the enclosing handler, not separate CPU work.
     auto recordDisplayFlush(std::uint32_t durationUs) noexcept -> void {
+#if SWING_METRO_STAGE5_INSTRUMENTATION
         _local.displayFlushCount = saturatingIncrement(_local.displayFlushCount);
         _local.displayFlushInclusiveTotalUs =
             saturatingAdd(_local.displayFlushInclusiveTotalUs, durationUs);
         if (durationUs > _local.displayFlushInclusiveMaxUs) {
             _local.displayFlushInclusiveMaxUs = durationUs;
         }
+#else
+        (void)durationUs;
+#endif
     }
 
     // Core 1 only: call after every complete lv_timer_handler pass.
     auto publishRequestedSnapshot() noexcept -> void {
+#if SWING_METRO_STAGE5_INSTRUMENTATION
         const auto requested = _requestGeneration.load(std::memory_order_acquire);
         if (requested == _acknowledgedGeneration.load(std::memory_order_relaxed)) {
             return;
@@ -91,6 +112,7 @@ class RuntimeTimingDiagnostics {
         _snapshotVersion.fetch_add(1U, std::memory_order_release);
         _local = {};
         _acknowledgedGeneration.store(requested, std::memory_order_release);
+#endif
     }
 
     [[nodiscard]] static constexpr auto saturatingIncrement(std::uint32_t value) noexcept
@@ -106,6 +128,7 @@ class RuntimeTimingDiagnostics {
     }
 
   private:
+#if SWING_METRO_STAGE5_INSTRUMENTATION
     RuntimeTimingSnapshot _local{};
     std::atomic<std::uint32_t> _requestGeneration{0};
     std::atomic<std::uint32_t> _acknowledgedGeneration{0};
@@ -116,6 +139,7 @@ class RuntimeTimingDiagnostics {
     std::atomic<std::uint32_t> _displayFlushCount{0};
     std::atomic<std::uint32_t> _displayFlushInclusiveTotalUs{0};
     std::atomic<std::uint32_t> _displayFlushInclusiveMaxUs{0};
+#endif
 };
 
 } // namespace SwingMetro

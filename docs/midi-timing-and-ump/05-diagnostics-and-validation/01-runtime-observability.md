@@ -52,9 +52,10 @@ ack печатаются diagnostics и только затем `swing_metro_con
 - `make verify`: 325 native Unity tests, 15 Python tests, clang-format, clang-tidy и firmware
   build для `rpipico2` прошли успешно.
 
-## Не сделано
+## Связанные шаги
 
-- 5.2: MIDI lateness distributions и queue depth.
-- 5.3: safe reporting и измеренная instrumentation cost.
+- 5.2 добавил MIDI lateness distributions и queue depth.
+- 5.3 добавил safe reporting и A/B seam. Runtime totals являются inclusive measurements,
+  не CPU utilization; фактическая instrumentation cost всё ещё требует парных Pico captures.
 - 5.4: load/fault scenarios.
 - 5.5: hardware validation.

@@ -4,6 +4,7 @@ SHELL := /bin/sh
 
 PIO ?= pio
 PIO_ENV ?= rpipico2
+STAGE5_OFF_ENV ?= rpipico2-stage5-instrumentation-off
 NATIVE_ENV ?= native
 CLANG_FORMAT ?= clang-format
 CLANG_TIDY ?= clang-tidy
@@ -35,7 +36,7 @@ TIDY_TOOLCHAIN_ARGS := \
 	--extra-arg=-isystem --extra-arg=$(ARM_GCC_INCLUDE)-fixed \
 	--extra-arg=-isystem --extra-arg=$(TOOLCHAIN_ROOT)/arm-none-eabi/include
 
-.PHONY: help format format-check compiledb tidy tidy-run test test-scripts build verify \
+.PHONY: help format format-check compiledb tidy tidy-run test test-scripts build build-stage5-off verify \
 	check-format-tool check-tidy-tool check-pio-tool check-tidy-toolchain
 
 help:
@@ -46,6 +47,7 @@ help:
 		'make test          Run native Unity tests' \
 		'make test-scripts  Run host-side Python tests' \
 		'make build         Build firmware for the configured board' \
+		'make build-stage5-off Build firmware with Stage 5 instrumentation disabled' \
 		'make verify        Run format-check, tidy, tests, and firmware build'
 
 check-format-tool:
@@ -98,9 +100,13 @@ test-scripts:
 build: check-pio-tool
 	$(PIO) run -e $(PIO_ENV)
 
+build-stage5-off: check-pio-tool
+	$(PIO) run -e $(STAGE5_OFF_ENV)
+
 verify:
 	@$(MAKE) --no-print-directory format-check
 	@$(MAKE) --no-print-directory tidy
 	@$(MAKE) --no-print-directory test
 	@$(MAKE) --no-print-directory test-scripts
 	@$(MAKE) --no-print-directory build
+	@$(MAKE) --no-print-directory build-stage5-off

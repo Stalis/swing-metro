@@ -14,17 +14,20 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from pico_run_protocol import (
-    CONTROL_PREFIX,
     diagnostics_header_for_row,
     find_serial_port,
-    is_diagnostics_data_row,
     input_diagnostics_header_for_row,
-    is_input_diagnostics_data_row,
-    is_runtime_diagnostics_data_row,
     parse_diagnostics_row,
     parse_input_diagnostics_row,
     parse_runtime_diagnostics_row,
     runtime_diagnostics_header_for_row,
+)
+from pico_run_report import (
+    TimedRunCapture,
+    build_timed_run_report,
+    load_report_metadata,
+    report_output_path,
+    write_timed_run_report,
 )
 
 
@@ -283,6 +286,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bpm", type=int, default=68)
     parser.add_argument("--swing", type=int, default=50)
     parser.add_argument("--output-prefix", type=pathlib.Path)
+    parser.add_argument("--metadata", type=pathlib.Path)
     return parser.parse_args()
 
 
@@ -321,12 +325,14 @@ def main() -> int:
 
     midi_path, diagnostics_path, summary_path, runtime_diagnostics_path = output_paths(args.output_prefix)
     input_diagnostics_path = input_diagnostics_output_path(args.output_prefix)
+    report_path = report_output_path(args.output_prefix)
     output_files = (
         midi_path,
         diagnostics_path,
         summary_path,
         input_diagnostics_path,
         runtime_diagnostics_path,
+        report_path,
     )
     existing = [path for path in output_files if path.exists()]
     if existing:
@@ -337,6 +343,7 @@ def main() -> int:
     midi_port_index = choose_midi_port(ports, args.midi_port)
     serial_port = find_serial_port(args.port)
     duration_ms = round(args.duration_seconds * 1000)
+    metadata = load_report_metadata(args.metadata)
     events: list[MidiEvent] = []
     event_lock = threading.Lock()
 
@@ -353,10 +360,7 @@ def main() -> int:
     print(f"MIDI input: {ports[midi_port_index]}", flush=True)
     print(f"Serial: {serial_port}", flush=True)
 
-    row: str | None = None
-    input_row: str | None = None
-    runtime_row: str | None = None
-    completed = False
+    capture = TimedRunCapture(duration_ms, args.bpm, args.swing)
     timeout_at = time.monotonic() + args.duration_seconds + 30.0
     try:
         with serial.Serial(serial_port, 115200, timeout=0.25) as connection:
@@ -369,23 +373,20 @@ def main() -> int:
                     continue
                 line = raw.decode("utf-8", "replace").strip()
                 print(line, flush=True)
-                if is_diagnostics_data_row(line):
-                    row = line
-                elif is_input_diagnostics_data_row(line):
-                    input_row = line
-                elif is_runtime_diagnostics_data_row(line):
-                    runtime_row = line
-                elif line == f"{CONTROL_PREFIX},run_complete":
-                    completed = True
+                capture.consume(line)
+                if capture.completed:
                     break
     finally:
         time.sleep(0.1)
         midi_in.close_port()
 
-    if not completed:
-        raise RuntimeError("timed run did not report completion")
-    if row is None or input_row is None or runtime_row is None:
-        raise RuntimeError("run completed without diagnostics, input, and runtime diagnostics rows")
+    capture.require_complete()
+    assert capture.diagnostics_row is not None
+    assert capture.input_row is not None
+    assert capture.runtime_row is not None
+    row = capture.diagnostics_row
+    input_row = capture.input_row
+    runtime_row = capture.runtime_row
     diagnostics_version, diagnostics = parse_diagnostics_row(row)
     input_diagnostics = parse_input_diagnostics_row(input_row)
     runtime_diagnostics = parse_runtime_diagnostics_row(runtime_row)
@@ -433,11 +434,20 @@ def main() -> int:
     )
     write_midi_csv(midi_path, captured_events)
     write_summary_csv(summary_path, summary_with_firmware)
+    report = build_timed_run_report(
+        capture=capture,
+        metadata=metadata,
+        serial_port=serial_port,
+        midi_port=ports[midi_port_index],
+        host_midi=summary,
+    )
+    write_timed_run_report(report_path, report)
     print(f"saved {midi_path}")
     print(f"saved {diagnostics_path}")
     print(f"saved {input_diagnostics_path}")
     print(f"saved {runtime_diagnostics_path}")
     print(f"saved {summary_path}")
+    print(f"saved {report_path}")
     print(
         f"Clock: host={summary_with_firmware['clock_count']}, "
         f"firmware={summary_with_firmware['firmware_f8_attempt_count']}, "

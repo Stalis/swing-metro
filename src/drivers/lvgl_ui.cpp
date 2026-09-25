@@ -1,5 +1,7 @@
 #include "lvgl_ui.h"
 
+#include "engine/stage5_instrumentation.h"
+
 void LvglUi::setup() {
     // Init Display
     if (!_gfx.begin()) {
@@ -60,10 +62,16 @@ void LvglUi::setup() {
 }
 
 void LvglUi::loop() {
+#if SWING_METRO_STAGE5_INSTRUMENTATION
     const auto startedAtUs = micros();
     lv_timer_handler();
     _runtimeTimingDiagnostics.recordLvTimerHandler(micros() - startedAtUs);
+#else
+    lv_timer_handler();
+#endif
+#if SWING_METRO_STAGE5_INSTRUMENTATION
     _runtimeTimingDiagnostics.publishRequestedSnapshot();
+#endif
 }
 
 void LvglUi::readViewModel(const UiViewModel& viewModel) {
@@ -123,13 +131,17 @@ void LvglUi::setSteps(std::bitset<SEQUENCER_STEPS_COUNT> stepsState, uint8_t act
 
 void LvglUi::flush(lv_display_t* display, const lv_area_t* area, uint8_t* pixels) {
     auto& self = *static_cast<LvglUi*>(lv_display_get_user_data(display));
+#if SWING_METRO_STAGE5_INSTRUMENTATION
     const auto startedAtUs = micros();
+#endif
     self._gfx.draw16bitRGBBitmap(static_cast<int16_t>(area->x1), static_cast<int16_t>(area->y1),
                                  reinterpret_cast<uint16_t*>(pixels),
                                  static_cast<int16_t>(lv_area_get_width(area)),
                                  static_cast<int16_t>(lv_area_get_height(area)));
     lv_display_flush_ready(display);
+#if SWING_METRO_STAGE5_INSTRUMENTATION
     self._runtimeTimingDiagnostics.recordDisplayFlush(micros() - startedAtUs);
+#endif
 }
 
 void LvglUi::initMainScreen() {

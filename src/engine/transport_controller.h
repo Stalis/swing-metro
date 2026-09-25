@@ -6,6 +6,7 @@
 #include "midi_event_queue.h"
 #include "midi_pending_delivery_queue.h"
 #include "sequencer.h"
+#include "stage5_instrumentation.h"
 #include "timestamp.h"
 #include "transport.h"
 
@@ -92,8 +93,10 @@ struct TransportDiagnostics {
     std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT> scheduledTransferred{};
     std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT> outboxInserted{};
     std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT> currentScheduledDepth{};
+#if SWING_METRO_STAGE5_INSTRUMENTATION
     std::uint32_t currentScheduledDepthTotal = 0;
     std::uint32_t maxScheduledDepth = 0;
+#endif
     std::array<std::uint32_t, DELIVERY_MESSAGE_CLASS_COUNT> currentOutboxDepthByClass{};
     std::uint32_t currentOutboxDepth = 0;
     std::uint32_t maxOutboxDepth = 0;
@@ -107,10 +110,12 @@ struct TransportDiagnostics {
         sessionEnds{};
     std::uint32_t currentSessionGeneration = 1;
     InvalidationReason lastSessionEndReason = InvalidationReason::Stop;
+#if SWING_METRO_STAGE5_INSTRUMENTATION
     LatenessDistribution clockAttemptLateness{};
     LatenessDistribution clockAcceptedLateness{};
     LatenessDistribution noteAttemptLateness{};
     LatenessDistribution noteAcceptedLateness{};
+#endif
 };
 
 enum class DeliveryLifecycleOutcome : std::uint8_t {
@@ -367,14 +372,17 @@ class MidiDispatcher {
             _diagnostics.currentScheduledDepth[messageClass] =
                 static_cast<std::uint32_t>(summary.counts[messageClass]);
         }
+#if SWING_METRO_STAGE5_INSTRUMENTATION
         _diagnostics.currentScheduledDepthTotal = static_cast<std::uint32_t>(_queue.size());
         if (_diagnostics.currentScheduledDepthTotal > _diagnostics.maxScheduledDepth) {
             _diagnostics.maxScheduledDepth = _diagnostics.currentScheduledDepthTotal;
         }
+#endif
     }
 
     static auto recordLateness(LatenessDistribution& distribution, std::uint32_t attemptAtUs,
                                std::uint32_t deadlineUs) noexcept -> void {
+#if SWING_METRO_STAGE5_INSTRUMENTATION
         const auto difference = attemptAtUs - deadlineUs;
         if (difference == 0) {
             addOne(distribution.onTime);
@@ -395,24 +403,39 @@ class MidiDispatcher {
             ++bucket;
         }
         addOne(distribution.positive[bucket]);
+#else
+        (void)distribution;
+        (void)attemptAtUs;
+        (void)deadlineUs;
+#endif
     }
 
     auto recordDistributionAttempt(const PendingMidiEvent& pending,
                                    std::uint32_t attemptAtUs) noexcept -> void {
+#if SWING_METRO_STAGE5_INSTRUMENTATION
         if (pending.event.message.isClock()) {
             recordLateness(_diagnostics.clockAttemptLateness, attemptAtUs, pending.deadlineUs);
         } else if (pending.event.message.messageClass() == MidiMessageClass::Note) {
             recordLateness(_diagnostics.noteAttemptLateness, attemptAtUs, pending.deadlineUs);
         }
+#else
+        (void)pending;
+        (void)attemptAtUs;
+#endif
     }
 
     auto recordDistributionAccepted(const PendingMidiEvent& pending,
                                     std::uint32_t attemptAtUs) noexcept -> void {
+#if SWING_METRO_STAGE5_INSTRUMENTATION
         if (pending.event.message.isClock()) {
             recordLateness(_diagnostics.clockAcceptedLateness, attemptAtUs, pending.deadlineUs);
         } else if (pending.event.message.messageClass() == MidiMessageClass::Note) {
             recordLateness(_diagnostics.noteAcceptedLateness, attemptAtUs, pending.deadlineUs);
         }
+#else
+        (void)pending;
+        (void)attemptAtUs;
+#endif
     }
     static auto updateLateness(std::uint32_t& maximum, std::uint32_t attemptAtUs,
                                std::uint32_t deadlineUs) noexcept -> void {
@@ -591,7 +614,9 @@ class MidiDispatcher {
                                               : pending->attemptOrdinal + 1U),
                 firstAttempt,
                 pending->event.launchId};
+#if SWING_METRO_STAGE5_INSTRUMENTATION
             recordDistributionAttempt(*pending, attemptAtUs);
+#endif
             const auto sendResult = _sink.send(attempt);
             if (sendResult == SendResult::Disconnected) {
                 addOne(delivery.disconnected);
@@ -610,7 +635,9 @@ class MidiDispatcher {
                 return;
             }
             addOne(delivery.accepted);
+#if SWING_METRO_STAGE5_INSTRUMENTATION
             recordDistributionAccepted(*pending, attemptAtUs);
+#endif
             if (pending->retrySeen) {
                 addOne(delivery.retryRecovered);
             }
