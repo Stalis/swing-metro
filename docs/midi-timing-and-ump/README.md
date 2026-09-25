@@ -47,7 +47,7 @@ MPE и MIDI 2.0 не тождественны. Классический MPE ис
 | 2 | [События и надёжная отправка](02-events-and-usb-backpressure.md) | **Выполнено:** typed events, bounded result-aware delivery и diagnostics; аппаратно подтверждены 30 061 из 30 061 Clock без retry/drop или host gap. |
 | 3 | [Регулярный ввод](03-input-scheduling-and-debounce.md) | Шаги 3.1–3.4 выполнены; MIDI не регрессировал, но polling превысил encoder bound, поэтому этап ждёт bounded IRQ/PIO follow-up. |
 | 4 | [Gate Percent](04-note-gate.md) | **Выполнено:** Gate 1–100%, independent Note Off, identity-safe lifecycle, UI и persistence подтверждены software- и аппаратными проверками. |
-| S | [Стабилизация Tempo и модального ввода](stabilization-runtime-input-modal.md) | S.1–S.3 выполнены программно: непрерывный Clock при live Tempo, корректный Shift long-press, host-scoped модалки и Cancel в Save/Load и MIDI Clock; ожидается аппаратная приёмка S.4. |
+| S | [Стабилизация Tempo и модального ввода](stabilization-runtime-input-modal.md) | **Выполнено:** непрерывный Clock при live Tempo, корректный Shift long-press, host-scoped модалки и Cancel в Save/Load и MIDI Clock подтверждены software- и аппаратной проверкой. |
 | 5 | [Диагностика и нагрузочная проверка](05-diagnostics-and-validation.md) | Воспроизводимые измерения всей системы и выводы об узких местах. |
 | 6 | [Прототип USB MIDI 2.0](06-ump-prototype.md) | Проверена совместимость UMP, per-note control и timestamps с выбранным хостом. |
 

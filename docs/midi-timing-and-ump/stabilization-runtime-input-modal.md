@@ -1,7 +1,7 @@
 # Стабилизация S. Live Tempo и модальный ввод
 
-Статус: S.1–S.3 выполнены программно; S.4 запланирован. Выполняется после
-завершённого этапа 4 и до этапа 5.
+Статус: завершено 2026-09-25. S.1–S.3 прошли software-проверку, итоговая прошивка получила
+аппаратную приёмку в S.4.
 
 ## Цель
 
@@ -58,7 +58,7 @@ Program Storage хранит только `Save`/`Load`. В состояниях
 | S.1 | [Непрерывная смена Tempo](stabilization-runtime-input-modal/01-live-tempo-continuity.md) | **Выполнено программно:** BPM update сохраняет действующий alarm request и pending deadline без cancel/re-arm. |
 | S.2 | [Арбитрация Shift long-press](stabilization-runtime-input-modal/02-shift-long-press-arbitration.md) | **Выполнено:** Shift hardware-подтверждён; обе модалки программно привязаны к Main Display. |
 | S.3 | [Cancel в модальных меню](stabilization-runtime-input-modal/03-program-storage-cancel.md) | **Выполнено программно:** Program Storage Action/Slot и MIDI Clock chooser имеют безопасный Cancel; MIDI-меню уплотнено шрифтом 10 px. |
-| S.4 | [Интеграционная и аппаратная приёмка](stabilization-runtime-input-modal/04-integrated-validation.md) | Все три пользовательских сценария и MIDI continuity подтверждены на устройстве. |
+| S.4 | [Интеграционная и аппаратная приёмка](stabilization-runtime-input-modal/04-integrated-validation.md) | **Выполнено:** итоговая прошивка `1c4ce63` вручную подтверждена на устройстве; все исправленные сценарии работают ожидаемо. |
 
 Шаги выполняются последовательно и по одному на ветку/коммит. S.1 меняет timing contract и
 проверяется раньше UI-исправлений. S.2 фиксирует конфликт жестов до расширения модалки в S.3.
