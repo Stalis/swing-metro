@@ -15,7 +15,7 @@ from typing import Any, Mapping
 
 from pico_run_protocol import (
     diagnostics_header_for_row,
-    find_serial_port,
+    wait_for_serial_port,
     input_diagnostics_header_for_row,
     parse_diagnostics_row,
     parse_input_diagnostics_row,
@@ -98,6 +98,26 @@ def choose_midi_port(ports: list[str], selector: str | None) -> int:
     if len(ports) == 1:
         return 0
     raise RuntimeError(f"unable to choose one MIDI input port from {ports}; use --midi-port")
+
+
+def wait_for_midi_port(
+    midi_in: Any,
+    selector: str | None,
+    attempts: int = 40,
+    retry_delay_seconds: float = 0.25,
+) -> tuple[int, list[str]]:
+    """Wait briefly for CoreMIDI to recreate an endpoint after a firmware upload."""
+    last_error: RuntimeError | None = None
+    for attempt in range(attempts):
+        ports = midi_in.get_ports()
+        try:
+            return choose_midi_port(ports, selector), ports
+        except RuntimeError as error:
+            last_error = error
+        if attempt + 1 < attempts:
+            time.sleep(retry_delay_seconds)
+    assert last_error is not None
+    raise last_error
 
 
 def percentile(values: list[float], percentile_value: float) -> float:
@@ -346,9 +366,8 @@ def main() -> int:
     rtmidi = load_rtmidi()
     serial = load_serial()
     midi_in = rtmidi.MidiIn()
-    ports = midi_in.get_ports()
-    midi_port_index = choose_midi_port(ports, args.midi_port)
-    serial_port = find_serial_port(args.port)
+    midi_port_index, ports = wait_for_midi_port(midi_in, args.midi_port)
+    serial_port = wait_for_serial_port(args.port)
     duration_ms = round(args.duration_seconds * 1000)
     for path in output_files:
         path.parent.mkdir(parents=True, exist_ok=True)

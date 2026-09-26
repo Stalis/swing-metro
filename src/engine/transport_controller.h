@@ -209,6 +209,7 @@ class MidiDispatcher {
             addOne(_diagnostics.sessionEnds[static_cast<std::size_t>(reason)]);
         }
         _internalOutputActive = false;
+        _clockRetryStartTick.reset();
         if (_haveTick) {
             (void)_transport.advanceTick();
         }

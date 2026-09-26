@@ -26,15 +26,19 @@ plus one run for each non-baseline fault at 120/50. It preflights every metadata
 the `stage5-4-load-matrix-manifest.json` manifest; metadata must identify the fixed
 `rpipico2-stage5-fault-scenarios` environment. The manifest records `upload_before_each_run: true`:
 the script runs `pio run --environment rpipico2-stage5-fault-scenarios --target upload` before every
-capture, then invokes the existing MIDI capture tool with argument lists only (no shell quoting).
+capture, waits three seconds for the replacement CoreMIDI and CDC endpoints to stabilize, then
+invokes the existing MIDI capture tool with argument lists only (no shell quoting).
 Use `--pio /path/to/pio` only when `pio` is not on `PATH`. It never overwrites and fails immediately
-on upload, capture, or predicate failure.
+on upload, capture, or predicate failure. `--resume` validates the exact existing manifest and every
+complete report, rejects partial captures, and continues from the first missing cell.
 
 Baseline predicates require exactly one host Start and Stop, a nonzero host Clock capture equal to
-both accepted device Clock and internal Clock attempts, no long/short/estimated-missing host Clock
-intervals, and zero device failed publications and tick-queue overflows. Fault predicates are
-only native-established counters: one Clock retry and recovery, one retry-window safety stop, or
-one Clock disconnect. No new timing threshold is introduced.
+both accepted device Clock and internal Clock attempts, and zero device failed publications and
+tick-queue overflows. Host long/short interval and estimated-missing heuristics remain recorded
+observations rather than loss predicates: CoreMIDI can report a delayed/early batching pair while
+the exact host/device counts and total drift remain intact. Fault predicates are only
+native-established counters: one Clock retry and recovery, one retry-window safety stop, or one
+Clock disconnect. No new timing threshold is introduced.
 Every matrix report must also have `device_local.fresh_boot_candidate: true` and
 `comparison_eligibility: paired_capture_candidate`; boot-cumulative diagnostics from a reused boot
 are rejected.

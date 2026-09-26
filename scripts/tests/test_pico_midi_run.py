@@ -17,6 +17,7 @@ from pico_midi_run import (
     event_name,
     input_diagnostics_output_path,
     output_paths,
+    wait_for_midi_port,
     write_summary_csv,
 )
 from pico_serial_run import input_output_path
@@ -52,6 +53,7 @@ from pico_run_protocol import (
     parse_runtime_diagnostics_row,
     parse_diagnostics_row,
     runtime_diagnostics_header_for_row,
+    wait_for_serial_port,
 )
 
 
@@ -80,6 +82,30 @@ class PicoMidiRunTests(unittest.TestCase):
     def test_rejects_ambiguous_midi_port(self):
         with self.assertRaises(RuntimeError):
             choose_midi_port(["Pico A", "Pico B"], None)
+
+    def test_waits_for_midi_port_to_reappear_after_upload(self):
+        midi_in = unittest.mock.Mock()
+        midi_in.get_ports.side_effect = [[], [], ["Pico 2W"]]
+        with patch("pico_midi_run.time.sleep") as sleep:
+            index, ports = wait_for_midi_port(midi_in, "Pico 2W", attempts=3)
+        self.assertEqual(0, index)
+        self.assertEqual(["Pico 2W"], ports)
+        self.assertEqual(2, sleep.call_count)
+
+    def test_midi_port_wait_remains_bounded(self):
+        midi_in = unittest.mock.Mock()
+        midi_in.get_ports.return_value = []
+        with patch("pico_midi_run.time.sleep") as sleep:
+            with self.assertRaisesRegex(RuntimeError, "matched"):
+                wait_for_midi_port(midi_in, "Pico 2W", attempts=2)
+        self.assertEqual(1, sleep.call_count)
+
+    def test_waits_for_serial_port_to_reappear_after_upload(self):
+        with patch("pico_run_protocol.pathlib.Path.exists", side_effect=[False, False, True]):
+            with patch("pico_run_protocol.time.sleep") as sleep:
+                port = wait_for_serial_port("/dev/cu.usbmodem101", attempts=3)
+        self.assertEqual("/dev/cu.usbmodem101", port)
+        self.assertEqual(2, sleep.call_count)
 
     def test_names_realtime_and_channel_messages(self):
         self.assertEqual("Clock", event_name((0xF8,)))
@@ -256,6 +282,13 @@ class PicoMidiRunTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "does not equal"):
                 validate_report(path, None)
 
+            report["host_midi"]["metrics"]["clock_count"] = 4
+            report["host_midi"]["metrics"]["long_interval_count"] = 1
+            report["host_midi"]["metrics"]["short_interval_count"] = 1
+            report["host_midi"]["metrics"]["estimated_missing_clock_count"] = 1
+            path.write_text(json.dumps(report), encoding="utf-8")
+            validate_report(path, None)
+
     def test_matrix_requires_fresh_boot_and_paired_capture_eligibility(self):
         report = {
             "comparison_eligibility": "paired_capture_candidate",
@@ -278,8 +311,10 @@ class PicoMidiRunTests(unittest.TestCase):
         command = ["custom-pio", "run", "--environment", FIRMWARE_ENVIRONMENT, "--target", "upload"]
         self.assertEqual(command, platformio_upload_command("custom-pio"))
         with patch("stage5_load_matrix.subprocess.run") as run:
-            upload_firmware("custom-pio")
+            with patch("stage5_load_matrix.time.sleep") as sleep:
+                upload_firmware("custom-pio")
         run.assert_called_once_with(command, check=True)
+        sleep.assert_called_once_with(3.0)
 
     def test_matrix_metadata_requires_fault_firmware_environment(self):
         with tempfile.TemporaryDirectory() as directory:

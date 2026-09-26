@@ -10,9 +10,9 @@ import time
 
 from pico_run_protocol import (
     diagnostics_header_for_row,
-    find_serial_port,
     input_diagnostics_header_for_row,
     runtime_diagnostics_header_for_row,
+    wait_for_serial_port,
 )
 from pico_run_report import (
     TimedRunCapture,
@@ -72,7 +72,7 @@ def main() -> int:
     metadata = load_report_metadata(args.metadata)
     validate_fault_metadata(metadata, args.fault_scenario)
     serial = load_serial()
-    port = find_serial_port(args.port)
+    port = wait_for_serial_port(args.port)
     capture = TimedRunCapture(duration_ms, args.bpm, args.swing, args.fault_scenario)
     timeout_at = time.monotonic() + args.duration_seconds + 30.0
     with serial.Serial(port, 115200, timeout=0.25) as connection:

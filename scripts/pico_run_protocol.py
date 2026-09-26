@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import glob
+import pathlib
+import time
 
 
 CONTROL_PREFIX = "swing_metro_control_v1"
@@ -177,6 +179,27 @@ def find_serial_port(explicit_port: str | None) -> str:
     if len(ports) != 1:
         raise RuntimeError(f"expected one /dev/cu.usbmodem* port, found {ports}")
     return ports[0]
+
+
+def wait_for_serial_port(
+    explicit_port: str | None,
+    attempts: int = 40,
+    retry_delay_seconds: float = 0.25,
+) -> str:
+    """Wait briefly for the CDC device to reappear after a firmware upload."""
+    last_error: RuntimeError | None = None
+    for attempt in range(attempts):
+        try:
+            port = find_serial_port(explicit_port)
+            if pathlib.Path(port).exists():
+                return port
+            last_error = RuntimeError(f"serial port is not available: {port}")
+        except RuntimeError as error:
+            last_error = error
+        if attempt + 1 < attempts:
+            time.sleep(retry_delay_seconds)
+    assert last_error is not None
+    raise last_error
 
 
 def parse_diagnostics_row(row: str) -> tuple[int, dict[str, int]]:

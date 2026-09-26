@@ -1784,6 +1784,10 @@ void test_fault_sink_sustained_backpressure_stops_at_existing_retry_window() {
     TEST_ASSERT_FALSE(controller.usesInternalTiming());
     TEST_ASSERT_EQUAL_UINT32(1, delegate.count);
     TEST_ASSERT_EQUAL_UINT32(1, controller.diagnostics().retryWindowSafetyStops);
+    for (std::uint32_t pass = 0; pass < 100; ++pass) {
+        controller.process(122'000 + pass, ticks);
+    }
+    TEST_ASSERT_EQUAL_UINT32(1, controller.diagnostics().retryWindowSafetyStops);
 }
 
 void test_fault_sink_disconnect_requires_new_start() {
