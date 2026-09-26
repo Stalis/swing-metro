@@ -14,6 +14,7 @@ class ProgramStorageController {
 
     [[nodiscard]] auto perform(ProgramStorageAction action, std::uint8_t slot)
         -> ProgramStoreStatus;
+    [[nodiscard]] auto resetCurrentProgram() -> ProgramStoreStatus;
     [[nodiscard]] auto restoreCurrentProgram() -> ProgramStoreStatus;
     [[nodiscard]] auto syncCurrentProgramIfChanged() -> ProgramStoreStatus;
 

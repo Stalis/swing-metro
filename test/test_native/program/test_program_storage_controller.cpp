@@ -103,6 +103,39 @@ void testControllerRestoresCurrentProgramAndDefaults() {
     TEST_ASSERT_EQUAL_UINT32(0, defaults.storage.writes);
 }
 
+void testControllerResetsAndPersistsInitialProgram() {
+    State state;
+    SwingMetro::Program changed;
+    changed.tempo = 200;
+    changed.swing = 80;
+    changed.volume = 42;
+    changed.midiClockMode = SwingMetro::MidiClockMode::Internal;
+    changed.steps[0] = {.enabled = true, .note = 72, .velocity = 64, .gate = 25};
+    TEST_ASSERT_TRUE(SwingMetro::applyProgram(changed, state.tempo, state.swing, state.volume,
+                                              state.sequencer, state.midiClock));
+
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStoreStatus::Ok),
+                            static_cast<std::uint8_t>(state.controller.resetCurrentProgram()));
+    const auto reset = SwingMetro::captureProgram(state.tempo, state.swing, state.volume,
+                                                  state.sequencer, state.midiClock);
+    TEST_ASSERT_EQUAL_UINT8(SwingMetro::PROGRAM_DEFAULT_TEMPO, reset.tempo);
+    TEST_ASSERT_EQUAL_UINT8(SwingMetro::PROGRAM_DEFAULT_SWING, reset.swing);
+    TEST_ASSERT_EQUAL_UINT8(SwingMetro::PROGRAM_DEFAULT_VOLUME, reset.volume);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::Off),
+                            static_cast<std::uint8_t>(reset.midiClockMode));
+    TEST_ASSERT_FALSE(reset.steps[0].enabled);
+    TEST_ASSERT_EQUAL_UINT8(SwingMetro::PROGRAM_DEFAULT_NOTE, reset.steps[0].note);
+    TEST_ASSERT_EQUAL_UINT8(SwingMetro::PROGRAM_DEFAULT_VELOCITY, reset.steps[0].velocity);
+    TEST_ASSERT_EQUAL_UINT8(SwingMetro::PROGRAM_DEFAULT_GATE, reset.steps[0].gate);
+    TEST_ASSERT_EQUAL_UINT32(1, state.storage.writes);
+
+    state.sequencer.toggleRunning(0);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(SwingMetro::ProgramStoreStatus::TransportRunning),
+        static_cast<std::uint8_t>(state.controller.resetCurrentProgram()));
+    TEST_ASSERT_EQUAL_UINT32(1, state.storage.writes);
+}
+
 void testControllerAutosavesOnlyChangedStoppedProgram() {
     State state;
     (void)state.controller.restoreCurrentProgram();
@@ -135,5 +168,6 @@ void testProgramStorageControllerMain() {
     RUN_TEST(testControllerSavesAndLoadsSelectedSlot);
     RUN_TEST(testControllerRejectsRunningTransport);
     RUN_TEST(testControllerRestoresCurrentProgramAndDefaults);
+    RUN_TEST(testControllerResetsAndPersistsInitialProgram);
     RUN_TEST(testControllerAutosavesOnlyChangedStoppedProgram);
 }

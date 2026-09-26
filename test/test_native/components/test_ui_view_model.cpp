@@ -225,9 +225,10 @@ void test_ui_view_model_publishes_program_storage_snapshot() {
     UiViewModel viewModel;
     UiSettings settings{.tempo = 120, .swing = 50, .volume = 100, .activeNote = UINT8_MAX};
     settings.programStorageState = SwingMetro::ProgramStorageModalState::Slot;
-    settings.programStorageSelection = SwingMetro::ProgramStorageMenuItem::Cancel;
+    settings.programStorageSelection = SwingMetro::ProgramStorageMenuItem::ResetProgram;
     settings.programStorageAction = SwingMetro::ProgramStorageAction::Load;
     settings.programStorageSlot = SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT;
+    settings.programResetChoice = SwingMetro::ProgramResetChoice::Yes;
     settings.programStorageStatus = SwingMetro::ProgramStoreStatus::Empty;
     viewModel.publish(settings);
     const auto snapshot = viewModel.read();
@@ -235,9 +236,11 @@ void test_ui_view_model_publishes_program_storage_snapshot() {
                             static_cast<uint8_t>(snapshot.programStorageState));
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramStorageAction::Load),
                             static_cast<uint8_t>(snapshot.programStorageAction));
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramStorageMenuItem::Cancel),
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramStorageMenuItem::ResetProgram),
                             static_cast<uint8_t>(snapshot.programStorageSelection));
     TEST_ASSERT_EQUAL_UINT8(SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT, snapshot.programStorageSlot);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramResetChoice::Yes),
+                            static_cast<uint8_t>(snapshot.programResetChoice));
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramStoreStatus::Empty),
                             static_cast<uint8_t>(snapshot.programStorageStatus));
 }

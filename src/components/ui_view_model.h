@@ -41,6 +41,7 @@ struct UiSettings {
         SwingMetro::ProgramStorageMenuItem::Save;
     SwingMetro::ProgramStorageAction programStorageAction = SwingMetro::ProgramStorageAction::Save;
     uint8_t programStorageSlot = 0;
+    SwingMetro::ProgramResetChoice programResetChoice = SwingMetro::ProgramResetChoice::No;
     SwingMetro::ProgramStoreStatus programStorageStatus = SwingMetro::ProgramStoreStatus::Ok;
 };
 
@@ -80,7 +81,8 @@ class UiViewModel {
                                         static_cast<uint32_t>(settings.programStorageSelection)
                                             << 4 |
                                         static_cast<uint32_t>(settings.programStorageSlot) << 6 |
-                                        static_cast<uint32_t>(settings.programStorageStatus) << 14,
+                                        static_cast<uint32_t>(settings.programResetChoice) << 14 |
+                                        static_cast<uint32_t>(settings.programStorageStatus) << 15,
                                     std::memory_order_seq_cst);
         _generation.fetch_add(1, std::memory_order_seq_cst);
         _lastPublished = settings;
@@ -134,8 +136,10 @@ class UiViewModel {
                 .programStorageAction =
                     static_cast<SwingMetro::ProgramStorageAction>((programStoragePacked >> 3) & 1U),
                 .programStorageSlot = static_cast<uint8_t>((programStoragePacked >> 6) & 255U),
+                .programResetChoice =
+                    static_cast<SwingMetro::ProgramResetChoice>((programStoragePacked >> 14) & 1U),
                 .programStorageStatus =
-                    static_cast<SwingMetro::ProgramStoreStatus>(programStoragePacked >> 14),
+                    static_cast<SwingMetro::ProgramStoreStatus>(programStoragePacked >> 15),
             };
         }
     }
@@ -159,7 +163,8 @@ class UiViewModel {
                left.programStorageSelection == right.programStorageSelection &&
                left.programStorageAction == right.programStorageAction &&
                left.programStorageSlot == right.programStorageSlot &&
-               left.programStorageStatus == right.programStorageStatus;
+               left.programStorageStatus == right.programStorageStatus &&
+               left.programResetChoice == right.programResetChoice;
     }
 
     std::atomic<uint32_t> _packed{0};

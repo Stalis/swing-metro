@@ -109,6 +109,10 @@ struct SelectProgramStorageSlot {
     std::int8_t delta;
 };
 struct ConfirmProgramStorageSlot {};
+struct SelectProgramResetChoice {
+    std::int8_t delta;
+};
+struct ConfirmProgramReset {};
 struct CloseProgramStorage {};
 
 using InputEvent = ContextInput::InputEvent<InputId>;
@@ -118,6 +122,7 @@ using AppEvent =
                  ActivateShift, DeactivateShift, OpenMidiClockSettings, AdjustMidiClockPreview,
                  ConfirmMidiClockSettings, ApplyMidiClockMode, OpenProgramStorage,
                  SelectProgramStorageAction, ConfirmProgramStorageAction, SelectProgramStorageSlot,
-                 ConfirmProgramStorageSlot, CloseProgramStorage>;
+                 ConfirmProgramStorageSlot, SelectProgramResetChoice, ConfirmProgramReset,
+                 CloseProgramStorage>;
 
 } // namespace SwingMetro

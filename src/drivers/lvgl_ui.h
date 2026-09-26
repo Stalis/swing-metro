@@ -76,7 +76,7 @@ class LvglUi {
     lv_obj_t* _programStorageModal;
     lv_obj_t* _programStorageTitleLabel;
     lv_obj_t* _programStorageValueLabel;
-    std::array<lv_obj_t*, 3> _programStorageActionLabels{};
+    std::array<lv_obj_t*, 4> _programStorageActionLabels{};
     SwingMetro::ProgramStorageModalState _displayedProgramStorageState =
         SwingMetro::ProgramStorageModalState::Closed;
     SwingMetro::ProgramStorageAction _displayedProgramStorageAction =
@@ -84,6 +84,8 @@ class LvglUi {
     SwingMetro::ProgramStorageMenuItem _displayedProgramStorageSelection =
         SwingMetro::ProgramStorageMenuItem::Save;
     uint8_t _displayedProgramStorageSlot = UINT8_MAX;
+    SwingMetro::ProgramResetChoice _displayedProgramResetChoice =
+        SwingMetro::ProgramResetChoice::No;
     SwingMetro::ProgramStoreStatus _displayedProgramStorageStatus =
         SwingMetro::ProgramStoreStatus::Ok;
 
@@ -100,6 +102,7 @@ class LvglUi {
     void setProgramStorageModal(SwingMetro::ProgramStorageModalState state,
                                 SwingMetro::ProgramStorageMenuItem selection,
                                 SwingMetro::ProgramStorageAction action, uint8_t slot,
+                                SwingMetro::ProgramResetChoice resetChoice,
                                 SwingMetro::ProgramStoreStatus status);
     void drawSequencerSteps();
     void drawSequencerSteps(uint32_t rawValue);

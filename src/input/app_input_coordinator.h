@@ -106,9 +106,14 @@ class AppInputCoordinator {
             if (_programStorageState == ProgramStorageModalState::Action) {
                 if (_programStorageSelection == ProgramStorageMenuItem::Cancel) {
                     contextChanged = closeProgramStorage();
+                } else if (_programStorageSelection == ProgramStorageMenuItem::ResetProgram) {
+                    _programResetChoice = ProgramResetChoice::No;
+                    _programStorageState = ProgramStorageModalState::ResetConfirmation;
+                    _programStorageContext.setState(_programStorageState);
                 } else {
-                    _programStorageAction =
-                        static_cast<ProgramStorageAction>(_programStorageSelection);
+                    _programStorageAction = _programStorageSelection == ProgramStorageMenuItem::Save
+                                                ? ProgramStorageAction::Save
+                                                : ProgramStorageAction::Load;
                     _programStorageState = ProgramStorageModalState::Slot;
                     _programStorageSlot = 0;
                     _programStorageContext.setState(_programStorageState);
@@ -125,6 +130,19 @@ class AppInputCoordinator {
                     _programStorageContext.setState(_programStorageState);
                     _programStoragePending = true;
                 }
+            }
+        } else if (const auto* select = std::get_if<SelectProgramResetChoice>(&event)) {
+            selectProgramResetChoice(select->delta);
+        } else if (std::holds_alternative<ConfirmProgramReset>(event)) {
+            if (_programStorageState == ProgramStorageModalState::ResetConfirmation) {
+                if (_programResetChoice == ProgramResetChoice::No) {
+                    _programStorageState = ProgramStorageModalState::Action;
+                } else {
+                    _programStorageState = ProgramStorageModalState::Busy;
+                    _programStorageResetPending = true;
+                    _programStoragePending = true;
+                }
+                _programStorageContext.setState(_programStorageState);
             }
         } else if (std::holds_alternative<CloseProgramStorage>(event)) {
             contextChanged = closeProgramStorage();
@@ -166,9 +184,11 @@ class AppInputCoordinator {
         }
         _programStoragePending = false;
         _programStorageStatus =
-            _programStorage == nullptr
-                ? ProgramStoreStatus::NotMounted
+            _programStorage == nullptr ? ProgramStoreStatus::NotMounted
+            : _programStorageResetPending
+                ? _programStorage->resetCurrentProgram()
                 : _programStorage->perform(_programStorageAction, _programStorageSlot);
+        _programStorageResetPending = false;
         _programStorageState = _programStorageStatus == ProgramStoreStatus::Ok
                                    ? ProgramStorageModalState::Success
                                    : ProgramStorageModalState::Error;
@@ -198,6 +218,7 @@ class AppInputCoordinator {
         settings.programStorageAction = _programStorageAction;
         settings.programStorageSlot = _programStorageSlot;
         settings.programStorageStatus = _programStorageStatus;
+        settings.programResetChoice = _programResetChoice;
         return settings;
     }
 
@@ -343,6 +364,8 @@ class AppInputCoordinator {
         _programStorageAction = ProgramStorageAction::Save;
         _programStorageSlot = 0;
         _programStorageStatus = ProgramStoreStatus::Ok;
+        _programResetChoice = ProgramResetChoice::No;
+        _programStorageResetPending = false;
         _programStorageContext.setState(_programStorageState);
         return true;
     }
@@ -363,8 +386,18 @@ class AppInputCoordinator {
             const auto candidate = static_cast<int>(_programStorageSelection) + delta;
             _programStorageSelection = static_cast<ProgramStorageMenuItem>(
                 std::clamp(candidate, static_cast<int>(ProgramStorageMenuItem::Save),
-                           static_cast<int>(ProgramStorageMenuItem::Cancel)));
+                           static_cast<int>(ProgramStorageMenuItem::ResetProgram)));
         }
+    }
+
+    auto selectProgramResetChoice(std::int8_t delta) noexcept -> void {
+        if (_programStorageState != ProgramStorageModalState::ResetConfirmation || delta == 0) {
+            return;
+        }
+        const auto candidate = static_cast<int>(_programResetChoice) + delta;
+        _programResetChoice = static_cast<ProgramResetChoice>(
+            std::clamp(candidate, static_cast<int>(ProgramResetChoice::No),
+                       static_cast<int>(ProgramResetChoice::Yes)));
     }
 
     auto selectProgramStorageSlot(std::int8_t delta) noexcept -> void {
@@ -402,7 +435,9 @@ class AppInputCoordinator {
     ProgramStorageAction _programStorageAction = ProgramStorageAction::Save;
     std::uint8_t _programStorageSlot = 0;
     ProgramStoreStatus _programStorageStatus = ProgramStoreStatus::Ok;
+    ProgramResetChoice _programResetChoice = ProgramResetChoice::No;
     bool _programStoragePending = false;
+    bool _programStorageResetPending = false;
 };
 
 } // namespace SwingMetro

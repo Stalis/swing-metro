@@ -33,6 +33,17 @@ auto ProgramStorageController::perform(ProgramStorageAction action, std::uint8_t
     return saveCurrentProgram(program);
 }
 
+auto ProgramStorageController::resetCurrentProgram() -> ProgramStoreStatus {
+    if (_sequencer.isRunning()) {
+        return ProgramStoreStatus::TransportRunning;
+    }
+    const Program program{};
+    if (!applyProgram(program, _tempo, _swing, _volume, _sequencer, _midiClock)) {
+        return ProgramStoreStatus::InvalidProgram;
+    }
+    return saveCurrentProgram(program);
+}
+
 auto ProgramStorageController::restoreCurrentProgram() -> ProgramStoreStatus {
     Program program;
     const auto status = _store.load(PROGRAM_CURRENT_SLOT, program);

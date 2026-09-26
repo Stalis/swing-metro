@@ -169,6 +169,9 @@ class ProgramStorageContext {
                 if (_state == ProgramStorageModalState::Slot) {
                     return Result::emit(AppEvent{SelectProgramStorageSlot{encoder->delta}});
                 }
+                if (_state == ProgramStorageModalState::ResetConfirmation) {
+                    return Result::emit(AppEvent{SelectProgramResetChoice{encoder->delta}});
+                }
             }
             if (const auto* button = std::get_if<ContextInput::ButtonInput>(&input.payload)) {
                 if (button->phase == ContextInput::ButtonPhase::Clicked) {
@@ -177,6 +180,9 @@ class ProgramStorageContext {
                     }
                     if (_state == ProgramStorageModalState::Slot) {
                         return Result::emit(AppEvent{ConfirmProgramStorageSlot{}});
+                    }
+                    if (_state == ProgramStorageModalState::ResetConfirmation) {
+                        return Result::emit(AppEvent{ConfirmProgramReset{}});
                     }
                     if (_state == ProgramStorageModalState::Success ||
                         _state == ProgramStorageModalState::Error) {

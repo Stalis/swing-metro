@@ -117,7 +117,7 @@ void LvglUi::readViewModel(const UiViewModel& viewModel) {
     setExternalClock(values.externalClockStatus, values.externalTempo);
     setProgramStorageModal(values.programStorageState, values.programStorageSelection,
                            values.programStorageAction, values.programStorageSlot,
-                           values.programStorageStatus);
+                           values.programResetChoice, values.programStorageStatus);
 }
 
 void LvglUi::setTempo(uint8_t value) { lv_subject_set_int(&_tempoSubject, value); }
@@ -288,7 +288,7 @@ void LvglUi::setMidiClockModal(bool open, SwingMetro::MidiClockMode active,
 
 void LvglUi::initProgramStorageModal() {
     _programStorageModal = lv_obj_create(lv_layer_top());
-    lv_obj_set_size(_programStorageModal, 112, 100);
+    lv_obj_set_size(_programStorageModal, 120, 118);
     lv_obj_align(_programStorageModal, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_color(_programStorageModal, lv_color_hex(0x101010), 0);
     lv_obj_set_style_bg_opa(_programStorageModal, LV_OPA_COVER, 0);
@@ -302,16 +302,16 @@ void LvglUi::initProgramStorageModal() {
     lv_obj_align(_programStorageValueLabel, LV_ALIGN_CENTER, 0, 12);
     lv_obj_set_style_text_color(_programStorageValueLabel, lv_color_white(), 0);
 
-    static constexpr const char* actionNames[] = {"Save", "Load", "Cancel"};
+    static constexpr const char* actionNames[] = {"Save", "Load", "Cancel", "Reset program"};
     for (uint8_t index = 0; index < _programStorageActionLabels.size(); ++index) {
         auto* label = lv_label_create(_programStorageModal);
         _programStorageActionLabels[index] = label;
         lv_label_set_text(label, actionNames[index]);
-        lv_obj_set_width(label, 92);
+        lv_obj_set_width(label, 104);
         lv_obj_set_style_text_font(label, &lv_font_montserrat_10, 0);
         lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_color(label, lv_color_white(), 0);
-        lv_obj_align(label, LV_ALIGN_TOP_MID, 0, static_cast<int16_t>(34 + index * 18));
+        lv_obj_align(label, LV_ALIGN_TOP_MID, 0, static_cast<int16_t>(30 + index * 18));
         lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
     }
     lv_obj_add_flag(_programStorageModal, LV_OBJ_FLAG_HIDDEN);
@@ -320,16 +320,18 @@ void LvglUi::initProgramStorageModal() {
 void LvglUi::setProgramStorageModal(SwingMetro::ProgramStorageModalState state,
                                     SwingMetro::ProgramStorageMenuItem selection,
                                     SwingMetro::ProgramStorageAction action, uint8_t slot,
+                                    SwingMetro::ProgramResetChoice resetChoice,
                                     SwingMetro::ProgramStoreStatus status) {
     if (state == _displayedProgramStorageState && selection == _displayedProgramStorageSelection &&
         action == _displayedProgramStorageAction && slot == _displayedProgramStorageSlot &&
-        status == _displayedProgramStorageStatus) {
+        resetChoice == _displayedProgramResetChoice && status == _displayedProgramStorageStatus) {
         return;
     }
     _displayedProgramStorageState = state;
     _displayedProgramStorageSelection = selection;
     _displayedProgramStorageAction = action;
     _displayedProgramStorageSlot = slot;
+    _displayedProgramResetChoice = resetChoice;
     _displayedProgramStorageStatus = status;
     if (state == SwingMetro::ProgramStorageModalState::Closed) {
         lv_obj_add_flag(_programStorageModal, LV_OBJ_FLAG_HIDDEN);
@@ -360,12 +362,21 @@ void LvglUi::setProgramStorageModal(SwingMetro::ProgramStorageModalState state,
             lv_label_set_text_fmt(_programStorageValueLabel, "Slot %u",
                                   static_cast<unsigned>(slot));
         }
+    } else if (state == SwingMetro::ProgramStorageModalState::ResetConfirmation) {
+        lv_obj_remove_flag(_programStorageValueLabel, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(_programStorageTitleLabel, "Reset program?");
+        lv_label_set_text(_programStorageValueLabel,
+                          resetChoice == SwingMetro::ProgramResetChoice::No ? "No" : "Yes");
     } else if (state == SwingMetro::ProgramStorageModalState::Busy) {
         lv_obj_remove_flag(_programStorageValueLabel, LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(_programStorageTitleLabel, "Program Storage");
-        lv_label_set_text(_programStorageValueLabel,
-                          action == SwingMetro::ProgramStorageAction::Save ? "Saving..."
-                                                                           : "Loading...");
+        if (selection == SwingMetro::ProgramStorageMenuItem::ResetProgram) {
+            lv_label_set_text(_programStorageValueLabel, "Resetting...");
+        } else {
+            lv_label_set_text(_programStorageValueLabel,
+                              action == SwingMetro::ProgramStorageAction::Save ? "Saving..."
+                                                                               : "Loading...");
+        }
     } else {
         lv_obj_remove_flag(_programStorageValueLabel, LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(_programStorageTitleLabel,

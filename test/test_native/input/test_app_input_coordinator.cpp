@@ -824,6 +824,56 @@ void test_program_storage_cancel_closes_without_pending_operation() {
     TEST_ASSERT_FALSE(state.sequencer.isRunning());
 }
 
+void test_program_reset_requires_explicit_yes_confirmation() {
+    State state;
+    UiViewModel viewModel;
+    state.sequencer.stop();
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::OpenProgramStorage{}},
+                                     nullptr, 1000);
+    state.coordinator.handleAppEvent(
+        SwingMetro::AppEvent{SwingMetro::SelectProgramStorageAction{3}}, nullptr, 1000);
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(SwingMetro::ProgramStorageMenuItem::ResetProgram),
+        static_cast<std::uint8_t>(viewModel.read().programStorageSelection));
+
+    state.coordinator.handleAppEvent(
+        SwingMetro::AppEvent{SwingMetro::ConfirmProgramStorageAction{}}, nullptr, 1000);
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    auto snapshot = viewModel.read();
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(SwingMetro::ProgramStorageModalState::ResetConfirmation),
+        static_cast<std::uint8_t>(snapshot.programStorageState));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramResetChoice::No),
+                            static_cast<std::uint8_t>(snapshot.programResetChoice));
+
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::ConfirmProgramReset{}},
+                                     nullptr, 1000);
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    snapshot = viewModel.read();
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStorageModalState::Action),
+                            static_cast<std::uint8_t>(snapshot.programStorageState));
+    state.coordinator.processProgramStorage();
+    TEST_ASSERT_TRUE(state.coordinator.isProgramStorageModalOpen());
+
+    state.coordinator.handleAppEvent(
+        SwingMetro::AppEvent{SwingMetro::ConfirmProgramStorageAction{}}, nullptr, 1000);
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::SelectProgramResetChoice{1}},
+                                     nullptr, 1000);
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::ConfirmProgramReset{}},
+                                     nullptr, 1000);
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    snapshot = viewModel.read();
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStorageModalState::Busy),
+                            static_cast<std::uint8_t>(snapshot.programStorageState));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramResetChoice::Yes),
+                            static_cast<std::uint8_t>(snapshot.programResetChoice));
+    state.coordinator.processProgramStorage();
+    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStorageModalState::Error),
+                            static_cast<std::uint8_t>(viewModel.read().programStorageState));
+}
+
 } // namespace
 
 void test_app_input_coordinator_main() {
@@ -853,4 +903,5 @@ void test_app_input_coordinator_main() {
     RUN_TEST(test_repeated_fast_navigation_keeps_only_one_settings_context);
     RUN_TEST(test_program_storage_modal_blocks_input_and_publishes_result);
     RUN_TEST(test_program_storage_cancel_closes_without_pending_operation);
+    RUN_TEST(test_program_reset_requires_explicit_yes_confirmation);
 }
