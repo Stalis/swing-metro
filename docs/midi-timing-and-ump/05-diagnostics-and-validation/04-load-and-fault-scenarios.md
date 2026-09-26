@@ -1,6 +1,40 @@
 # 5.4 Load and fault scenarios
 
-Status: software infrastructure complete; hardware matrix remains to be run on Pico 2 W.
+Status: complete. The software infrastructure and the nine-cell Pico 2 W hardware matrix passed.
+
+## Hardware result
+
+The clean matrix was captured without operator interaction from commit
+`3b6b20f99791cba0d69af41ac5d62ab61cb12d0b`, using the
+`rpipico2-stage5-fault-scenarios` binary with SHA-256
+`b730f246b6a058c67cbe8a840bb0f1243d7f63fd665711ffcee40c149500c61d`. Every run used a fresh
+upload, a three-second endpoint-settle delay, and a 244-second requested duration. The ignored raw
+artifacts and reports are in `data/stage5-4-results-r05/`; earlier `r01`-`r04` directories are
+diagnostic attempts, not acceptance evidence.
+
+| Scenario | BPM / swing | Device attempts / accepted | Host Clock | Result |
+| --- | --- | ---: | ---: | --- |
+| baseline | 40 / 50 | 3,904 / 3,904 | 3,904 | pass |
+| baseline | 40 / 90 | 3,904 / 3,904 | 3,904 | pass |
+| baseline | 120 / 50 | 11,712 / 11,712 | 11,712 | pass |
+| baseline | 120 / 90 | 11,712 / 11,712 | 11,712 | pass |
+| baseline | 240 / 50 | 23,424 / 23,424 | 23,424 | pass |
+| baseline | 240 / 90 | 23,424 / 23,424 | 23,424 | pass |
+| retry first Clock | 120 / 50 | 11,713 / 11,712 | 11,712 | one retry, one recovery |
+| sustained backpressure | 120 / 50 | 1,128 / 0 | 0 | exactly one safety stop |
+| deterministic disconnect | 120 / 50 | 1 / 0 | 0 | exactly one disconnect |
+
+All reports are `paired_capture_candidate`. The baseline captures have exactly one Start and Stop,
+zero failed diagnostics publications, zero tick-queue overflows, and zero delivery errors. Absolute
+Clock drift over each baseline run was 31-121 us. CoreMIDI reported no long or short interval in
+the final matrix. The retry scenario retained every accepted Clock at the host and showed exactly
+one `RetryLater` followed by one recovery.
+
+The sustained-backpressure hardware run exposed a lifecycle defect: after the terminal safety stop,
+the completed retry window remained armed and the diagnostic counter could increase again on later
+loop passes. `stopLaunch()` now clears that state. A native regression continues processing after
+the stop and requires the counter to remain exactly one. `make verify` passes with 334 native and
+29 Python tests.
 
 `rpipico2-stage5-fault-scenarios` is a compile-time-only firmware environment. Its bounded,
 allocation-free `FaultMidiMessageSink` decorates the real USB delivery sink; `rpipico2` contains
@@ -43,6 +77,6 @@ Every matrix report must also have `device_local.fresh_boot_candidate: true` and
 `comparison_eligibility: paired_capture_candidate`; boot-cumulative diagnostics from a reused boot
 are rejected.
 
-Build the dedicated firmware with `make build-stage5-fault`. Run the hardware matrix only after
-flashing that environment; this step does not cover UI/encoder exercise, GPIO analysis, cable
-reconnect, storage load, MPE, or optimization work.
+Build the dedicated firmware with `make build-stage5-fault`. This step does not cover UI/encoder
+exercise, GPIO analysis, physical cable reconnect, storage load, MPE, or optimization work; those
+remain outside the acceptance claim above.
