@@ -1,7 +1,7 @@
 # 5.3 Safe reporting и стоимость instrumentation
 
-Статус: software-инфраструктура выполнена. Runtime cost на Pico не измерен: для этого
-нужны парные аппаратные прогоны.
+Статус: выполнено 2026-09-26. Software-инфраструктура и трёхпарный аппаратный A/B
+проверены на Pico 2 W.
 
 ## Безопасный отчёт
 
@@ -90,5 +90,30 @@ Host MIDI distributions сравниваются только с host MIDI; devi
 не складываются. Количество вызовов `loop1` или handler не является CPU utilization и не
 доказывает 100% полезную загрузку.
 
-До появления парных capture runtime overhead считается **неизмеренным**. Fault/load scenarios
-относятся к 5.4, широкая аппаратная валидация и GPIO/logic-analyzer conclusions — к 5.5.
+## Аппаратный результат 2026-09-26
+
+На commit `3f3d4f0` выполнены три пары по 244 секунды при 68 BPM, swing 50 и без
+взаимодействия с органами управления. Порядок чередовался: ON→OFF, OFF→ON, ON→OFF.
+Каждый run начинался после загрузки соответствующей прошивки и перезагрузки Pico.
+Serial и CoreMIDI записывались одновременно через проектное `.venv`.
+
+Во всех шести прогонах host и firmware получили по 6 637 Clock; суммарно
+39 822/39 822. Пропущенных, коротких и длинных host-интервалов, failed publications,
+tick queue overflows и missed scheduled targets не было.
+
+Медианные результаты трёх прогонов каждого варианта:
+
+| Метрика | ON | OFF | Медианная парная разница ON−OFF |
+| --- | ---: | ---: | ---: |
+| Host absolute jitter p95 | 386,5 мкс | 367,2 мкс | +19,3 мкс |
+| Host absolute jitter p99 | 1 312,4 мкс | 926,5 мкс | +294,3 мкс |
+| Device Clock max acceptance lateness | 427 мкс | 407 мкс | +20 мкс |
+| Device Note max acceptance lateness | 306 мкс | 267 мкс | +39 мкс |
+| Max service interval | 2 039 мкс | 1 551 мкс | +482 мкс |
+
+Наблюдается небольшой tail overhead, особенно в max service interval, но он не привёл
+к потере или нарушению непрерывности MIDI в baseline. Это не распространяется на ещё не
+выполненные load/fault scenarios. После серии на устройство возвращена ON-прошивка.
+
+Fault/load scenarios относятся к 5.4, широкая аппаратная валидация и
+GPIO/logic-analyzer conclusions — к 5.5.

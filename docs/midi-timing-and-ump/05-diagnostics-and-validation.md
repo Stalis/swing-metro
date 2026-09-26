@@ -1,6 +1,7 @@
 # Этап 5. Полная диагностика и нагрузочная проверка
 
-Статус: 5.1–5.3 выполнены программно; 5.4–5.5 запланированы. Зависит от этапов 1–4.
+Статус: 5.1–5.3 выполнены, включая парное аппаратное измерение стоимости instrumentation;
+5.4–5.5 запланированы. Зависит от этапов 1–4.
 
 ## Цель
 
@@ -26,8 +27,11 @@ scheduled depth и наблюдения IRQ queue описаны в
 
 Строгая последовательность timed run, versioned JSON report и compile-time A/B seam описаны в
 [03-safe-reporting-and-instrumentation-cost.md](05-diagnostics-and-validation/03-safe-reporting-and-instrumentation-cost.md).
-Software-инфраструктура готова; фактическая runtime cost остаётся неизмеренной до парных
-аппаратных прогонов.
+Software-инфраструктура и трёхпарный аппаратный A/B выполнены. Во всех шести прогонах
+host и firmware получили по 6 637 Clock без пропусков или длинных интервалов. Медианная
+парная разница ON−OFF составила +20 мкс для device Clock max lateness, +39 мкс для Note
+max lateness и +482 мкс для max service interval. Instrumentation имеет небольшой
+измеримый tail overhead, но в проверенном baseline не нарушает MIDI correctness.
 
 ### Следующие шаги
 

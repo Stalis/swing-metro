@@ -1,8 +1,9 @@
 # MIDI timing, регулярный ввод и подготовка к UMP
 
-Статус: этапы 1–2 и 4 завершены; этап 5.1 ожидает software verification; этап 3 аппаратно отклонил polling и требует IRQ/PIO
-follow-up; стабилизация S запланирована перед этапами 5–6.
-Дата: 2026-09-24.
+Статус: этапы 1–2, 4 и стабилизация S завершены; этап 5.1–5.3 выполнен, 5.4–5.5
+запланированы. Этап 3 аппаратно отклонил polling; bounded IRQ/PIO follow-up отложен до
+переразводки энкодеров на входной shift register. Этап 6 запланирован.
+Дата: 2026-09-26.
 
 ## Цели и summary
 
@@ -48,8 +49,8 @@ MPE и MIDI 2.0 не тождественны. Классический MPE ис
 | 3 | [Регулярный ввод](03-input-scheduling-and-debounce.md) | Шаги 3.1–3.4 выполнены; MIDI не регрессировал, но polling превысил encoder bound, поэтому этап ждёт bounded IRQ/PIO follow-up. |
 | 4 | [Gate Percent](04-note-gate.md) | **Выполнено:** Gate 1–100%, independent Note Off, identity-safe lifecycle, UI и persistence подтверждены software- и аппаратными проверками. |
 | S | [Стабилизация Tempo и модального ввода](stabilization-runtime-input-modal.md) | **Выполнено:** непрерывный Clock при live Tempo, корректный Shift long-press, host-scoped модалки и Cancel в Save/Load и MIDI Clock подтверждены software- и аппаратной проверкой. |
-| 5 | [Диагностика и нагрузочная проверка](05-diagnostics-and-validation.md) | 5.1 выполнен программно: bounded runtime snapshots и CSV export; 5.2–5.5 запланированы, hardware validation не выполнена. |
-| 6 | [Прототип USB MIDI 2.0](06-ump-prototype.md) | Проверена совместимость UMP, per-note control и timestamps с выбранным хостом. |
+| 5 | [Диагностика и нагрузочная проверка](05-diagnostics-and-validation.md) | 5.1–5.3 выполнены: runtime/MIDI diagnostics, safe reporting и трёхпарный аппаратный A/B; 5.4–5.5 запланированы. |
+| 6 | [Прототип USB MIDI 2.0](06-ump-prototype.md) | Запланирована проверка UMP, per-note control и timestamps с выбранным хостом. |
 
 Стабилизация S выполняется после этапа 4 и до этапа 5. Остальные этапы выполняются
 последовательно. Этап 6 — ограниченный сквозной прототип,
