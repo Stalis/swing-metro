@@ -14,10 +14,13 @@ enum class SerialRunCommandStatus : std::uint8_t {
     Invalid,
 };
 
+enum class SerialRunMode : std::uint8_t { Internal, External };
+
 struct SerialRunCommand {
     std::uint32_t durationMs = 0;
     std::uint8_t bpm = 0;
     std::uint8_t swing = 0;
+    SerialRunMode mode = SerialRunMode::Internal;
 };
 
 struct SerialRunCommandResult {
@@ -96,7 +99,15 @@ class SerialRunCommandParser {
 
     [[nodiscard]] auto parse() const noexcept -> SerialRunCommandResult {
         const char* cursor = _buffer.data();
-        if (!consumeLiteral(cursor, "RUN") || !consumeSpace(cursor)) {
+        SerialRunMode mode = SerialRunMode::Internal;
+        if (!consumeLiteral(cursor, "RUN")) {
+            cursor = _buffer.data();
+            if (!consumeLiteral(cursor, "EXTERNAL_RUN")) {
+                return {SerialRunCommandStatus::Invalid, {}};
+            }
+            mode = SerialRunMode::External;
+        }
+        if (!consumeSpace(cursor)) {
             return {SerialRunCommandStatus::Invalid, {}};
         }
 
@@ -110,8 +121,9 @@ class SerialRunCommandParser {
             swing > MAX_SWING) {
             return {SerialRunCommandStatus::Invalid, {}};
         }
-        return {SerialRunCommandStatus::Ready,
-                {durationMs, static_cast<std::uint8_t>(bpm), static_cast<std::uint8_t>(swing)}};
+        return {
+            SerialRunCommandStatus::Ready,
+            {durationMs, static_cast<std::uint8_t>(bpm), static_cast<std::uint8_t>(swing), mode}};
     }
 
     auto reset() noexcept -> void {

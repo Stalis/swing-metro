@@ -34,6 +34,21 @@ void test_run_command_parses_duration_tempo_and_swing() {
     TEST_ASSERT_EQUAL_UINT32(244'000, result.command.durationMs);
     TEST_ASSERT_EQUAL_UINT8(68, result.command.bpm);
     TEST_ASSERT_EQUAL_UINT8(50, result.command.swing);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(SwingMetro::SerialRunMode::Internal),
+                          static_cast<int>(result.command.mode));
+}
+
+void test_external_run_command_parses_without_changing_measurement_fields() {
+    SwingMetro::SerialRunCommandParser parser;
+    const auto result = pushLine(parser, "EXTERNAL_RUN 10000 120 50");
+
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(SwingMetro::SerialRunCommandStatus::Ready),
+                          static_cast<int>(result.status));
+    TEST_ASSERT_EQUAL_UINT32(10'000, result.command.durationMs);
+    TEST_ASSERT_EQUAL_UINT8(120, result.command.bpm);
+    TEST_ASSERT_EQUAL_UINT8(50, result.command.swing);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(SwingMetro::SerialRunMode::External),
+                          static_cast<int>(result.command.mode));
 }
 
 void test_run_command_accepts_crlf_and_documented_bounds() {
@@ -58,6 +73,11 @@ void test_run_command_rejects_invalid_or_out_of_range_input() {
         "RUN 1000 68 91",
         "RUN 1000 68 50 extra",
         "RUN 999999999999999999999 68 50",
+        "EXTERNAL_RUN",
+        "EXTERNAL_RUN 999 120 50",
+        "EXTERNAL_RUN 1000 241 50",
+        "EXTERNAL_RUN 1000 120 91",
+        "EXTERNAL_RUN 1000 120 50 extra",
     };
     for (const auto* line : invalid) {
         TEST_ASSERT_EQUAL_INT(static_cast<int>(SwingMetro::SerialRunCommandStatus::Invalid),
@@ -102,6 +122,7 @@ void test_fault_command_rejects_invalid_and_overflow_input() {
 
 void test_serial_run_command_main() {
     RUN_TEST(test_run_command_parses_duration_tempo_and_swing);
+    RUN_TEST(test_external_run_command_parses_without_changing_measurement_fields);
     RUN_TEST(test_run_command_accepts_crlf_and_documented_bounds);
     RUN_TEST(test_run_command_rejects_invalid_or_out_of_range_input);
     RUN_TEST(test_run_command_recovers_after_overflow);

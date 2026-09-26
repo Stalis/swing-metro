@@ -162,9 +162,14 @@ constexpr std::array<const char*, 4> FAULT_SCENARIO_NAMES = {
     "baseline", "retry_first_clock", "sustained_backpressure", "deterministic_disconnect"};
 #endif
 bool serialRunActive = false;
+bool serialRunPreparing = false;
 bool serialRunCompletionPending = false;
 std::uint32_t serialRunStartedAtMs = 0;
 std::uint32_t serialRunDurationMs = 0;
+std::uint32_t serialRunStartSnapshotGeneration = 0;
+std::uint8_t serialRunBpm = 0;
+std::uint8_t serialRunSwing = 0;
+SwingMetro::SerialRunMode serialRunMode = SwingMetro::SerialRunMode::Internal;
 
 constexpr std::array<const char*, SwingMetro::DELIVERY_MESSAGE_CLASS_COUNT> DELIVERY_CLASS_NAMES = {
     "clock", "transport", "note"};
@@ -502,7 +507,8 @@ void handleEncoderDirection(const TAdapter& adapter, EncoderDirection direction)
 void handleProgramStorageEvent(const SwingMetro::AppEvent& event, std::uint32_t nowUs);
 
 void pollSerialRunCommand() {
-    if (serialRunActive || transportController.usesInternalTiming()) {
+    if (serialRunPreparing || serialRunActive || serialRunCompletionPending ||
+        runtimeDiagnosticsExportPending || transportController.usesInternalTiming()) {
         return;
     }
     while (Serial.available() > 0) {
@@ -537,8 +543,24 @@ void pollSerialRunCommand() {
         }
         if (result.status == SwingMetro::SerialRunCommandStatus::Invalid ||
             mainSequencer.isRunning()) {
-            Serial.println(F("swing_metro_control_v1,error,expected RUN <ms> <bpm> <swing>"));
+            Serial.println(F("swing_metro_control_v1,error,expected RUN or EXTERNAL_RUN "
+                             "<ms> <bpm> <swing> while stopped"));
             continue;
+        }
+
+        serialRunDurationMs = result.command.durationMs;
+        serialRunBpm = result.command.bpm;
+        serialRunSwing = result.command.swing;
+        serialRunMode = result.command.mode;
+        if (serialRunMode == SwingMetro::SerialRunMode::External) {
+            if (midiClockSettings.mode() != SwingMetro::MidiClockMode::External) {
+                Serial.println(
+                    F("swing_metro_control_v1,error,external_run_requires_external_mode"));
+                continue;
+            }
+            serialRunStartSnapshotGeneration = runtimeTimingDiagnostics.requestSnapshot();
+            serialRunPreparing = true;
+            return;
         }
 
         tempoCounter.setValue(result.command.bpm);
@@ -554,7 +576,6 @@ void pollSerialRunCommand() {
         Serial.println(result.command.swing);
         Serial.flush();
         serialRunStartedAtMs = millis();
-        serialRunDurationMs = result.command.durationMs;
         serialRunActive = true;
         transportController.toggle(micros());
         return;
@@ -562,19 +583,54 @@ void pollSerialRunCommand() {
 }
 
 void updateSerialRun() {
+    if (serialRunPreparing) {
+        SwingMetro::RuntimeTimingSnapshot discardedSnapshot;
+        if (!runtimeTimingDiagnostics.readSnapshot(serialRunStartSnapshotGeneration,
+                                                   discardedSnapshot)) {
+            return;
+        }
+        (void)encoderSampleDiagnostics.snapshotAndResetWindow();
+        Serial.print(F("swing_metro_control_v1,run_started,"));
+        Serial.print(serialRunDurationMs);
+        Serial.print(',');
+        Serial.print(serialRunBpm);
+        Serial.print(',');
+        Serial.println(serialRunSwing);
+        Serial.flush();
+        serialRunStartedAtMs = millis();
+        serialRunPreparing = false;
+        serialRunActive = true;
+        return;
+    }
     if (!serialRunActive) {
         return;
     }
-    if (!transportController.usesInternalTiming()) {
+    if (serialRunMode == SwingMetro::SerialRunMode::Internal &&
+        !transportController.usesInternalTiming()) {
         serialRunActive = false;
         serialRunCompletionPending = true;
         return;
     }
-    if (millis() - serialRunStartedAtMs >= serialRunDurationMs) {
-        transportController.toggle(micros());
-        serialRunActive = false;
-        serialRunCompletionPending = true;
+    if (millis() - serialRunStartedAtMs < serialRunDurationMs) {
+        return;
     }
+    if (serialRunMode == SwingMetro::SerialRunMode::Internal) {
+        transportController.toggle(micros());
+    } else if (midiClockSettings.mode() != SwingMetro::MidiClockMode::External) {
+        Serial.println(F("swing_metro_control_v1,error,external_mode_changed_during_run"));
+        serialRunActive = false;
+        return;
+    } else if (transportController.isRunning()) {
+        Serial.println(F("swing_metro_control_v1,error,external_transport_still_running"));
+        serialRunActive = false;
+        return;
+    } else {
+        runtimeEncoderSnapshot = encoderSampleDiagnostics.snapshotAndResetWindow();
+        runtimeDiagnosticsRequestGeneration = runtimeTimingDiagnostics.requestSnapshot();
+        runtimeDiagnosticsExportPending = true;
+    }
+    serialRunActive = false;
+    serialRunCompletionPending = true;
 }
 
 void handleButtonBatch(const SwingMetro::StepButtonInputs::Batch& batch, std::uint32_t nowUs) {
