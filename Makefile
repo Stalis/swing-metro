@@ -3,6 +3,7 @@ SHELL := /bin/sh
 .DEFAULT_GOAL := help
 
 PIO ?= pio
+PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 PIO_ENV ?= rpipico2
 STAGE5_OFF_ENV ?= rpipico2-stage5-instrumentation-off
 NATIVE_ENV ?= native
@@ -95,7 +96,7 @@ test: check-pio-tool
 	$(PIO) test -e $(NATIVE_ENV) -f test_native
 
 test-scripts:
-	python3 -m unittest discover -s scripts/tests
+	$(PYTHON) -m unittest discover -s scripts/tests
 
 build: check-pio-tool
 	$(PIO) run -e $(PIO_ENV)
