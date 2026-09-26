@@ -1,6 +1,7 @@
 #include "test_transport_controller.h"
 
 #include "drivers/midi_usb_encoder.h"
+#include "engine/fault_midi_message_sink.h"
 #include "engine/transport_controller.h"
 
 #include <array>
@@ -1734,6 +1735,97 @@ void test_delivery_result_equation_holds_for_each_message_class() {
     }
 }
 
+void test_fault_sink_retry_first_clock_preserves_start_and_recovers() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink delegate;
+    SwingMetro::FaultMidiMessageSink sink{delegate};
+    sink.select(SwingMetro::FaultScenario::RetryFirstClock);
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickStore<> ticks;
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal, 0);
+    controller.toggle(1);
+    TEST_ASSERT_TRUE(controller.usesInternalTiming());
+    TEST_ASSERT_EQUAL(SwingMetro::MidiMessageClass::Transport,
+                      sink.attempts[0].message.messageClass());
+    TEST_ASSERT_EQUAL_UINT32(1, delegate.count);
+    TEST_ASSERT_TRUE(ticks.publish({1'000, 20'000}));
+    controller.process(1'000, ticks);
+    TEST_ASSERT_TRUE(controller.usesInternalTiming());
+    controller.process(1'001, ticks);
+
+    const auto diagnostics = controller.diagnostics();
+    const auto clock = classIndex(SwingMetro::MidiMessageClass::Clock);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.delivery[clock].retryLater);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.delivery[clock].retryRecovered);
+    TEST_ASSERT_EQUAL_UINT32(1, diagnostics.delivery[clock].accepted);
+    TEST_ASSERT_EQUAL_UINT32(2, delegate.count);
+}
+
+void test_fault_sink_sustained_backpressure_stops_at_existing_retry_window() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink delegate;
+    SwingMetro::FaultMidiMessageSink sink{delegate};
+    sink.select(SwingMetro::FaultScenario::SustainedBackpressure);
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickStore<> ticks;
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal, 0);
+    controller.toggle(1);
+    for (std::uint32_t tick = 0; tick <= SwingMetro::TICKS_PER_SIXTEENTH; ++tick) {
+        const auto atUs = 1'000 + tick * 20'000;
+        TEST_ASSERT_TRUE(ticks.publish({atUs, 20'000}));
+        controller.process(atUs, ticks);
+    }
+    controller.process(121'001, ticks);
+
+    TEST_ASSERT_FALSE(controller.usesInternalTiming());
+    TEST_ASSERT_EQUAL_UINT32(1, delegate.count);
+    TEST_ASSERT_EQUAL_UINT32(1, controller.diagnostics().retryWindowSafetyStops);
+}
+
+void test_fault_sink_disconnect_requires_new_start() {
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings settings;
+    Sink delegate;
+    SwingMetro::FaultMidiMessageSink sink{delegate};
+    sink.select(SwingMetro::FaultScenario::DeterministicDisconnect);
+    SwingMetro::TransportController controller{sequencer, settings, sink};
+    SwingMetro::InternalTickStore<> ticks;
+
+    controller.applyMode(SwingMetro::MidiClockMode::Internal, 0);
+    controller.toggle(1);
+    TEST_ASSERT_TRUE(ticks.publish({1'000, 20'000}));
+    controller.process(1'000, ticks);
+    TEST_ASSERT_FALSE(controller.isRunning());
+    TEST_ASSERT_FALSE(controller.usesInternalTiming());
+    TEST_ASSERT_EQUAL_UINT32(1, delegate.count);
+    const auto clock = classIndex(SwingMetro::MidiMessageClass::Clock);
+    TEST_ASSERT_EQUAL_UINT32(1, controller.diagnostics().delivery[clock].disconnected);
+    TEST_ASSERT_EQUAL_UINT32(1, controller.diagnostics().sessionEnds[static_cast<std::size_t>(
+                                    SwingMetro::InvalidationReason::Disconnected)]);
+
+    controller.toggle(2'000);
+    TEST_ASSERT_TRUE(controller.usesInternalTiming());
+}
+
+void test_fault_sink_baseline_delegates_all_result_classes() {
+    Sink delegate;
+    delegate.results[0] = SwingMetro::SendResult::RetryLater;
+    SwingMetro::FaultMidiMessageSink sink{delegate};
+    const SwingMetro::MidiDeliveryAttempt start{SwingMetro::MidiMessage::start()};
+    const SwingMetro::MidiDeliveryAttempt clock{SwingMetro::MidiMessage::clock()};
+    const SwingMetro::MidiDeliveryAttempt note{noteOn(0, 60, 100)};
+
+    TEST_ASSERT_EQUAL(SwingMetro::SendResult::RetryLater, sink.send(start));
+    TEST_ASSERT_EQUAL(SwingMetro::SendResult::Accepted, sink.send(clock));
+    TEST_ASSERT_EQUAL(SwingMetro::SendResult::Accepted, sink.send(note));
+    TEST_ASSERT_EQUAL_UINT32(3, delegate.count);
+    TEST_ASSERT_EQUAL_UINT32(3, sink.attemptCount());
+}
+
 } // namespace
 
 void test_transport_controller_main() {
@@ -1798,5 +1890,9 @@ void test_transport_controller_main() {
     RUN_TEST(test_delivery_diagnostics_preserve_retry_identity_and_lateness);
     RUN_TEST(test_delivery_diagnostics_classify_clock_transport_and_pass_limit);
     RUN_TEST(test_delivery_result_equation_holds_for_each_message_class);
+    RUN_TEST(test_fault_sink_retry_first_clock_preserves_start_and_recovers);
+    RUN_TEST(test_fault_sink_sustained_backpressure_stops_at_existing_retry_window);
+    RUN_TEST(test_fault_sink_disconnect_requires_new_start);
+    RUN_TEST(test_fault_sink_baseline_delegates_all_result_classes);
     RUN_TEST(test_process_duration_is_recorded_separately_from_service_interval);
 }

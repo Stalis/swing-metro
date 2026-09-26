@@ -6,6 +6,7 @@ PIO ?= pio
 PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 PIO_ENV ?= rpipico2
 STAGE5_OFF_ENV ?= rpipico2-stage5-instrumentation-off
+STAGE5_FAULT_ENV ?= rpipico2-stage5-fault-scenarios
 NATIVE_ENV ?= native
 CLANG_FORMAT ?= clang-format
 CLANG_TIDY ?= clang-tidy
@@ -37,7 +38,7 @@ TIDY_TOOLCHAIN_ARGS := \
 	--extra-arg=-isystem --extra-arg=$(ARM_GCC_INCLUDE)-fixed \
 	--extra-arg=-isystem --extra-arg=$(TOOLCHAIN_ROOT)/arm-none-eabi/include
 
-.PHONY: help format format-check compiledb tidy tidy-run test test-scripts build build-stage5-off verify \
+.PHONY: help format format-check compiledb tidy tidy-run test test-scripts build build-stage5-off build-stage5-fault verify \
 	check-format-tool check-tidy-tool check-pio-tool check-tidy-toolchain
 
 help:
@@ -49,6 +50,7 @@ help:
 		'make test-scripts  Run host-side Python tests' \
 		'make build         Build firmware for the configured board' \
 		'make build-stage5-off Build firmware with Stage 5 instrumentation disabled' \
+		'make build-stage5-fault Build stage-only deterministic fault-scenario firmware' \
 		'make verify        Run format-check, tidy, tests, and firmware build'
 
 check-format-tool:
@@ -104,6 +106,9 @@ build: check-pio-tool
 build-stage5-off: check-pio-tool
 	$(PIO) run -e $(STAGE5_OFF_ENV)
 
+build-stage5-fault: check-pio-tool
+	$(PIO) run -e $(STAGE5_FAULT_ENV)
+
 verify:
 	@$(MAKE) --no-print-directory format-check
 	@$(MAKE) --no-print-directory tidy
@@ -111,3 +116,4 @@ verify:
 	@$(MAKE) --no-print-directory test-scripts
 	@$(MAKE) --no-print-directory build
 	@$(MAKE) --no-print-directory build-stage5-off
+	@$(MAKE) --no-print-directory build-stage5-fault

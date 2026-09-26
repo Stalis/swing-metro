@@ -19,6 +19,7 @@ from pico_run_report import (
     build_timed_run_report,
     load_report_metadata,
     report_output_path,
+    validate_fault_metadata,
     write_timed_run_report,
 )
 
@@ -31,6 +32,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--swing", type=int, default=50)
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--metadata", type=pathlib.Path)
+    parser.add_argument(
+        "--fault-scenario",
+        choices=("baseline", "retry_first_clock", "sustained_backpressure", "deterministic_disconnect"),
+    )
     return parser.parse_args()
 
 
@@ -64,13 +69,25 @@ def main() -> int:
     if existing:
         raise RuntimeError(f"refusing to overwrite {existing}")
 
+    metadata = load_report_metadata(args.metadata)
+    validate_fault_metadata(metadata, args.fault_scenario)
     serial = load_serial()
     port = find_serial_port(args.port)
-    metadata = load_report_metadata(args.metadata)
-    capture = TimedRunCapture(duration_ms, args.bpm, args.swing)
+    capture = TimedRunCapture(duration_ms, args.bpm, args.swing, args.fault_scenario)
     timeout_at = time.monotonic() + args.duration_seconds + 30.0
     with serial.Serial(port, 115200, timeout=0.25) as connection:
         connection.reset_input_buffer()
+        if args.fault_scenario is not None:
+            connection.write(f"FAULT {args.fault_scenario}\n".encode("ascii"))
+            connection.flush()
+            while time.monotonic() < timeout_at and not capture.fault_acknowledged:
+                raw = connection.readline()
+                if raw:
+                    line = raw.decode("utf-8", "replace").strip()
+                    print(line, flush=True)
+                    capture.consume(line)
+            if not capture.fault_acknowledged:
+                raise RuntimeError("timed out waiting for fault acknowledgement")
         command = f"RUN {duration_ms} {args.bpm} {args.swing}\n"
         connection.write(command.encode("ascii"))
         connection.flush()

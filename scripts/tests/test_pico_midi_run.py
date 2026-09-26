@@ -3,6 +3,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parents[1]
@@ -19,13 +20,23 @@ from pico_midi_run import (
     write_summary_csv,
 )
 from pico_serial_run import input_output_path
+from stage5_load_matrix import (
+    FIRMWARE_ENVIRONMENT,
+    matrix,
+    platformio_upload_command,
+    upload_firmware,
+    validate_metadata,
+    validate_report,
+)
 from pico_run_report import (
+    FAULT_REPORT_SCHEMA,
     REPORT_SCHEMA,
     TimedRunCapture,
     build_timed_run_report,
     load_report_metadata,
     metadata_completeness,
     report_output_path,
+    validate_fault_metadata,
 )
 from pico_run_protocol import (
     V2_COLUMNS,
@@ -162,6 +173,121 @@ class PicoMidiRunTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "run_complete arrived before"):
             incomplete.consume("swing_metro_control_v1,run_complete")
 
+    def test_fault_capture_requires_one_matching_ack_before_run(self):
+        capture = TimedRunCapture(1_000, 120, 50, "retry_first_clock")
+        with self.assertRaisesRegex(RuntimeError, "before fault acknowledgement"):
+            capture.consume("swing_metro_control_v1,run_started,1000,120,50")
+        capture.consume("swing_metro_fault_v1,selected,retry_first_clock")
+        with self.assertRaisesRegex(RuntimeError, "duplicate fault acknowledgement"):
+            capture.consume("swing_metro_fault_v1,selected,retry_first_clock")
+
+        mismatch = TimedRunCapture(1_000, 120, 50, "retry_first_clock")
+        with self.assertRaisesRegex(RuntimeError, "mismatch"):
+            mismatch.consume("swing_metro_fault_v1,selected,baseline")
+
+    def test_stage5_matrix_is_bounded_and_has_one_run_per_fault(self):
+        cells = matrix()
+        self.assertEqual(9, len(cells))
+        self.assertEqual(
+            ((40, 50, None), (40, 90, None), (120, 50, None), (120, 90, None),
+             (240, 50, None), (240, 90, None)),
+            cells[:6],
+        )
+        self.assertEqual(
+            ((120, 50, "retry_first_clock"), (120, 50, "sustained_backpressure"),
+             (120, 50, "deterministic_disconnect")),
+            cells[6:],
+        )
+
+    def test_fault_metadata_must_match_cli_without_reusing_study_id(self):
+        metadata = {
+            "scenario": {"id": "study-42"},
+            "fault_injection": {"scenario": "retry_first_clock"},
+        }
+        validate_fault_metadata(metadata, "retry_first_clock")
+        with self.assertRaisesRegex(RuntimeError, "normal run"):
+            validate_fault_metadata(metadata, None)
+        with self.assertRaisesRegex(RuntimeError, "mismatch"):
+            validate_fault_metadata(metadata, "deterministic_disconnect")
+        with self.assertRaisesRegex(RuntimeError, "requires"):
+            validate_fault_metadata({"scenario": {"id": "study-42"}}, "retry_first_clock")
+        with self.assertRaisesRegex(RuntimeError, "known"):
+            validate_fault_metadata(
+                {"fault_injection": {"scenario": "not-a-fault"}}, "retry_first_clock"
+            )
+
+    def test_baseline_matrix_predicates_reject_empty_or_mismatched_midi_capture(self):
+        report = {
+            "comparison_eligibility": "paired_capture_candidate",
+            "device_local": {
+                "fresh_boot_candidate": True,
+                "diagnostics": {
+                    "metrics": {
+                        "delivery_clock_accepted": 4,
+                        "outgoing_internal_f8_attempts": 4,
+                        "failed_publications": 0,
+                        "tick_queue_overflows": 0,
+                        "internal_tick_queue_overflows": 0,
+                    }
+                }
+            },
+            "host_midi": {
+                "available": True,
+                "metrics": {
+                    "start_count": 1,
+                    "stop_count": 1,
+                    "clock_count": 4,
+                    "long_interval_count": 0,
+                    "short_interval_count": 0,
+                    "estimated_missing_clock_count": 0,
+                },
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "baseline-report.json"
+            path.write_text(json.dumps(report), encoding="utf-8")
+            validate_report(path, None)
+            report["host_midi"]["metrics"]["clock_count"] = 0
+            path.write_text(json.dumps(report), encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "clock_count"):
+                validate_report(path, None)
+            report["host_midi"]["metrics"]["clock_count"] = 3
+            path.write_text(json.dumps(report), encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "does not equal"):
+                validate_report(path, None)
+
+    def test_matrix_requires_fresh_boot_and_paired_capture_eligibility(self):
+        report = {
+            "comparison_eligibility": "paired_capture_candidate",
+            "device_local": {"fresh_boot_candidate": True},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "report.json"
+            path.write_text(json.dumps(report), encoding="utf-8")
+            report["device_local"]["fresh_boot_candidate"] = False
+            path.write_text(json.dumps(report), encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "fresh boot"):
+                validate_report(path, "retry_first_clock")
+            report["device_local"]["fresh_boot_candidate"] = True
+            report["comparison_eligibility"] = "boot_cumulative_not_run_comparable"
+            path.write_text(json.dumps(report), encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "eligible"):
+                validate_report(path, "retry_first_clock")
+
+    def test_matrix_upload_is_fixed_to_fault_environment_without_shell(self):
+        command = ["custom-pio", "run", "--environment", FIRMWARE_ENVIRONMENT, "--target", "upload"]
+        self.assertEqual(command, platformio_upload_command("custom-pio"))
+        with patch("stage5_load_matrix.subprocess.run") as run:
+            upload_firmware("custom-pio")
+        run.assert_called_once_with(command, check=True)
+
+    def test_matrix_metadata_requires_fault_firmware_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "metadata.json"
+            path.write_text(json.dumps({"firmware": {"platformio_environment": "rpipico2"}}))
+            with self.assertRaisesRegex(RuntimeError, FIRMWARE_ENVIRONMENT):
+                validate_metadata(path, None)
+
     def test_metadata_validation_and_completeness_are_explicit(self):
         complete = {
             "run_id": "stage5-3-on-r01",
@@ -251,6 +377,20 @@ class PicoMidiRunTests(unittest.TestCase):
         self.assertEqual(
             "boot_cumulative_not_run_comparable", cumulative["comparison_eligibility"]
         )
+
+        fault_capture = TimedRunCapture(1_000, 120, 50, "retry_first_clock")
+        fault_capture.consume("swing_metro_fault_v1,selected,retry_first_clock")
+        fault_capture.consume("swing_metro_control_v1,run_started,1000,120,50")
+        fault_capture.consume(",".join([V4_COLUMNS[0], *("0" for _ in V4_COLUMNS[1:])]))
+        fault_capture.consume("swing_metro_input_diagnostics_v1,1250,2")
+        fault_capture.consume(",".join([RUNTIME_DIAGNOSTICS_COLUMNS[0], *("0" for _ in RUNTIME_DIAGNOSTICS_COLUMNS[1:])]))
+        fault_capture.consume("swing_metro_control_v1,run_complete")
+        fault_report = build_timed_run_report(
+            capture=fault_capture, metadata={}, serial_port="/dev/test", midi_port=None, host_midi=None
+        )
+        self.assertEqual(FAULT_REPORT_SCHEMA, fault_report["schema"])
+        self.assertEqual("retry_first_clock", fault_report["fault_injection"]["scenario"])
+        self.assertTrue(fault_report["fault_injection"]["test_firmware_required"])
 
     def test_parses_v2_diagnostics_row(self):
         columns = V2_COLUMNS

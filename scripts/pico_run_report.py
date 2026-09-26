@@ -24,6 +24,14 @@ from pico_run_protocol import (
 
 
 REPORT_SCHEMA = "swing_metro_timed_run_report_v1"
+FAULT_REPORT_SCHEMA = "swing_metro_fault_run_report_v1"
+FAULT_PREFIX = "swing_metro_fault_v1"
+FAULT_SCENARIOS = (
+    "baseline",
+    "retry_first_clock",
+    "sustained_backpressure",
+    "deterministic_disconnect",
+)
 
 _REQUIRED_METADATA: tuple[tuple[tuple[str, ...], type], ...] = (
     (("run_id",), str),
@@ -68,7 +76,7 @@ def _nested_value(value: Mapping[str, Any], path: tuple[str, ...]) -> Any:
 
 
 def _validate_present_metadata(metadata: Mapping[str, Any]) -> None:
-    for section in ("scenario", "firmware", "instrumentation", "hardware", "host"):
+    for section in ("scenario", "firmware", "instrumentation", "hardware", "host", "fault_injection"):
         if section in metadata and not isinstance(metadata[section], Mapping):
             raise RuntimeError(f"metadata field {section} must be an object")
     for path, expected_type in _REQUIRED_METADATA:
@@ -110,18 +118,42 @@ def metadata_completeness(metadata: Mapping[str, Any]) -> tuple[bool, list[str]]
     return not missing, missing
 
 
+def validate_fault_metadata(metadata: Mapping[str, Any], fault_scenario: str | None) -> None:
+    fault = metadata.get("fault_injection")
+    if fault_scenario is None:
+        if fault is not None:
+            raise RuntimeError("normal run metadata must not contain fault_injection")
+        return
+    if fault_scenario not in FAULT_SCENARIOS:
+        raise RuntimeError(f"unknown fault scenario: {fault_scenario}")
+    if not isinstance(fault, Mapping):
+        raise RuntimeError("fault run metadata requires fault_injection object")
+    scenario = fault.get("scenario")
+    if not isinstance(scenario, str) or scenario not in FAULT_SCENARIOS:
+        raise RuntimeError("fault_injection.scenario must be a known name")
+    if scenario != fault_scenario:
+        raise RuntimeError(
+            f"fault_injection.scenario mismatch: expected {fault_scenario}, received {scenario}"
+        )
+
+
 @dataclass
 class TimedRunCapture:
     duration_ms: int
     bpm: int
     swing: int
+    fault_scenario: str | None = None
     started: bool = False
     completed: bool = False
+    fault_acknowledged: bool = False
     diagnostics_row: str | None = None
     input_row: str | None = None
     runtime_row: str | None = None
 
     def consume(self, row: str) -> None:
+        if row.startswith(f"{FAULT_PREFIX},"):
+            self._consume_fault(row)
+            return
         if row.startswith(f"{CONTROL_PREFIX},"):
             self._consume_control(row)
             return
@@ -151,6 +183,8 @@ class TimedRunCapture:
                 raise RuntimeError("invalid run_started field count")
             if self.started:
                 raise RuntimeError("duplicate run_started row")
+            if self.fault_scenario is not None and not self.fault_acknowledged:
+                raise RuntimeError("run_started arrived before fault acknowledgement")
             if self.completed or any(
                 value is not None
                 for value in (self.diagnostics_row, self.input_row, self.runtime_row)
@@ -179,6 +213,24 @@ class TimedRunCapture:
             raise RuntimeError(f"device rejected timed run: {row}")
         raise RuntimeError(f"unrecognized control row: {row}")
 
+    def _consume_fault(self, row: str) -> None:
+        fields = row.split(",")
+        if fields[1:2] == ["error"]:
+            raise RuntimeError(f"device rejected fault selection: {row}")
+        if len(fields) != 3 or fields[1] != "selected":
+            raise RuntimeError(f"unrecognized fault row: {row}")
+        if self.fault_scenario is None:
+            raise RuntimeError("unexpected fault acknowledgement")
+        if self.started or self.completed:
+            raise RuntimeError("fault acknowledgement is out of order")
+        if self.fault_acknowledged:
+            raise RuntimeError("duplicate fault acknowledgement")
+        if fields[2] != self.fault_scenario:
+            raise RuntimeError(
+                f"fault acknowledgement mismatch: expected {self.fault_scenario}, received {fields[2]}"
+            )
+        self.fault_acknowledged = True
+
     def _record_row(self, attribute: str, row: str) -> None:
         if not self.started:
             raise RuntimeError(f"{attribute} arrived before run_started")
@@ -202,6 +254,8 @@ class TimedRunCapture:
     def require_complete(self) -> None:
         if not self.completed:
             raise RuntimeError("timed run did not report a complete ordered capture")
+        if self.fault_scenario is not None and not self.fault_acknowledged:
+            raise RuntimeError("timed run did not acknowledge fault selection")
 
 
 def build_timed_run_report(
@@ -229,7 +283,7 @@ def build_timed_run_report(
         comparison_eligibility = "paired_capture_candidate"
     diagnostics_schema = capture.diagnostics_row.split(",", 1)[0]
     report: dict[str, Any] = {
-        "schema": REPORT_SCHEMA,
+        "schema": FAULT_REPORT_SCHEMA if capture.fault_scenario is not None else REPORT_SCHEMA,
         "captured_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "run_id": metadata.get("run_id"),
         "requested_run": {
@@ -285,6 +339,13 @@ def build_timed_run_report(
             }
         ),
     }
+    if capture.fault_scenario is not None:
+        report["fault_injection"] = {
+            "schema": FAULT_PREFIX,
+            "scenario": capture.fault_scenario,
+            "acknowledged": capture.fault_acknowledged,
+            "test_firmware_required": True,
+        }
     return report
 
 

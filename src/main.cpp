@@ -5,6 +5,10 @@
 #include "drivers/usb_midi_adapter.h"
 #include "engine/runtime_timing_diagnostics.h"
 #include "engine/transport_controller.h"
+#if defined(SWING_METRO_STAGE5_FAULT_SCENARIOS)
+#include "engine/fault_midi_message_sink.h"
+#include "input/fault_command_parser.h"
+#endif
 #include "input/app_event_handler.h"
 #include "input/app_input.h"
 #include "input/app_input_coordinator.h"
@@ -36,7 +40,12 @@ SwingMetro::UsbMidiRealtimeReceiver midiClockReceiver{usbMidi};
 
 Sequencer mainSequencer;
 SwingMetro::MidiClockSettings midiClockSettings;
+#if defined(SWING_METRO_STAGE5_FAULT_SCENARIOS)
+SwingMetro::UsbMidiMessageSink normalMidiSink{usbMidi};
+SwingMetro::FaultMidiMessageSink midiSink{normalMidiSink};
+#else
 SwingMetro::UsbMidiMessageSink midiSink{usbMidi};
+#endif
 SwingMetro::InternalTickSource internalTicks;
 SwingMetro::PicoInternalTickAlarm internalTickAlarm{internalTicks};
 SwingMetro::TransportController transportController{mainSequencer, midiClockSettings, midiSink};
@@ -145,6 +154,13 @@ bool internalAlarmActive = false;
 uint8_t internalAlarmBpm = 0;
 bool diagnosticsHeaderPrinted = false;
 SwingMetro::SerialRunCommandParser serialRunCommandParser;
+#if defined(SWING_METRO_STAGE5_FAULT_SCENARIOS)
+SwingMetro::FaultCommandParser faultCommandParser;
+bool serialFaultCommand = false;
+
+constexpr std::array<const char*, 4> FAULT_SCENARIO_NAMES = {
+    "baseline", "retry_first_clock", "sustained_backpressure", "deterministic_disconnect"};
+#endif
 bool serialRunActive = false;
 bool serialRunCompletionPending = false;
 std::uint32_t serialRunStartedAtMs = 0;
@@ -490,7 +506,32 @@ void pollSerialRunCommand() {
         return;
     }
     while (Serial.available() > 0) {
-        const auto result = serialRunCommandParser.push(static_cast<char>(Serial.read()));
+        const auto byte = static_cast<char>(Serial.read());
+#if defined(SWING_METRO_STAGE5_FAULT_SCENARIOS)
+        if (!serialFaultCommand && byte == 'F') {
+            serialFaultCommand = true;
+        }
+        if (serialFaultCommand) {
+            const auto faultResult = faultCommandParser.push(byte);
+            if (byte == '\n') {
+                serialFaultCommand = false;
+            }
+            if (faultResult.status == SwingMetro::FaultCommandStatus::Pending) {
+                continue;
+            }
+            if (faultResult.status != SwingMetro::FaultCommandStatus::Ready ||
+                mainSequencer.isRunning()) {
+                Serial.println(F("swing_metro_fault_v1,error,select_only_while_stopped"));
+                continue;
+            }
+            midiSink.select(faultResult.scenario);
+            Serial.print(F("swing_metro_fault_v1,selected,"));
+            Serial.println(FAULT_SCENARIO_NAMES[static_cast<std::size_t>(faultResult.scenario)]);
+            Serial.flush();
+            continue;
+        }
+#endif
+        const auto result = serialRunCommandParser.push(byte);
         if (result.status == SwingMetro::SerialRunCommandStatus::Pending) {
             continue;
         }

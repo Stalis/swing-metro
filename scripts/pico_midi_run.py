@@ -27,6 +27,7 @@ from pico_run_report import (
     build_timed_run_report,
     load_report_metadata,
     report_output_path,
+    validate_fault_metadata,
     write_timed_run_report,
 )
 
@@ -287,6 +288,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--swing", type=int, default=50)
     parser.add_argument("--output-prefix", type=pathlib.Path)
     parser.add_argument("--metadata", type=pathlib.Path)
+    parser.add_argument(
+        "--fault-scenario",
+        choices=("baseline", "retry_first_clock", "sustained_backpressure", "deterministic_disconnect"),
+    )
     return parser.parse_args()
 
 
@@ -312,11 +317,10 @@ def load_serial() -> Any:
 
 def main() -> int:
     args = parse_args()
-    rtmidi = load_rtmidi()
-    serial = load_serial()
-    midi_in = rtmidi.MidiIn()
-    ports = midi_in.get_ports()
     if args.list_midi_ports:
+        rtmidi = load_rtmidi()
+        midi_in = rtmidi.MidiIn()
+        ports = midi_in.get_ports()
         for index, name in enumerate(ports):
             print(f"{index}: {name}")
         return 0
@@ -337,13 +341,17 @@ def main() -> int:
     existing = [path for path in output_files if path.exists()]
     if existing:
         raise RuntimeError(f"refusing to overwrite {existing}")
-    for path in output_files:
-        path.parent.mkdir(parents=True, exist_ok=True)
-
+    metadata = load_report_metadata(args.metadata)
+    validate_fault_metadata(metadata, args.fault_scenario)
+    rtmidi = load_rtmidi()
+    serial = load_serial()
+    midi_in = rtmidi.MidiIn()
+    ports = midi_in.get_ports()
     midi_port_index = choose_midi_port(ports, args.midi_port)
     serial_port = find_serial_port(args.port)
     duration_ms = round(args.duration_seconds * 1000)
-    metadata = load_report_metadata(args.metadata)
+    for path in output_files:
+        path.parent.mkdir(parents=True, exist_ok=True)
     events: list[MidiEvent] = []
     event_lock = threading.Lock()
 
@@ -360,11 +368,22 @@ def main() -> int:
     print(f"MIDI input: {ports[midi_port_index]}", flush=True)
     print(f"Serial: {serial_port}", flush=True)
 
-    capture = TimedRunCapture(duration_ms, args.bpm, args.swing)
+    capture = TimedRunCapture(duration_ms, args.bpm, args.swing, args.fault_scenario)
     timeout_at = time.monotonic() + args.duration_seconds + 30.0
     try:
         with serial.Serial(serial_port, 115200, timeout=0.25) as connection:
             connection.reset_input_buffer()
+            if args.fault_scenario is not None:
+                connection.write(f"FAULT {args.fault_scenario}\n".encode("ascii"))
+                connection.flush()
+                while time.monotonic() < timeout_at and not capture.fault_acknowledged:
+                    raw = connection.readline()
+                    if raw:
+                        line = raw.decode("utf-8", "replace").strip()
+                        print(line, flush=True)
+                        capture.consume(line)
+                if not capture.fault_acknowledged:
+                    raise RuntimeError("timed out waiting for fault acknowledgement")
             connection.write(f"RUN {duration_ms} {args.bpm} {args.swing}\n".encode("ascii"))
             connection.flush()
             while time.monotonic() < timeout_at:
