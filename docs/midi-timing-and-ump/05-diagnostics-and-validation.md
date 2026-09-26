@@ -41,6 +41,10 @@ disconnect. Найденный аппаратным прогоном повто�
 регрессией. Подробности и воспроизводимость описаны в
 [04-load-and-fault-scenarios.md](05-diagnostics-and-validation/04-load-and-fault-scenarios.md).
 Следующим остаётся 5.5 — итоговая hardware validation.
+Она разбита на пять самостоятельных проверок в
+[05-hardware-validation.md](05-diagnostics-and-validation/05-hardware-validation.md): production
+internal/Gate matrix, external Clock/loss/relock, UI/input stress, storage/reset safety и итоговый
+decision report. Уже принятые аппаратные данные 5.3–5.4 переиспользуются без повторного прогона.
 
 1. Дополнить базовые метрики: время `lv_timer_handler`, время каждого flush и
    сумма flush за период наблюдения, максимальный интервал опроса энкодеров.

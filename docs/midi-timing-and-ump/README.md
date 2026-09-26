@@ -49,7 +49,7 @@ MPE и MIDI 2.0 не тождественны. Классический MPE ис
 | 3 | [Регулярный ввод](03-input-scheduling-and-debounce.md) | Шаги 3.1–3.4 выполнены; MIDI не регрессировал, но polling превысил encoder bound, поэтому этап ждёт bounded IRQ/PIO follow-up. |
 | 4 | [Gate Percent](04-note-gate.md) | **Выполнено:** Gate 1–100%, independent Note Off, identity-safe lifecycle, UI и persistence подтверждены software- и аппаратными проверками. |
 | S | [Стабилизация Tempo и модального ввода](stabilization-runtime-input-modal.md) | **Выполнено:** непрерывный Clock при live Tempo, корректный Shift long-press, host-scoped модалки и Cancel в Save/Load и MIDI Clock подтверждены software- и аппаратной проверкой. |
-| 5 | [Диагностика и нагрузочная проверка](05-diagnostics-and-validation.md) | 5.1–5.4 выполнены: runtime/MIDI diagnostics, safe reporting, аппаратные A/B и deterministic fault/load matrix; 5.5 запланирован. |
+| 5 | [Диагностика и нагрузочная проверка](05-diagnostics-and-validation.md) | 5.1–5.4 выполнены; 5.5 разбит на production internal/Gate, external Clock, UI/input, storage/reset и decision report. |
 | 6 | [Прототип USB MIDI 2.0](06-ump-prototype.md) | Запланирована проверка UMP, per-note control и timestamps с выбранным хостом. |
 
 Стабилизация S выполняется после этапа 4 и до этапа 5. Остальные этапы выполняются
