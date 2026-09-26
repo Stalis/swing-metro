@@ -9,10 +9,13 @@ STAGE5_OFF_ENV ?= rpipico2-stage5-instrumentation-off
 STAGE5_FAULT_ENV ?= rpipico2-stage5-fault-scenarios
 STAGE5_OUTPUT_ROOT ?= data/stage5-4-runs
 STAGE5_INTERNAL_OUTPUT_ROOT ?= data/stage5-5-internal-runs
+STAGE5_EXTERNAL_OUTPUT_ROOT ?= data/stage5-5-external-runs
 STAGE5_OUTPUT_DIR ?=
 STAGE5_DURATION_SECONDS ?= 244
 STAGE5_SERIAL_PORT ?=
 STAGE5_MIDI_PORT ?=
+STAGE5_MIDI_INPUT_PORT ?= $(STAGE5_MIDI_PORT)
+STAGE5_MIDI_OUTPUT_PORT ?= $(STAGE5_MIDI_PORT)
 STAGE5_USB_TOPOLOGY ?= direct USB connection; not independently verified
 STAGE5_PATTERN_CONFIRMED ?=
 STAGE5_RESUME ?=
@@ -47,7 +50,7 @@ TIDY_TOOLCHAIN_ARGS := \
 	--extra-arg=-isystem --extra-arg=$(ARM_GCC_INCLUDE)-fixed \
 	--extra-arg=-isystem --extra-arg=$(TOOLCHAIN_ROOT)/arm-none-eabi/include
 
-.PHONY: help format format-check compiledb tidy tidy-run test test-scripts build build-stage5-off build-stage5-fault stage5-load-matrix stage5-internal-gate100 stage5-internal-mixed-gate verify \
+.PHONY: help format format-check compiledb tidy tidy-run test test-scripts build build-stage5-off build-stage5-fault stage5-load-matrix stage5-internal-gate100 stage5-internal-mixed-gate stage5-external-clock verify \
 	check-format-tool check-tidy-tool check-pio-tool check-tidy-toolchain
 
 help:
@@ -63,6 +66,7 @@ help:
 		'make stage5-load-matrix Run the complete Stage 5.4 hardware matrix and restore production' \
 		'make stage5-internal-gate100 Run Stage 5.5.1 production Gate 100 capture' \
 		'make stage5-internal-mixed-gate Run Stage 5.5.1 production mixed-Gate matrix' \
+		'make stage5-external-clock Run Stage 5.5.2 external Clock/loss/relock capture' \
 		'make verify        Run format-check, tidy, tests, and firmware build'
 
 check-format-tool:
@@ -157,6 +161,17 @@ stage5-internal-mixed-gate: check-pio-tool
 		$(if $(STAGE5_MIDI_PORT),--midi-port "$(STAGE5_MIDI_PORT)") \
 		$(if $(STAGE5_PATTERN_CONFIRMED),--pattern-confirmed) \
 		$(if $(STAGE5_RESUME),--resume)
+
+stage5-external-clock: check-pio-tool
+	$(PYTHON) scripts/stage5_external_clock_validation.py \
+		--pio "$(PIO)" \
+		--output-root "$(STAGE5_EXTERNAL_OUTPUT_ROOT)" \
+		--usb-topology "$(STAGE5_USB_TOPOLOGY)" \
+		$(if $(STAGE5_OUTPUT_DIR),--output-dir "$(STAGE5_OUTPUT_DIR)") \
+		$(if $(STAGE5_SERIAL_PORT),--port "$(STAGE5_SERIAL_PORT)") \
+		$(if $(STAGE5_MIDI_INPUT_PORT),--midi-input-port "$(STAGE5_MIDI_INPUT_PORT)") \
+		$(if $(STAGE5_MIDI_OUTPUT_PORT),--midi-output-port "$(STAGE5_MIDI_OUTPUT_PORT)") \
+		$(if $(STAGE5_PATTERN_CONFIRMED),--pattern-confirmed)
 
 verify:
 	@$(MAKE) --no-print-directory format-check

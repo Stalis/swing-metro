@@ -71,6 +71,33 @@ Clock, корректные Waiting/Locked/Lost переходы, один trans
 зависшей ноты при Stop/loss и восстановление без локального Clock burst. Генератор хранит фактические
 host send timestamps, но не выдаёт их за device-local interrupt latency.
 
+Software harness реализован одной командой. Перед запуском выбрать на устройстве External Clock,
+включить все 16 шагов, выставить каждому Gate 100% и явно подтвердить подготовку:
+
+```sh
+make stage5-external-clock STAGE5_PATTERN_CONFIRMED=1
+```
+
+Команда собирает и загружает production-прошивку, затем автоматически выполняет фиксированный
+сценарий при 120 BPM: по 96 ровных и jittered Clock, Stop/Continue, 48 Clock, паузу 400 ms,
+один Clock для relock, Continue, ещё 96 Clock и финальный Stop. Она записывает отдельно фактические
+host send timestamps, MIDI output устройства, diagnostics v4, input/runtime snapshots, manifest,
+metadata, полный report и краткий summary. Результаты создаются в
+`data/stage5-5-external-runs/<timestamp>/`; существующие capture-файлы не перезаписываются.
+
+Обычно порты выбираются автоматически. При неоднозначности задать
+`STAGE5_SERIAL_PORT`, `STAGE5_MIDI_INPUT_PORT` и `STAGE5_MIDI_OUTPUT_PORT`; прежний
+`STAGE5_MIDI_PORT` служит общим fallback для обоих MIDI-направлений. Список MIDI endpoints можно
+посмотреть командой `.venv/bin/python scripts/stage5_external_clock_validation.py --list-midi-ports`.
+
+Run считается успешным только при отсутствии realtime echo, ровно одном intentional Clock loss,
+двух отправленных Stop и одном Start с двумя Continue, наличии нот до loss и после relock,
+сбалансированном Note On/Off lifecycle, точном совпадении device/host note counts, пустом outbox и
+нулевых delivery/queue ошибках. Device `session_ends_stop` при этом равен трём: кроме двух команд
+Stop он учитывает безопасную очистку исходной сессии перед Start. Переходы Waiting/Locked/Lost
+подтверждаются поведением транспорта и device counters;
+покадрового device-local trace состояний и измерения interrupt latency этот сценарий не заявляет.
+
 ## 5.5.3 UI и input stress
 
 Оператор выполняет один фиксированный сценарий во время internal playback: переключение Main/Step,
