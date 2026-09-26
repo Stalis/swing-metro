@@ -1,5 +1,7 @@
+import datetime
 import json
 import pathlib
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -28,6 +30,12 @@ from stage5_load_matrix import (
     upload_firmware,
     validate_metadata,
     validate_report,
+)
+from stage5_load_matrix_run import (
+    allocate_output_dir,
+    platformio_packages,
+    run_matrix_and_restore,
+    write_metadata,
 )
 from pico_run_report import (
     FAULT_REPORT_SCHEMA,
@@ -322,6 +330,61 @@ class PicoMidiRunTests(unittest.TestCase):
             path.write_text(json.dumps({"firmware": {"platformio_environment": "rpipico2"}}))
             with self.assertRaisesRegex(RuntimeError, FIRMWARE_ENVIRONMENT):
                 validate_metadata(path, None)
+
+    def test_stage5_runner_allocates_unique_timestamped_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            now = datetime.datetime(2026, 9, 26, 12, 0, 0)
+            first = root / "20260926-120000"
+            first.mkdir()
+            self.assertEqual(root / "20260926-120000-02", allocate_output_dir(root, now))
+
+    def test_stage5_runner_extracts_toolchain_and_dependencies(self):
+        output = """\
+├── framework-arduinopico @ 1.60000.0
+├── tool-picotool @ 5.0.0
+└── toolchain-rp2040 @ 16.1.0
+Libraries
+└── lvgl @ 9.6.0
+"""
+        with patch("stage5_load_matrix_run.run_output", return_value=output):
+            toolchain, dependencies = platformio_packages("custom-pio")
+        self.assertEqual("toolchain-rp2040 16.1.0", toolchain)
+        self.assertEqual(["framework-arduinopico 1.60000.0", "lvgl 9.6.0"], dependencies)
+
+    def test_stage5_runner_writes_complete_metadata_for_all_cells(self):
+        with tempfile.TemporaryDirectory() as directory:
+            metadata_dir = pathlib.Path(directory)
+            write_metadata(
+                metadata_dir,
+                "abc123",
+                False,
+                "a" * 64,
+                ["-DUSE_TINYUSB", "-DSWING_METRO_STAGE5_FAULT_SCENARIOS=1"],
+                "toolchain 16.1.0",
+                ["lvgl 9.6.0"],
+                "direct",
+            )
+            paths = sorted(metadata_dir.glob("*.json"))
+            self.assertEqual(9, len(paths))
+            for path in paths:
+                value = load_report_metadata(path)
+                self.assertEqual((True, []), metadata_completeness(value))
+            retry = json.loads(
+                (metadata_dir / "stage5-4-retry_first_clock-120bpm-swing50-metadata.json")
+                .read_text(encoding="utf-8")
+            )
+            self.assertEqual("retry_first_clock", retry["fault_injection"]["scenario"])
+
+    def test_stage5_runner_restores_production_after_matrix_failure(self):
+        failure = subprocess.CalledProcessError(1, ["matrix"])
+        with patch("stage5_load_matrix_run.subprocess.run", side_effect=[failure, None]) as run:
+            with self.assertRaises(subprocess.CalledProcessError):
+                run_matrix_and_restore(["matrix"], "custom-pio")
+        self.assertEqual(
+            ["custom-pio", "run", "--environment", "rpipico2", "--target", "upload"],
+            run.call_args_list[1].args[0],
+        )
 
     def test_metadata_validation_and_completeness_are_explicit(self):
         complete = {

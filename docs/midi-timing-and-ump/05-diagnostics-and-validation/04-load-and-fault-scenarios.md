@@ -80,3 +80,32 @@ are rejected.
 Build the dedicated firmware with `make build-stage5-fault`. This step does not cover UI/encoder
 exercise, GPIO analysis, physical cable reconnect, storage load, MPE, or optimization work; those
 remain outside the acceptance claim above.
+
+For a complete unattended capture, connect the Pico and run:
+
+```sh
+make stage5-load-matrix
+```
+
+The target builds the fault firmware, records the current revision, dirty-worktree state, exact ELF
+SHA-256, resolved build flags, toolchain, dependencies, host, and hardware metadata, creates a
+timestamped directory below `data/stage5-4-runs/`, runs all nine cells, and restores the production
+firmware even when the matrix fails or is interrupted. Serial and MIDI endpoints are auto-detected
+when unique; otherwise select them explicitly:
+
+```sh
+make stage5-load-matrix \
+    STAGE5_SERIAL_PORT=/dev/cu.usbmodem101 \
+    STAGE5_MIDI_PORT="Pico 2W"
+```
+
+Resume a stopped run with its printed result directory:
+
+```sh
+make stage5-load-matrix \
+    STAGE5_OUTPUT_DIR=data/stage5-4-runs/20260926-120000 \
+    STAGE5_RESUME=1
+```
+
+`STAGE5_DURATION_SECONDS` overrides the default 244 seconds per cell. A shortened run is useful for
+checking the harness, but is not equivalent to the acceptance matrix.
