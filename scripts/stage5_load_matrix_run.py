@@ -56,16 +56,20 @@ def git_metadata() -> tuple[str, bool]:
     return revision, dirty
 
 
-def platformio_environment_config(pio: str) -> dict[str, Any]:
+def platformio_environment_config(
+    pio: str, environment: str = FIRMWARE_ENVIRONMENT
+) -> dict[str, Any]:
     sections = json.loads(run_output([pio, "project", "config", "--json-output"]))
     for section_name, options in sections:
-        if section_name == f"env:{FIRMWARE_ENVIRONMENT}":
+        if section_name == f"env:{environment}":
             return dict(options)
-    raise RuntimeError(f"PlatformIO environment is missing: {FIRMWARE_ENVIRONMENT}")
+    raise RuntimeError(f"PlatformIO environment is missing: {environment}")
 
 
-def platformio_packages(pio: str) -> tuple[str, list[str]]:
-    output = run_output([pio, "pkg", "list", "-e", FIRMWARE_ENVIRONMENT])
+def platformio_packages(
+    pio: str, environment: str = FIRMWARE_ENVIRONMENT
+) -> tuple[str, list[str]]:
+    output = run_output([pio, "pkg", "list", "-e", environment])
     packages: list[str] = []
     toolchain = ""
     for line in output.splitlines():

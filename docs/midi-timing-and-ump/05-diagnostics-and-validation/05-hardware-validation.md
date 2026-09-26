@@ -36,6 +36,25 @@ Host interval heuristics и device lateness приводятся раздель�
 если она выполняется оператором, фиксируется как явный gate перед capture и подтверждается
 snapshot/чек-листом.
 
+Software harness реализован двумя командами. Сначала включить все 16 шагов, выставить Gate 100 на
+каждом и подтвердить подготовку явно:
+
+```sh
+make stage5-internal-gate100 STAGE5_PATTERN_CONFIRMED=1
+```
+
+Затем выставить Gate шагов в цикле `1/25/50/75/100` (последовательность полностью записывается в
+metadata) и запустить четыре ячейки 68/240 BPM × swing 50/90:
+
+```sh
+make stage5-internal-mixed-gate STAGE5_PATTERN_CONFIRMED=1
+```
+
+Порты обычно определяются автоматически; при необходимости используются `STAGE5_SERIAL_PORT` и
+`STAGE5_MIDI_PORT`. Результаты создаются под `data/stage5-5-internal-runs/<timestamp>/`. Для
+продолжения указать напечатанный каталог через `STAGE5_OUTPUT_DIR` и `STAGE5_RESUME=1`, не меняя
+прошивку или pattern. Без `STAGE5_PATTERN_CONFIRMED=1` hardware run не начинается.
+
 ## 5.5.2 External Clock, loss и relock
 
 Host harness открывает MIDI output устройства и генерирует заранее описанную последовательность:

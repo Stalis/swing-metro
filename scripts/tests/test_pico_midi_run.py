@@ -37,6 +37,12 @@ from stage5_load_matrix_run import (
     run_matrix_and_restore,
     write_metadata,
 )
+from stage5_production_internal_matrix import (
+    PATTERNS,
+    SCENARIO_CELLS,
+    run_name as production_run_name,
+    validate_report as validate_production_report,
+)
 from pico_run_report import (
     FAULT_REPORT_SCHEMA,
     REPORT_SCHEMA,
@@ -150,6 +156,22 @@ class PicoMidiRunTests(unittest.TestCase):
         self.assertEqual(2_800.0, summary["host_abs_jitter_p95_us"])
         self.assertEqual(2_960.0, summary["host_abs_jitter_p99_us"])
         self.assertEqual(2_000.0, summary["absolute_clock_drift_us"])
+
+    def test_analyzes_balanced_and_dangling_notes(self):
+        events = [
+            MidiEvent(1, 1_000_000, 0.0, (0x90, 60, 100)),
+            MidiEvent(2, 2_000_000, 0.0, (0x90, 60, 0)),
+            MidiEvent(3, 3_000_000, 0.0, (0x91, 61, 100)),
+            MidiEvent(4, 4_000_000, 0.0, (0x81, 62, 0)),
+        ]
+
+        summary = analyze_events(events, 120)
+
+        self.assertEqual(2, summary["note_on_count"])
+        self.assertEqual(2, summary["note_off_count"])
+        self.assertEqual(1, summary["unmatched_note_off_count"])
+        self.assertEqual(1, summary["dangling_note_on_count"])
+        self.assertEqual(1, summary["max_active_note_count"])
 
     def test_clock_jitter_and_drift_are_zero_with_fewer_than_two_clocks(self):
         summary = analyze_events([MidiEvent(1, 1_000_000, 0.0, (0xF8,))], 100)
@@ -385,6 +407,59 @@ Libraries
             ["custom-pio", "run", "--environment", "rpipico2", "--target", "upload"],
             run.call_args_list[1].args[0],
         )
+
+    def test_stage5_production_matrix_is_bounded_and_names_patterns(self):
+        self.assertEqual(((68, 50),), SCENARIO_CELLS["gate100"])
+        self.assertEqual(4, len(SCENARIO_CELLS["mixed-gate"]))
+        self.assertEqual(16, len(PATTERNS["mixed-gate"]["gate_percent_by_step"]))
+        self.assertEqual(
+            "stage5-5-internal-mixed-gate-240bpm-swing90",
+            production_run_name("mixed-gate", 240, 90),
+        )
+
+    def test_stage5_production_predicate_requires_balanced_host_and_device_notes(self):
+        diagnostics = {
+            "delivery_clock_accepted": 4,
+            "outgoing_internal_f8_attempts": 4,
+            "delivery_note_attempts": 2,
+            "delivery_note_accepted": 2,
+            "delivery_clock_retry_later": 0,
+            "delivery_clock_disconnected": 0,
+            "delivery_note_retry_later": 0,
+            "delivery_note_disconnected": 0,
+            "terminal_note_off_abandoned_count": 0,
+            "note_on_expired_count": 0,
+            "failed_publications": 0,
+            "tick_queue_overflows": 0,
+            "internal_tick_queue_overflows": 0,
+        }
+        report = {
+            "schema": "swing_metro_timed_run_report_v1",
+            "comparison_eligibility": "paired_capture_candidate",
+            "device_local": {
+                "fresh_boot_candidate": True,
+                "diagnostics": {"metrics": diagnostics},
+            },
+            "host_midi": {
+                "metrics": {
+                    "start_count": 1,
+                    "stop_count": 1,
+                    "clock_count": 4,
+                    "note_on_count": 1,
+                    "note_off_count": 1,
+                    "unmatched_note_off_count": 0,
+                    "dangling_note_on_count": 0,
+                }
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "report.json"
+            path.write_text(json.dumps(report), encoding="utf-8")
+            validate_production_report(path)
+            report["host_midi"]["metrics"]["dangling_note_on_count"] = 1
+            path.write_text(json.dumps(report), encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "lifecycle"):
+                validate_production_report(path)
 
     def test_metadata_validation_and_completeness_are_explicit(self):
         complete = {

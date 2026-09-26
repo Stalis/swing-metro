@@ -135,6 +135,30 @@ def analyze_events(events: list[MidiEvent], bpm: int) -> dict[str, int | float]:
     clocks = [event for event in events if event.message == (0xF8,)]
     starts = [event for event in events if event.message == (0xFA,)]
     stops = [event for event in events if event.message == (0xFC,)]
+    note_on_count = 0
+    note_off_count = 0
+    unmatched_note_off_count = 0
+    active_notes: dict[tuple[int, int], int] = {}
+    max_active_note_count = 0
+    for event in events:
+        if len(event.message) != 3:
+            continue
+        status, note, velocity = event.message
+        message_type = status & 0xF0
+        key = (status & 0x0F, note)
+        if message_type == 0x90 and velocity != 0:
+            note_on_count += 1
+            active_notes[key] = active_notes.get(key, 0) + 1
+            max_active_note_count = max(max_active_note_count, sum(active_notes.values()))
+        elif message_type == 0x80 or (message_type == 0x90 and velocity == 0):
+            note_off_count += 1
+            active = active_notes.get(key, 0)
+            if active == 0:
+                unmatched_note_off_count += 1
+            elif active == 1:
+                del active_notes[key]
+            else:
+                active_notes[key] = active - 1
     intervals_us = [
         (current.host_time_ns - previous.host_time_ns) / 1000.0
         for previous, current in zip(clocks, clocks[1:])
@@ -155,6 +179,11 @@ def analyze_events(events: list[MidiEvent], bpm: int) -> dict[str, int | float]:
         "start_count": len(starts),
         "clock_count": len(clocks),
         "stop_count": len(stops),
+        "note_on_count": note_on_count,
+        "note_off_count": note_off_count,
+        "unmatched_note_off_count": unmatched_note_off_count,
+        "dangling_note_on_count": sum(active_notes.values()),
+        "max_active_note_count": max_active_note_count,
         "expected_clock_interval_us": expected_us,
         "mean_clock_interval_us": statistics.fmean(intervals_us) if intervals_us else 0.0,
         "median_clock_interval_us": statistics.median(intervals_us) if intervals_us else 0.0,
