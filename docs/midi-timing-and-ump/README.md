@@ -1,8 +1,8 @@
 # MIDI timing, регулярный ввод и подготовка к UMP
 
-Статус: этапы 1–2, 4 и стабилизация S завершены; шаги 5.1–5.4 и аппаратные проверки
-5.5.1–5.5.2 выполнены. Этап 3 аппаратно отклонил polling; bounded IRQ/PIO follow-up отложен до
-переразводки энкодеров на входной shift register. Этап 6 запланирован.
+Статус: этапы 1–2, 4–5 и стабилизация S завершены. Этап 3 аппаратно отклонил polling;
+bounded IRQ/PIO follow-up отложен до переразводки энкодеров на входной shift register.
+Этап 6 запланирован.
 Дата: 2026-09-27.
 
 ## Цели и summary
@@ -49,7 +49,7 @@ MPE и MIDI 2.0 не тождественны. Классический MPE ис
 | 3 | [Регулярный ввод](03-input-scheduling-and-debounce.md) | Шаги 3.1–3.4 выполнены; MIDI не регрессировал, но polling превысил encoder bound, поэтому этап ждёт bounded IRQ/PIO follow-up. |
 | 4 | [Gate Percent](04-note-gate.md) | **Выполнено:** Gate 1–100%, independent Note Off, identity-safe lifecycle, UI и persistence подтверждены software- и аппаратными проверками. |
 | S | [Стабилизация Tempo и модального ввода](stabilization-runtime-input-modal.md) | **Выполнено:** непрерывный Clock при live Tempo, корректный Shift long-press, host-scoped модалки и Cancel в Save/Load и MIDI Clock подтверждены software- и аппаратной проверкой. |
-| 5 | [Диагностика и нагрузочная проверка](05-diagnostics-and-validation.md) | 5.1–5.4 и hardware 5.5.1–5.5.4 выполнены; MIDI корректен под UI/storage-нагрузкой, polling bound не выдержан; впереди decision report 5.5.5. |
+| 5 | [Диагностика и нагрузочная проверка](05-diagnostics-and-validation.md) | **Выполнено с известным ограничением:** MIDI correctness подтверждён internal/external, Gate, UI и storage-прогонами; encoder polling не выдержал 1 250 us bound и отложен до новой платы. |
 | 6 | [Прототип USB MIDI 2.0](06-ump-prototype.md) | Запланирована проверка UMP, per-note control и timestamps с выбранным хостом. |
 
 Стабилизация S выполняется после этапа 4 и до этапа 5. Остальные этапы выполняются

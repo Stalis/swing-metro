@@ -1,6 +1,6 @@
 # 5.5 Итоговая аппаратная валидация
 
-Статус: выполняется; 5.5.1–5.5.4 завершены 2026-09-27, впереди decision report 5.5.5.
+Статус: завершён 2026-09-27; 5.5.1–5.5.5 выполнены.
 Выполняется на production-прошивке после завершённых 5.1–5.4.
 
 ## Цель и границы
@@ -55,6 +55,32 @@ make stage5-internal-mixed-gate STAGE5_PATTERN_CONFIRMED=1
 `STAGE5_MIDI_PORT`. Результаты создаются под `data/stage5-5-internal-runs/<timestamp>/`. Для
 продолжения указать напечатанный каталог через `STAGE5_OUTPUT_DIR` и `STAGE5_RESUME=1`, не меняя
 прошивку или pattern. Без `STAGE5_PATTERN_CONFIRMED=1` hardware run не начинается.
+
+### Фактический результат — выполнено 2026-09-27
+
+Пять production-прогонов на revision `d707092` и одном ELF SHA-256
+`2af15b376e59953b343b02d6ed59ab599f7702cccba1056276b162fa8d7e1542` завершились
+`pass`: один профиль Gate 100 при 68 BPM/swing 50 и четыре mixed-Gate ячейки при
+68/240 BPM × swing 50/90. Во всех профилях были включены 16 шагов; mixed-Gate использовал
+цикл `1/25/50/75/100`. Raw evidence сохранён локально в
+`data/stage5-5-internal-runs/20260927-002750/` и
+`data/stage5-5-internal-runs/20260927-004323/` и не коммитится.
+
+| Проверка | Результат |
+| --- | --- |
+| Clock | device и host получили ровно по 66 759 Clock |
+| Note lifecycle | 11 129 Note On и 11 129 Note Off; 0 unmatched/dangling |
+| Delivery | 66 759/66 759 Clock и 22 258/22 258 note events; retry/disconnect/overflow/missed targets равны 0 |
+| Очереди | финальный outbox пуст во всех ячейках; max outbox и scheduled depth равны 3 |
+| Device timing | max Clock acceptance lateness 739 us; max note acceptance lateness 1 565 us |
+| Host intervals | суммарно одна long/short batching-пара в ячейке 240 BPM/swing 50; counts сохранены, absolute drift 174 us |
+
+Все отчёты имеют полные metadata и статус `paired_capture_candidate`, однако metadata честно
+фиксирует dirty worktree; фактические байты прошивки привязаны ELF-хешем. Профиль `gate100` по
+manifest содержит 16 активных шагов и потому не является note-free baseline; отдельные baseline
+данные без операторской нагрузки уже приняты в 5.3 и 5.4. Runtime-window polling во всех пяти
+ячейках превысил границу 1 250 us (max 1 804–2 502 us), что учитывается как отдельный `fail` в
+5.5.5 и не меняет MIDI correctness verdict этих прогонов.
 
 ## 5.5.2 External Clock, loss и relock
 
@@ -244,6 +270,50 @@ correctness evidence, но не как сравнимый performance run. Пе�
 
 Найденные оптимизации не реализуются внутри отчёта. Correctness-дефект блокирует завершение 5.5 и
 получает отдельный фикс с регрессией; performance-возможность оформляется отдельной задачей.
+
+### Итоговый decision report — выполнено 2026-09-27
+
+Вердикты ниже относятся только к явно проверенным условиям. `pass` означает, что заявленный
+correctness-критерий выдержан; `fail` сохраняется как обнаруженное ограничение, а `not measured` и
+`deferred` не переименовываются в успех.
+
+| Утверждение | Вердикт | Evidence | Ограничение метода |
+| --- | --- | --- | --- |
+| Instrumentation не нарушает baseline MIDI correctness | `pass` | [5.3 A/B](03-safe-reporting-and-instrumentation-cost.md#аппаратный-результат-2026-09-26): 39 822/39 822 Clock | Есть небольшой tail overhead: median paired ON−OFF +20 us Clock, +39 us Note, +482 us service interval; это не CPU utilization |
+| Internal Clock не теряется в baseline 40/120/240 BPM, swing 50/90 | `pass` | [5.4 matrix](04-load-and-fault-scenarios.md#hardware-result): все шесть ячеек с точным device/host count | CoreMIDI timestamps не являются device-local временем |
+| Retry, sustained backpressure и disconnect завершаются предсказуемо | `pass` | [5.4 matrix](04-load-and-fault-scenarios.md#hardware-result): одна recovery, один safety stop, один disconnect | Disconnect детерминированно инжектирован; физическое отключение кабеля не измерено |
+| Production delivery/queue выдерживает Gate 1–100% до 240 BPM | `pass` | [5.5.1](#551-production-internalgate-matrix): 66 759/66 759 Clock, 22 258/22 258 note events, depth ≤ 3 | Один host long/short batching pair без потери count; профиль Gate 100 не note-free |
+| External Clock loss/relock не создаёт echo, burst или зависшие ноты | `pass` | [5.5.2](#552-external-clock-loss-и-relock): 14/14 checks, 337 входных Clock, 54/54 notes | Нет покадрового device-local state trace и interrupt-latency measurement |
+| Live Tempo и UI/input-нагрузка сохраняют MIDI lifecycle | `pass` | [5.5.3](#553-ui-и-input-stress): 5 853/5 853 Clock, 976/976 notes | Ручной прогон без полного metadata и точных action timestamps; fixed-BPM анализ применён только к стационарным окнам |
+| Storage/Reset безопасны для transport, current program и user slots | `pass` | [5.5.4](#554-storage-и-reset-program-safety): terminal Note Off → Stop, 1 024/1 024 Clock, reboot restore | Ручные state-проверки; direct MIDI capture имеет `insufficient_metadata` |
+| Encoder polling выдерживает границу 1 250 us на текущей плате | `fail` | [5.5.1](#551-production-internalgate-matrix), [5.5.2](#552-external-clock-loss-и-relock), [5.5.3](#553-ui-и-input-stress): max timed-window 3 097 us и 6 549 crossings в UI stress | Не найдено нарушения MIDI correctness, но сам polling bound не выполнен |
+| DMA дисплея необходим для MIDI correctness | `deferred` | В проверенных нагрузках MIDI loss отсутствует; flush max 1 159 us в 5.5.1 и 6 320 us в UI stress | Inclusive LVGL/flush метрики не дают causal attribution и не измеряют CPU utilization |
+| GPIO/device-local edge timing | `not measured` | Host и firmware counters/timestamps сохранены раздельно | Нужны GPIO-маркеры и логический анализатор для ISR-to-edge, scheduler-to-edge и связи display stall с MIDI edge |
+| End-to-end доставка до музыкального приложения | `not measured` | CoreMIDI capture подтверждает приём хостом | Нужен выбранный DAW и метод сопоставления его clock domain; USB-wire и audio latency здесь не измерены |
+| Encoder shift-register/PIO устраняет polling fail | `deferred` | Текущая плата стабильно превышает bound | Нужна новая encoder-плата, затем повтор input/runtime и MIDI stress с тем же acceptance bound |
+| MPE/UMP и per-note expressive поток | `deferred` | Не входит в этап 5 | Отдельный ограниченный прототип этапа 6 |
+
+Ответы на обязательные вопросы:
+
+- **Clock loss, двойные интервалы и drift:** потери device/host Clock после этапа 1 не обнаружены.
+  Одна long/short пара при 240 BPM сохранила точный count и дала всего 174 us absolute drift, что
+  соответствует host batching, а не пропуску или накопительному drift. External intentional loss
+  завершился ровно одним loss и корректным relock без локального burst.
+- **Gate delivery/queue:** текущая модель выдержала проверенные Gate 1–100%, swing 50/90 и
+  68/240 BPM без retry, disconnect, overflow или зависших нот; max depth равен 3.
+- **Input polling:** на текущей прямой разводке энкодеров недостаточен относительно заявленной
+  границы 1 250 us. Это известное performance/interaction-ограничение, а не обнаруженный MIDI
+  correctness-дефект.
+- **DMA и планирование:** измеримого основания менять MIDI scheduling нет. DMA дисплея также не
+  требуется для доказанной MIDI correctness, но остаётся возможной отдельной оптимизацией после
+  causal GPIO/logic-analyzer измерения; одних inclusive максимумов LVGL/flush недостаточно.
+- **Недостающая аппаратура:** логический анализатор нужен для device-local edge timing; новая
+  shift-register/PIO encoder-плата — для закрытия polling bound; DAW — для end-to-end consumer
+  latency и sync. Эти проверки не блокируют принятый MIDI correctness scope этапа 5.
+
+Этап 5 завершён с одним известным ограничением: encoder polling `fail`, а соответствующее
+аппаратное изменение остаётся deferred до новой платы. Блокирующих MIDI correctness-дефектов в
+проверенном scope не осталось; оптимизации DMA/PIO не реализуются внутри этого отчёта.
 
 ## Порядок выполнения
 
