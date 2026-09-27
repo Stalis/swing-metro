@@ -1,7 +1,7 @@
 # Этап 5. Полная диагностика и нагрузочная проверка
 
-Статус: шаги 5.1–5.4 и аппаратные проверки 5.5.1–5.5.3 выполнены; впереди
-storage/reset safety и итоговый decision report 5.5.4–5.5.5.
+Статус: шаги 5.1–5.4 и аппаратные проверки 5.5.1–5.5.4 выполнены; впереди
+итоговый decision report 5.5.5.
 Зависит от этапов 1–4.
 
 ## Цель
@@ -47,8 +47,11 @@ internal/Gate matrix, external Clock/loss/relock, UI/input stress, storage/reset
 decision report. Production internal/Gate matrix 5.5.1, External Clock/loss/relock 5.5.2 и
 UI/input stress 5.5.3 завершены. Последний подтвердил MIDI correctness при live Tempo и UI-нагрузке,
 но снова зафиксировал превышение polling bound: 3 097 us и 6 549 crossings выше 1 250 us.
-Следующим выполняется storage/reset safety 5.5.4. Уже принятые аппаратные данные 5.3–5.4
-переиспользуются без повторного прогона.
+Storage/reset safety 5.5.4 также пройден: Cancel, Save/Load, Reset No/Yes, persistence после reboot
+и неизменность пользовательского слота подтверждены вручную, а playback capture показал финальные
+Note Off/Stop и отсутствие Clock во время последующей flash-операции. Следующим выполняется
+итоговый decision report 5.5.5. Уже принятые аппаратные данные 5.3–5.4 переиспользуются без
+повторного прогона.
 
 1. Дополнить базовые метрики: время `lv_timer_handler`, время каждого flush и
    сумма flush за период наблюдения, максимальный интервал опроса энкодеров.

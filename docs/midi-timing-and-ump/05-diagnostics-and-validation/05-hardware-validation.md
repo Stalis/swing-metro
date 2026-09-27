@@ -1,6 +1,6 @@
 # 5.5 Итоговая аппаратная валидация
 
-Статус: выполняется; 5.5.1–5.5.3 завершены 2026-09-27, впереди 5.5.4–5.5.5.
+Статус: выполняется; 5.5.1–5.5.4 завершены 2026-09-27, впереди decision report 5.5.5.
 Выполняется на production-прошивке после завершённых 5.1–5.4.
 
 ## Цель и границы
@@ -191,6 +191,44 @@ host counts и timed-run window, а cumulative max service/input interval не �
 Во время playback попытка storage не должна выполнять LittleFS I/O; открытие host-scoped модалки
 сначала безопасно останавливает transport. Capture подтверждает финальный Note Off/Stop и отсутствие
 Clock во время записи flash. Проверка включает Cancel из action и slot chooser.
+
+### Фактический результат — выполнено 2026-09-27
+
+На остановленном transport слот 0 использован как явно разрешённый тестовый слот. В него сохранена
+контрольная программа 137 BPM, swing 63, volume 77, Internal Clock и включённый Step 1 с C4,
+velocity 91 и Gate 42. Ручной сценарий дал следующие результаты:
+
+- `Cancel` из action chooser закрыл модалку без изменения программы;
+- `Cancel` из Load slot chooser закрыл модалку без изменения программы;
+- после изменения текущей программы `Load → Slot 0` точно восстановил контрольные значения;
+- confirmation `Reset program` открылся с выбранным `No`; подтверждение `No` сохранило программу;
+- `Reset program → Yes` установил `Program{}`: 120 BPM, swing 50, volume 100, MIDI Clock Off,
+  все 16 шагов выключены, параметры шагов C2 / velocity 127 / Gate 100;
+- последующий `Load → Slot 0` восстановил контрольную программу, то есть Reset не изменил
+  пользовательский слот;
+- повторный Reset и аппаратный reboot восстановили initial-состояние из current program.
+
+Playback safety проверен отдельным clean-boot capture с Internal Clock 120 BPM, swing 50,
+всеми 16 шагами и Gate 100%. Во время активного нотного потока оператор открыл Save/Load и после
+остановки выполнил `Load → Slot 0`; UI показал `Complete` и восстановил контрольную программу.
+Raw evidence сохранён локально в
+`data/stage5-5-storage-runs/20260927-playback-storage/` и не коммитится.
+
+| Проверка | Результат |
+| --- | --- |
+| Transport и Clock | 1 Start, 1 Stop; device и host получили ровно по 1 024 Clock; 0 long/short и 0 Clock после Stop |
+| Terminal note lifecycle | 171 Note On и 171 Note Off; последний Note Off непосредственно перед Stop; 0 unmatched/dangling |
+| Storage safety | `session_ends_storage = 1`, `storage_discards = 1`, одна активная scheduled note удалена причиной storage |
+| Delivery | Clock 1 024/1 024, notes 342/342, transport 2/2; retry/disconnect/overflow равны 0 |
+| Terminal delivery | `terminal_note_off_abandoned_count = 0`, `terminal_stop_abandoned_count = 0` |
+| Очереди | финальный outbox пуст; max outbox и scheduled depth равны 3 |
+
+Тем самым подтверждено, что открытие storage во время playback сначала завершает MIDI session с
+Note Off и Stop, а LittleFS-операция выполняется уже без последующих Clock. Direct capture не имеет
+полного metadata/manifest и поэтому помечен `insufficient_metadata`; он используется как аппаратное
+correctness evidence, но не как сравнимый performance run. Первая проба с одним активным шагом
+также прошла без зависших нот, однако остановка пришлась между нотами; в decision report входит
+только clean-boot повтор, намеренно поймавший активный scheduled Note Off.
 
 ## 5.5.5 Decision report
 
