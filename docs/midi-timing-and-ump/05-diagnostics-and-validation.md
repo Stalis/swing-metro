@@ -1,7 +1,8 @@
 # Этап 5. Полная диагностика и нагрузочная проверка
 
-Статус: шаги 5.1–5.4 выполнены, включая парное аппаратное измерение стоимости
-instrumentation и аппаратную load/fault-матрицу 5.4; шаг 5.5 запланирован. Зависит от этапов 1–4.
+Статус: шаги 5.1–5.4 и аппаратные проверки 5.5.1–5.5.2 выполнены; впереди
+UI/input stress, storage/reset safety и итоговый decision report 5.5.3–5.5.5.
+Зависит от этапов 1–4.
 
 ## Цель
 
@@ -40,11 +41,12 @@ max lateness и +482 мкс для max service interval. Instrumentation име�
 disconnect. Найденный аппаратным прогоном повторный учёт safety stop исправлен и закрыт native
 регрессией. Подробности и воспроизводимость описаны в
 [04-load-and-fault-scenarios.md](05-diagnostics-and-validation/04-load-and-fault-scenarios.md).
-Следующим остаётся 5.5 — итоговая hardware validation.
-Она разбита на пять самостоятельных проверок в
+Итоговая hardware validation 5.5 разбита на пять самостоятельных проверок в
 [05-hardware-validation.md](05-diagnostics-and-validation/05-hardware-validation.md): production
 internal/Gate matrix, external Clock/loss/relock, UI/input stress, storage/reset safety и итоговый
-decision report. Уже принятые аппаратные данные 5.3–5.4 переиспользуются без повторного прогона.
+decision report. Production internal/Gate matrix 5.5.1 и External Clock/loss/relock 5.5.2 прошли;
+следующим выполняется UI/input stress 5.5.3. Уже принятые аппаратные данные 5.3–5.4
+переиспользуются без повторного прогона.
 
 1. Дополнить базовые метрики: время `lv_timer_handler`, время каждого flush и
    сумма flush за период наблюдения, максимальный интервал опроса энкодеров.

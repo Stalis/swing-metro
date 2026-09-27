@@ -1,6 +1,7 @@
 # 5.5 Итоговая аппаратная валидация
 
-Статус: запланировано. Выполняется на production-прошивке после завершённых 5.1–5.4.
+Статус: выполняется; 5.5.1 и 5.5.2 завершены 2026-09-27, впереди 5.5.3–5.5.5.
+Выполняется на production-прошивке после завершённых 5.1–5.4.
 
 ## Цель и границы
 
@@ -97,6 +98,38 @@ Run считается успешным только при отсутствии
 Stop он учитывает безопасную очистку исходной сессии перед Start. Переходы Waiting/Locked/Lost
 подтверждаются поведением транспорта и device counters;
 покадрового device-local trace состояний и измерения interrupt latency этот сценарий не заявляет.
+
+### Фактический результат — выполнено 2026-09-27
+
+Production-прогон `stage5-5-external-clock` на revision `de20b04` и ELF SHA-256
+`9aa75ac5ea599e774396253af0bb20af3a4825439209ee0302b0f155b8b2a59e` завершился `pass`.
+Условия: Raspberry Pi Pico 2 W, 150 MHz, прямое USB-подключение, CoreMIDI на arm64 macOS,
+External Clock 120 BPM, swing 50, все 16 шагов включены с Gate 100%, без действий оператора во
+время capture. Воспроизводимый raw evidence сохранён локально в
+`data/stage5-5-external-runs/20260927-110825/` и не коммитится.
+
+| Проверка | Результат |
+| --- | --- |
+| Входной transport/Clock stimulus | 1 Start, 2 Continue, 2 Stop и 337 Clock; intentional loss pause 400.806 ms |
+| Realtime echo | 0 исходящих Clock/Start/Continue/Stop; device Clock и transport delivery attempts равны 0 |
+| Note lifecycle | 54 Note On и 54 Note Off; 0 unmatched/dangling; 39 Note On до loss и 15 после relock |
+| Loss/relock | ровно 1 `session_ends_external_clock_lost`; после relock ноты восстановились |
+| Delivery | 108 из 108 note events приняты с первой попытки; retry/disconnect/overflow/safety-stop равны 0 |
+| Очереди | финальный outbox пуст; max outbox depth 2, max scheduled depth 3 |
+| Device timing | max external tick processing lateness 11 us; max note first/acceptance lateness 8 us |
+| Host stimulus | max absolute scheduling error 3.790 ms; это host scheduling, не device interrupt latency |
+
+Все 14 автоматических acceptance checks прошли. Значение `session_ends_stop = 3` соответствует двум
+входным Stop и безопасной очистке исходной сессии перед Start; `session_generation_advances = 3`
+соответствует Start и двум Continue. Тем самым подтверждены отсутствие realtime echo и локального
+Clock burst, корректные loss/relock, transport lifecycle и отсутствие зависших нот.
+
+Input polling остаётся отдельным известным ограничением: максимум encoder sample interval составил
+2,064 us при границе 1,250 us, а runtime window зафиксировал 511 превышений. Это не нарушило MIDI
+correctness данного прогона и не переименовывается в `pass`; результат переносится как evidence в
+5.5.3 и в итоговый decision report 5.5.5. Максимумы LVGL handler и display flush составили
+42,238 us и 2,204 us соответственно; из-за inclusive/nested измерения они не суммируются как
+независимая CPU-нагрузка.
 
 ## 5.5.3 UI и input stress
 
