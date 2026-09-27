@@ -1,6 +1,6 @@
 # 5.5 Итоговая аппаратная валидация
 
-Статус: выполняется; 5.5.1 и 5.5.2 завершены 2026-09-27, впереди 5.5.3–5.5.5.
+Статус: выполняется; 5.5.1–5.5.3 завершены 2026-09-27, впереди 5.5.4–5.5.5.
 Выполняется на production-прошивке после завершённых 5.1–5.4.
 
 ## Цель и границы
@@ -142,6 +142,44 @@ Capture проверяет непрерывность Clock и Note lifecycle, �
 sample interval, crossings 1,250 us, inclusive LVGL handler и flush. Результат должен отдельно
 ответить, подтверждён ли текущий polling bound; уже известное аппаратное превышение этапа 3 не
 переименовывается в pass. Решение о shift-register/PIO остаётся отложенным до новой платы.
+
+### Фактический результат — выполнено 2026-09-27
+
+На production-прошивке revision `779a5f7` выполнен 120-секундный internal playback capture с
+одновременной работой оператора. Во время прогона Tempo изменялся примерно 120 → 240 → 68 BPM,
+редактировались note, velocity и Gate в Step Settings, изменялись swing и volume, выполнялись
+переходы Main/Step и отмена MIDI Clock chooser. Save/Load не открывался: этот сценарий намеренно
+оставлен для специализированной проверки 5.5.4, где storage сначала безопасно останавливает
+transport. Raw evidence сохранён локально в
+`data/stage5-5-ui-input-runs/20260927-150925/` и не коммитится.
+
+| Проверка | Результат |
+| --- | --- |
+| Transport и Clock | 1 Start, 1 Stop; device и host получили ровно по 5 853 Clock |
+| Note lifecycle | 976 Note On и 976 Note Off; 0 unmatched и 0 dangling |
+| Delivery и очереди | 0 retry/disconnect/overflow/missed targets; финальный outbox пуст; max outbox и scheduled depth равны 3 |
+| Device lateness | max internal tick, F8 и queued-event lateness — 931 us |
+| Input polling | max interval в окне прогона 3 097 us; 6 549 интервалов выше границы 1 250 us — `fail` |
+| UI diagnostics | inclusive max LVGL handler 99 049 us; display flush 6 320 us |
+
+Единый fixed-BPM анализ всего capture для такого сценария неприменим: смена Tempo закономерно
+создаёт интервалы, которые он ошибочно классифицирует как missing/long/short. Поэтому отдельно
+проверены три стационарных окна; p95/p99 ниже — nearest-rank абсолютное отклонение от периода
+соответствующего Tempo.
+
+| Окно | Clock intervals | Mean / median | p95 / p99 abs jitter | Min / max | Long / short |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 120 BPM, 0–15 s | 720 | 20 826.723 / 20 825.062 us | 513.459 / 669.209 us | 16 528.208 / 21 613.083 us | 0 / 0 |
+| 240 BPM, 35–50 s | 1 439 | 10 424.040 / 10 403.917 us | 663.750 / 934.916 us | 8 923.750 / 11 904.000 us | 0 / 0 |
+| 68 BPM, 60–120 s | 1 632 | 36 764.883 / 36 760.313 us | 678.377 / 1 041.003 us | 30 208.083 / 43 108.000 us | 0 / 0 |
+
+Итог: MIDI correctness при live Tempo и UI/input-нагрузке подтверждён, но заявленный polling bound
+не выдержан. Прогон имеет ограниченную воспроизводимость: у него нет полного metadata/manifest и
+точных timestamp-маркеров действий оператора; boot-cumulative diagnostics также включают
+предыдущий external capture на том же boot. Поэтому для MIDI используются только согласованные
+host counts и timed-run window, а cumulative max service/input interval не приписываются этому
+прогону. Ограничение polling переносится в decision report 5.5.5; encoder shift-register/PIO
+остаётся deferred до новой платы.
 
 ## 5.5.4 Storage и Reset program safety
 

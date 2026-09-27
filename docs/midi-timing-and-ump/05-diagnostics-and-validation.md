@@ -1,7 +1,7 @@
 # Этап 5. Полная диагностика и нагрузочная проверка
 
-Статус: шаги 5.1–5.4 и аппаратные проверки 5.5.1–5.5.2 выполнены; впереди
-UI/input stress, storage/reset safety и итоговый decision report 5.5.3–5.5.5.
+Статус: шаги 5.1–5.4 и аппаратные проверки 5.5.1–5.5.3 выполнены; впереди
+storage/reset safety и итоговый decision report 5.5.4–5.5.5.
 Зависит от этапов 1–4.
 
 ## Цель
@@ -44,8 +44,10 @@ disconnect. Найденный аппаратным прогоном повто�
 Итоговая hardware validation 5.5 разбита на пять самостоятельных проверок в
 [05-hardware-validation.md](05-diagnostics-and-validation/05-hardware-validation.md): production
 internal/Gate matrix, external Clock/loss/relock, UI/input stress, storage/reset safety и итоговый
-decision report. Production internal/Gate matrix 5.5.1 и External Clock/loss/relock 5.5.2 прошли;
-следующим выполняется UI/input stress 5.5.3. Уже принятые аппаратные данные 5.3–5.4
+decision report. Production internal/Gate matrix 5.5.1, External Clock/loss/relock 5.5.2 и
+UI/input stress 5.5.3 завершены. Последний подтвердил MIDI correctness при live Tempo и UI-нагрузке,
+но снова зафиксировал превышение polling bound: 3 097 us и 6 549 crossings выше 1 250 us.
+Следующим выполняется storage/reset safety 5.5.4. Уже принятые аппаратные данные 5.3–5.4
 переиспользуются без повторного прогона.
 
 1. Дополнить базовые метрики: время `lv_timer_handler`, время каждого flush и
