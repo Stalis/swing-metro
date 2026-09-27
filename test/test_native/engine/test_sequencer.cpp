@@ -309,6 +309,84 @@ void test_same_pitch_old_launch_off_does_not_clear_replacement() {
     TEST_ASSERT_FALSE(sequencer.actualSoundingNote().has_value());
 }
 
+struct BaselineEvent {
+    SwingMetro::TransportTick tick;
+    SwingMetro::TransportPhase phase;
+    SwingMetro::MidiMessageType type;
+    uint8_t note;
+    uint8_t velocity;
+    SwingMetro::MidiLaunchId launchId;
+};
+
+void assertBaselineCycle(uint8_t swing, const std::array<BaselineEvent, 9>& expected) {
+    Sequencer sequencer;
+    MidiEventQueue queue;
+    auto steps = sequencer.steps();
+    steps[0] = {true, 60, 100, 100};
+    steps[1] = {true, 61, 101, 25};
+    steps[4] = {true, 64, 80, 1};
+    steps[15] = {true, 75, 90, 100};
+    sequencer.setSteps(steps);
+    sequencer.setSwing(swing);
+    sequencer.beginCleanRemoteSession(7);
+    sequencer.start();
+
+    std::size_t observed = 0;
+    for (SwingMetro::TransportTick tick = 0; tick <= 96; ++tick) {
+        TEST_ASSERT_EQUAL(MidiEventQueueEnqueueResult::Ok,
+                          sequencer.scheduleThrough({tick, 0}, queue));
+        while (const auto event = queue.front()) {
+            if (event->target.tick > tick) {
+                break;
+            }
+            TEST_ASSERT_LESS_THAN_UINT32(expected.size(), observed);
+            const auto& reference = expected[observed++];
+            TEST_ASSERT_EQUAL_UINT64(reference.tick, event->target.tick);
+            TEST_ASSERT_EQUAL_UINT16(reference.phase, event->target.phase);
+            TEST_ASSERT_EQUAL(static_cast<uint8_t>(reference.type),
+                              static_cast<uint8_t>(event->message.type()));
+            TEST_ASSERT_EQUAL_UINT8(0, event->message.channel());
+            TEST_ASSERT_EQUAL_UINT8(reference.note, event->message.note());
+            TEST_ASSERT_EQUAL_UINT8(reference.velocity, event->message.velocity());
+            TEST_ASSERT_EQUAL_UINT32(reference.launchId, event->launchId);
+            TEST_ASSERT_EQUAL_UINT32(7, event->sessionGeneration);
+            queue.popFront();
+        }
+    }
+    TEST_ASSERT_EQUAL_UINT32(expected.size(), observed);
+    TEST_ASSERT_EQUAL_UINT32(1, queue.size());
+    TEST_ASSERT_EQUAL_UINT64(102, queue.nextPosition()->tick);
+    TEST_ASSERT_EQUAL_UINT16(0, queue.nextPosition()->phase);
+}
+
+void test_baseline_straight_cycle_preserves_events_through_wrap() {
+    using SwingMetro::MidiMessageType;
+    // Literal reference positions, independent of the timing helpers under test.
+    assertBaselineCycle(50, {{{0, 0, MidiMessageType::NoteOn, 60, 100, 1},
+                              {6, 0, MidiMessageType::NoteOff, 60, 0, 1},
+                              {6, 0, MidiMessageType::NoteOn, 61, 101, 2},
+                              {7, 32768, MidiMessageType::NoteOff, 61, 0, 2},
+                              {24, 0, MidiMessageType::NoteOn, 64, 80, 3},
+                              {24, 3932, MidiMessageType::NoteOff, 64, 0, 3},
+                              {90, 0, MidiMessageType::NoteOn, 75, 90, 4},
+                              {96, 0, MidiMessageType::NoteOff, 75, 0, 4},
+                              {96, 0, MidiMessageType::NoteOn, 60, 100, 5}}});
+}
+
+void test_baseline_swung_cycle_preserves_events_through_wrap() {
+    using SwingMetro::MidiMessageType;
+    // This pins scheduled events, before the dispatcher's monophonic replacement policy.
+    assertBaselineCycle(75, {{{0, 0, MidiMessageType::NoteOn, 60, 100, 1},
+                              {6, 0, MidiMessageType::NoteOff, 60, 0, 1},
+                              {6, 49152, MidiMessageType::NoteOn, 61, 101, 2},
+                              {8, 16384, MidiMessageType::NoteOff, 61, 0, 2},
+                              {24, 0, MidiMessageType::NoteOn, 64, 80, 3},
+                              {24, 3932, MidiMessageType::NoteOff, 64, 0, 3},
+                              {90, 49152, MidiMessageType::NoteOn, 75, 90, 4},
+                              {96, 0, MidiMessageType::NoteOn, 60, 100, 5},
+                              {96, 49152, MidiMessageType::NoteOff, 75, 0, 4}}});
+}
+
 } // namespace
 
 void test_sequencer_main() {
@@ -329,4 +407,6 @@ void test_sequencer_main() {
     RUN_TEST(test_cancelled_note_off_request_preserves_accepted_state_and_can_be_requested_again);
     RUN_TEST(test_disconnect_abandonment_is_not_note_off_acceptance);
     RUN_TEST(test_same_pitch_old_launch_off_does_not_clear_replacement);
+    RUN_TEST(test_baseline_straight_cycle_preserves_events_through_wrap);
+    RUN_TEST(test_baseline_swung_cycle_preserves_events_through_wrap);
 }

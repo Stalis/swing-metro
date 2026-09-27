@@ -1,0 +1,64 @@
+{
+  "firmware": {
+    "binary_sha256": "2af15b376e59953b343b02d6ed59ab599f7702cccba1056276b162fa8d7e1542",
+    "build_flags": [
+      "-DUSE_TINYUSB",
+      "-DLV_CONF_SKIP",
+      "-DLV_FONT_MONTSERRAT_8=1",
+      "-DLV_FONT_MONTSERRAT_10=1",
+      "-DLV_FONT_MONTSERRAT_12=1"
+    ],
+    "dependencies": [
+      "framework-arduino-mbed 4.6.0",
+      "framework-arduinopico 1.60000.0+sha.9a0bc356",
+      "GFX Library for Arduino 1.6.8",
+      "lvgl 9.6.0"
+    ],
+    "platformio_environment": "rpipico2",
+    "source_revision": "d70709299eae627554f9569ed90647421c381647",
+    "toolchain": "toolchain-rp2040-earlephilhower 5.160100.260719",
+    "working_tree_dirty": true
+  },
+  "hardware": {
+    "board": "Raspberry Pi Pico 2 W",
+    "cpu_frequency_hz": 150000000,
+    "usb_topology": "direct USB connection; not independently verified"
+  },
+  "host": {
+    "architecture": "arm64",
+    "midi_api": "CoreMIDI",
+    "notes": "automated production internal/Gate matrix; no interaction during capture",
+    "os": "macOS-26.6.2-arm64-arm-64bit-Mach-O"
+  },
+  "instrumentation": {
+    "stage5": "enabled"
+  },
+  "run_id": "stage5-5-internal-gate100-68bpm-swing50",
+  "scenario": {
+    "id": "stage5-5-internal-gate100-68bpm-swing50",
+    "interaction": "none",
+    "production_internal_profile": "gate100",
+    "program": {
+      "gate_percent_by_step": [
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100
+      ],
+      "operator_interaction_during_capture": "none",
+      "steps": "all 16 enabled"
+    }
+  }
+}

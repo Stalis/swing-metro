@@ -1,0 +1,58 @@
+{
+  "purpose": "Frozen historical hardware sample for v4 protocol/report regression; not a new measurement at the refactor HEAD.",
+  "baseline_source_revision": "6317513ff61d2de3673c2dc3927b85b2987603b5",
+  "capture_firmware": {
+    "binary_sha256": "2af15b376e59953b343b02d6ed59ab599f7702cccba1056276b162fa8d7e1542",
+    "build_flags": [
+      "-DUSE_TINYUSB",
+      "-DLV_CONF_SKIP",
+      "-DLV_FONT_MONTSERRAT_8=1",
+      "-DLV_FONT_MONTSERRAT_10=1",
+      "-DLV_FONT_MONTSERRAT_12=1"
+    ],
+    "dependencies": [
+      "framework-arduino-mbed 4.6.0",
+      "framework-arduinopico 1.60000.0+sha.9a0bc356",
+      "GFX Library for Arduino 1.6.8",
+      "lvgl 9.6.0"
+    ],
+    "platformio_environment": "rpipico2",
+    "source_revision": "d70709299eae627554f9569ed90647421c381647",
+    "toolchain": "toolchain-rp2040-earlephilhower 5.160100.260719",
+    "working_tree_dirty": true
+  },
+  "capture_time_utc": "2026-09-26T22:32:27.597299+00:00",
+  "control_rows": "Reconstructed from requested_run; raw serial transcript was not archived with this sample.",
+  "files": [
+    {
+      "fixture": "diagnostics.csv",
+      "original_path": "data/stage5-5-internal-runs/20260927-002750/stage5-5-internal-gate100-68bpm-swing50-diagnostics.csv",
+      "sha256": "c3aab3ce7c8fc28fbaf4f82e5a3ad862b8b60cac076b32f1e5bf5f10b94e996c"
+    },
+    {
+      "fixture": "input-diagnostics.csv",
+      "original_path": "data/stage5-5-internal-runs/20260927-002750/stage5-5-internal-gate100-68bpm-swing50-input-diagnostics.csv",
+      "sha256": "290b1a90f09a5f643734f8c60ca0b7d97c148589ba781d872949c4250a9c9c14"
+    },
+    {
+      "fixture": "runtime-diagnostics.csv",
+      "original_path": "data/stage5-5-internal-runs/20260927-002750/stage5-5-internal-gate100-68bpm-swing50-runtime-diagnostics.csv",
+      "sha256": "951f94ed4cf75fcd82d82599a7193eacb79d78f991f1f00a82470e1cb3a8a5dc"
+    },
+    {
+      "fixture": "report.json",
+      "original_path": "data/stage5-5-internal-runs/20260927-002750/stage5-5-internal-gate100-68bpm-swing50-report.json",
+      "sha256": "c2d2502ff60c34d4bc5161ce5a52bc16c90b36eb3ad917e9c612271d6dfaa1fe"
+    },
+    {
+      "fixture": "metadata.json",
+      "original_path": "data/stage5-5-internal-runs/20260927-002750/metadata/stage5-5-internal-gate100-68bpm-swing50-metadata.json",
+      "sha256": "b18cb1f3457604b6b01497afb7745a57c6889013a220dc5a7635d14757397524"
+    }
+  ],
+  "omitted_raw_midi": {
+    "original_path": "data/stage5-5-internal-runs/20260927-002750/stage5-5-internal-gate100-68bpm-swing50-midi.csv",
+    "sha256": "7422797b1d01052913737fb2d4c29bfac5ebb26b1a070eb3b07246e8488fe462",
+    "reason": "Large ignored local artifact; frozen report retains the historical aggregate, not a replay of raw MIDI."
+  }
+}

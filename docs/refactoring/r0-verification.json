@@ -1,0 +1,75 @@
+{
+  "baseline_source_commit": "6317513ff61d2de3673c2dc3927b85b2987603b5",
+  "plan_commit": "08551e7020aa76db14bcc335c92980b3b2b45dcb",
+  "recorded_at_utc": "2026-09-27T16:22:24.684035+00:00",
+  "initial_verification": {
+    "command": "make verify",
+    "exit_code": 0,
+    "native_tests": 337,
+    "host_tests": 43,
+    "format_check": "pass",
+    "clang_tidy": "pass_with_warnings",
+    "firmware_environments": [
+      "rpipico2",
+      "rpipico2-stage5-instrumentation-off",
+      "rpipico2-stage5-fault-scenarios"
+    ]
+  },
+  "new_baseline_tests": {
+    "native": 2,
+    "host": 3,
+    "wire_schema_mutation_check": "Swapping two v4 column names fails the frozen capture test."
+  },
+  "firmware_builds": [
+    {
+      "environment": "rpipico2",
+      "ram_bytes": 169888,
+      "ram_capacity_bytes": 524288,
+      "flash_bytes": 730128,
+      "flash_capacity_bytes": 3141632,
+      "binary_sha256": "6d5511d6ef4c6876888bb9751c719ef35786e6c0c49c9c72b331b52a2343d887"
+    },
+    {
+      "environment": "rpipico2-stage5-instrumentation-off",
+      "ram_bytes": 169588,
+      "ram_capacity_bytes": 524288,
+      "flash_bytes": 729288,
+      "flash_capacity_bytes": 3141632,
+      "binary_sha256": "36f34f41a0d24a97978dd69a4efe80920136deaa8cb0631390f96baf612e5207"
+    },
+    {
+      "environment": "rpipico2-stage5-fault-scenarios",
+      "ram_bytes": 173032,
+      "ram_capacity_bytes": 524288,
+      "flash_bytes": 730904,
+      "flash_capacity_bytes": 3141632,
+      "binary_sha256": "416d4a3c937a1b918c90b6eeed163a5cc137cbd21e3d4d27e52959365d3a0beb"
+    }
+  ],
+  "limitations": [
+    "No new hardware capture or firmware upload in R0.",
+    "Historical capture firmware revision differs from baseline source and was built from a dirty tree; original metadata is preserved.",
+    "Static linked RAM usage does not measure runtime stack or heap high-water.",
+    "Full verify passes with existing diagnostics; this is not a warning-free baseline.",
+    "Multitrack throughput spike belongs to R5 before implementing F3."
+  ],
+  "final_verification": {
+    "command": "make verify",
+    "exit_code": 0,
+    "native_tests": 339,
+    "host_tests": 46,
+    "format_check": "pass",
+    "clang_tidy": "pass_with_warnings",
+    "firmware_environments": [
+      "rpipico2",
+      "rpipico2-stage5-instrumentation-off",
+      "rpipico2-stage5-fault-scenarios"
+    ]
+  },
+  "tools": {
+    "platformio": "PlatformIO Core, version 6.2.0",
+    "clang_format": "clang-format version 23.1.0",
+    "clang_tidy": "Homebrew LLVM version 23.1.0\n  Optimized build.",
+    "python": "Python 3.14.7"
+  }
+}
