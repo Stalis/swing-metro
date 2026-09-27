@@ -1,0 +1,34 @@
+{
+  "command": "make verify",
+  "exit_code": 0,
+  "native_tests": 345,
+  "host_tests": 45,
+  "format_check": "pass",
+  "clang_tidy": "pass_with_warnings",
+  "firmware_builds": [
+    {
+      "environment": "rpipico2",
+      "ram_bytes": 169956,
+      "flash_bytes": 731472,
+      "sha256": "d188f5adedc8cbe4dd87be5e89c7224049ce4a5a031ef300414261755359ba6b",
+      "fault_protocol_present": false
+    },
+    {
+      "environment": "rpipico2-stage5-instrumentation-off",
+      "ram_bytes": 169664,
+      "flash_bytes": 730520,
+      "sha256": "56f1b5377cf031736063d05aa1998ff424ab5519447137d2ac3a7f578003adc7",
+      "fault_protocol_present": false
+    },
+    {
+      "environment": "rpipico2-stage5-fault-scenarios",
+      "ram_bytes": 173104,
+      "flash_bytes": 732272,
+      "sha256": "3ac5c4ed81ae41e167daffbcad9e49e5df179a11b8f79fb197b7153c478269be",
+      "fault_protocol_present": true
+    }
+  ],
+  "hardware_run": false,
+  "baseline_commit": "5ee39b9e0cbdf6c05139715b42f5e5deb96880b3",
+  "review": "OpenCode read-only: fault-only state finding fixed; no remaining concrete findings reported before correction."
+}

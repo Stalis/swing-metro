@@ -200,8 +200,10 @@ def analyze_events(events: list[MidiEvent], bpm: int) -> dict[str, int | float]:
 
 
 def add_firmware_summary(
-    summary: Mapping[str, int | float], diagnostics: Mapping[str, int], diagnostics_version: int = 2
+    summary: Mapping[str, int | float], diagnostics: Mapping[str, int], diagnostics_version: int = 4
 ) -> dict[str, int | float | str]:
+    if diagnostics_version != 4:
+        raise RuntimeError(f"unsupported diagnostics version {diagnostics_version}; expected 4")
     fresh_firmware_counters = diagnostics["synchronous_start_publication_attempts"] == 1
     host_clock_difference: int | str = "not_comparable_cumulative_firmware_counters"
     if fresh_firmware_counters:
@@ -218,18 +220,6 @@ def add_firmware_summary(
             "host_clock_count_difference": host_clock_difference,
         }
     )
-    if diagnostics_version == 2:
-        combined.update(
-            {
-                "firmware_clock_stack_accepted_count": "unavailable_v2",
-                "clock_attempt_minus_accepted": "unavailable_v2",
-                "clock_accepted_minus_host": "unavailable_v2",
-            }
-        )
-        return combined
-
-    if diagnostics_version not in (3, 4):
-        raise RuntimeError(f"unsupported diagnostics version {diagnostics_version}")
     accepted = diagnostics["delivery_clock_accepted"]
     difference: int | str = "not_comparable_cumulative_firmware_counters"
     if fresh_firmware_counters:
@@ -246,19 +236,18 @@ def add_firmware_summary(
             "clock_accepted_minus_host": accepted_host_difference,
         }
     )
-    if diagnostics_version == 4:
-        for field, value in diagnostics.items():
-            if (
-                field in {
-                    "current_scheduled_depth_total",
-                    "max_scheduled_depth",
-                    "observed_internal_tick_queue_depth",
-                    "observed_internal_tick_queue_high_water",
-                    "internal_tick_queue_overflows",
-                }
-                or "_lateness_" in field
-            ):
-                combined[f"firmware_{field}"] = value
+    for field, value in diagnostics.items():
+        if (
+            field in {
+                "current_scheduled_depth_total",
+                "max_scheduled_depth",
+                "observed_internal_tick_queue_depth",
+                "observed_internal_tick_queue_high_water",
+                "internal_tick_queue_overflows",
+            }
+            or "_lateness_" in field
+        ):
+            combined[f"firmware_{field}"] = value
     return combined
 
 

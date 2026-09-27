@@ -25,6 +25,7 @@
 #include "../test/test_native/input/test_midi_clock_settings_context.h"
 #include "../test/test_native/input/test_periodic_scheduler.h"
 #include "../test/test_native/input/test_serial_run_command.h"
+#include "../test/test_native/input/test_serial_run_controller.h"
 #include "../test/test_native/input/test_step_button_integration.h"
 #include "../test/test_native/input/test_time_debouncer.h"
 #include "../test/test_native/program/test_program.h"
@@ -69,6 +70,7 @@ int main() {
     test_midi_clock_settings_context_main();
     test_periodic_scheduler_main();
     test_serial_run_command_main();
+    testSerialRunControllerMain();
     test_app_event_handler_main();
     test_app_input_coordinator_main();
     test_encoder_integration_main();

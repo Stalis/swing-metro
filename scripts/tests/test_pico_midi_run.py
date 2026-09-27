@@ -54,8 +54,6 @@ from pico_run_report import (
     validate_fault_metadata,
 )
 from pico_run_protocol import (
-    V2_COLUMNS,
-    V3_COLUMNS,
     V4_COLUMNS,
     RUNTIME_DIAGNOSTICS_COLUMNS,
     diagnostics_header_for_row,
@@ -565,45 +563,46 @@ Libraries
         self.assertEqual("retry_first_clock", fault_report["fault_injection"]["scenario"])
         self.assertTrue(fault_report["fault_injection"]["test_firmware_required"])
 
-    def test_parses_v2_diagnostics_row(self):
-        columns = V2_COLUMNS
-        row = ",".join([columns[0], *(str(index) for index in range(1, len(columns)))])
-        version, parsed = parse_diagnostics_row(row)
-        self.assertEqual(2, version)
-        self.assertEqual(1, parsed["alarm_callback_invocations"])
-        self.assertEqual(27, parsed["max_process_duration_us"])
-        with self.assertRaises(RuntimeError):
-            parse_diagnostics_row(",".join([columns[0], *("1" for _ in columns[2:])]))
-        with self.assertRaises(RuntimeError):
-            parse_diagnostics_row(",".join(["swing_metro_diagnostics_v9", *("1" for _ in columns[1:])]))
+    def test_live_diagnostics_rejects_legacy_and_unknown_versions(self):
+        # Independent historical sizes: 27 data fields in v2, 163 in v3.
+        for prefix, count in (("swing_metro_diagnostics_v2", 27),
+                              ("swing_metro_diagnostics_v3", 163),
+                              ("swing_metro_diagnostics_v9", len(V4_COLUMNS) - 1)):
+            for fields in (count, len(V4_COLUMNS) - 1):
+                row = ",".join([prefix, *("0" for _ in range(fields))])
+                with self.subTest(prefix=prefix, fields=fields):
+                    with self.assertRaisesRegex(RuntimeError, "unsupported live diagnostics"):
+                        parse_diagnostics_row(row)
+                    with self.assertRaisesRegex(RuntimeError, "unsupported live diagnostics"):
+                        diagnostics_header_for_row(row)
+                    self.assertFalse(is_diagnostics_data_row(row))
+                    with self.assertRaisesRegex(RuntimeError, "unsupported live diagnostics"):
+                        TimedRunCapture(1000, 120, 50).consume(row)
 
-    def test_parses_v3_diagnostics_row_and_matches_header(self):
-        row = ",".join([V3_COLUMNS[0], *(str(index) for index in range(1, len(V3_COLUMNS)))])
-        version, parsed = parse_diagnostics_row(row)
-        self.assertEqual(3, version)
-        self.assertEqual(len(V2_COLUMNS), V3_COLUMNS.index("delivery_clock_attempts"))
-        self.assertEqual(len(V2_COLUMNS), parsed["delivery_clock_attempts"])
-        self.assertEqual(8, len([column for column in V3_COLUMNS if column.startswith("session_ends_")]))
-        self.assertEqual(",".join(V3_COLUMNS), diagnostics_header_for_row(row))
-        self.assertTrue(is_diagnostics_data_row(row))
-        self.assertIn("pending_removed_stale_gate_off_note", parsed)
-        self.assertIn("scheduled_removed_stale_gate_off_note", parsed)
-        self.assertFalse(is_diagnostics_data_row(",".join(V3_COLUMNS)))
+    def test_current_diagnostics_rejects_wrong_length_and_noninteger(self):
+        for fields in (len(V4_COLUMNS) - 2, len(V4_COLUMNS)):
+            row = ",".join([V4_COLUMNS[0], *("0" for _ in range(fields))])
+            with self.subTest(fields=fields), self.assertRaisesRegex(RuntimeError, "field count"):
+                parse_diagnostics_row(row)
+        row = ",".join([V4_COLUMNS[0], "invalid", *("0" for _ in V4_COLUMNS[2:])])
         with self.assertRaises(RuntimeError):
-            parse_diagnostics_row(",".join([V3_COLUMNS[0], *("1" for _ in V2_COLUMNS[1:])]))
+            parse_diagnostics_row(row)
+        with self.assertRaises(RuntimeError):
+            TimedRunCapture(1000, 120, 50).consume(row)
+        self.assertFalse(is_diagnostics_data_row(",".join(V4_COLUMNS)))
 
-    def test_parses_strict_v4_diagnostics_row_without_changing_v2_or_v3(self):
+    def test_current_diagnostics_preserves_header_and_delivery_fields(self):
         row = ",".join([V4_COLUMNS[0], *(str(index) for index in range(1, len(V4_COLUMNS)))])
         version, parsed = parse_diagnostics_row(row)
         self.assertEqual(4, version)
         self.assertEqual(",".join(V4_COLUMNS), diagnostics_header_for_row(row))
-        self.assertEqual(
-            V4_COLUMNS.index("clock_attempt_lateness_1_10"),
-            parsed["clock_attempt_lateness_1_10"],
-        )
+        self.assertTrue(is_diagnostics_data_row(row))
+        self.assertEqual(28, parsed["delivery_clock_attempts"])
+        self.assertEqual(8, len([column for column in V4_COLUMNS if column.startswith("session_ends_")]))
+        self.assertIn("pending_removed_stale_gate_off_note", parsed)
+        self.assertIn("scheduled_removed_stale_gate_off_note", parsed)
+        self.assertEqual(V4_COLUMNS.index("clock_attempt_lateness_1_10"), parsed["clock_attempt_lateness_1_10"])
         self.assertIn("observed_internal_tick_queue_high_water", parsed)
-        with self.assertRaises(RuntimeError):
-            parse_diagnostics_row(",".join([V4_COLUMNS[0], *("1" for _ in V4_COLUMNS[2:])]))
 
     def test_parses_strict_input_diagnostics_row(self):
         row = "swing_metro_input_diagnostics_v1,1250,2"
@@ -655,27 +654,7 @@ Libraries
             write_summary_csv(path, {"host_clock_count_difference": "not_comparable"})
             self.assertIn("host_clock_count_difference,not_comparable", path.read_text())
 
-    def test_firmware_comparison_requires_fresh_boot(self):
-        summary = {"clock_count": 55}
-        diagnostics = {
-            "synchronous_start_publication_attempts": 1,
-            "outgoing_internal_f8_attempts": 55,
-            "successful_publications": 55,
-            "successful_consumer_pops": 55,
-        }
-        combined = add_firmware_summary(summary, diagnostics)
-        self.assertEqual(1, combined["firmware_counters_fresh_for_run"])
-        self.assertEqual(0, combined["host_clock_count_difference"])
-
-        diagnostics["synchronous_start_publication_attempts"] = 2
-        combined = add_firmware_summary(summary, diagnostics)
-        self.assertEqual(0, combined["firmware_counters_fresh_for_run"])
-        self.assertEqual(
-            "not_comparable_cumulative_firmware_counters",
-            combined["host_clock_count_difference"],
-        )
-
-    def test_v3_firmware_summary_distinguishes_attempt_acceptance_and_host(self):
+    def test_current_summary_preserves_fresh_and_cumulative_comparisons(self):
         summary = {"clock_count": 55}
         diagnostics = {
             "synchronous_start_publication_attempts": 1,
@@ -684,58 +663,36 @@ Libraries
             "delivery_clock_accepted": 58,
             "successful_publications": 60,
             "successful_consumer_pops": 60,
+            "clock_attempt_lateness_1_10": 7,
+            "note_accepted_lateness_101_250": 8,
+            "current_scheduled_depth_total": 2,
+            "max_scheduled_depth": 5,
+            "observed_internal_tick_queue_depth": 1,
+            "observed_internal_tick_queue_high_water": 4,
+            "internal_tick_queue_overflows": 0,
         }
-        combined = add_firmware_summary(summary, diagnostics, 3)
+        combined = add_firmware_summary(summary, diagnostics)
         self.assertEqual(61, combined["firmware_clock_attempt_count"])
         self.assertEqual(58, combined["firmware_clock_stack_accepted_count"])
         self.assertEqual(55, combined["host_clock_count"])
+        self.assertEqual(5, combined["host_clock_count_difference"])
         self.assertEqual(3, combined["clock_attempt_minus_accepted"])
         self.assertEqual(3, combined["clock_accepted_minus_host"])
         self.assertEqual(1, combined["firmware_counters_fresh_for_run"])
-
-        diagnostics["synchronous_start_publication_attempts"] = 2
-        combined = add_firmware_summary(summary, diagnostics, 3)
-        self.assertEqual(0, combined["firmware_counters_fresh_for_run"])
-        self.assertEqual(
-            "not_comparable_cumulative_firmware_counters",
-            combined["clock_attempt_minus_accepted"],
-        )
-        self.assertEqual(
-            "not_comparable_cumulative_firmware_counters",
-            combined["clock_accepted_minus_host"],
-        )
-
-        diagnostics.update(
-            {
-                "clock_attempt_lateness_1_10": 7,
-                "note_accepted_lateness_101_250": 8,
-                "current_scheduled_depth_total": 2,
-                "max_scheduled_depth": 5,
-                "observed_internal_tick_queue_depth": 1,
-                "observed_internal_tick_queue_high_water": 4,
-                "internal_tick_queue_overflows": 0,
-            }
-        )
-        combined = add_firmware_summary(summary, diagnostics, 4)
-        self.assertEqual(58, combined["firmware_clock_stack_accepted_count"])
         self.assertEqual(7, combined["firmware_clock_attempt_lateness_1_10"])
         self.assertEqual(8, combined["firmware_note_accepted_lateness_101_250"])
         self.assertEqual(5, combined["firmware_max_scheduled_depth"])
         self.assertEqual(4, combined["firmware_observed_internal_tick_queue_high_water"])
+        diagnostics["synchronous_start_publication_attempts"] = 2
+        combined = add_firmware_summary(summary, diagnostics, 4)
+        self.assertEqual(0, combined["firmware_counters_fresh_for_run"])
+        for field in ("host_clock_count_difference", "clock_attempt_minus_accepted", "clock_accepted_minus_host"):
+            self.assertEqual("not_comparable_cumulative_firmware_counters", combined[field])
 
-    def test_v2_firmware_summary_marks_acceptance_unavailable(self):
-        combined = add_firmware_summary(
-            {"clock_count": 55},
-            {
-                "synchronous_start_publication_attempts": 1,
-                "outgoing_internal_f8_attempts": 55,
-                "successful_publications": 55,
-                "successful_consumer_pops": 55,
-            },
-        )
-        self.assertEqual("unavailable_v2", combined["firmware_clock_stack_accepted_count"])
-        self.assertEqual("unavailable_v2", combined["clock_attempt_minus_accepted"])
-        self.assertEqual("unavailable_v2", combined["clock_accepted_minus_host"])
+    def test_current_summary_rejects_legacy_before_reading_metrics(self):
+        for version in (2, 3, 9):
+            with self.subTest(version=version), self.assertRaisesRegex(RuntimeError, "unsupported diagnostics version"):
+                add_firmware_summary({}, {}, version)
 
 
 if __name__ == "__main__":

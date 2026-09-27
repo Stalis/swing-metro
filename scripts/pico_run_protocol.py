@@ -8,13 +8,10 @@ import time
 
 
 CONTROL_PREFIX = "swing_metro_control_v1"
-V2_DIAGNOSTICS_PREFIX = "swing_metro_diagnostics_v2"
-V3_DIAGNOSTICS_PREFIX = "swing_metro_diagnostics_v3"
 V4_DIAGNOSTICS_PREFIX = "swing_metro_diagnostics_v4"
 INPUT_DIAGNOSTICS_PREFIX = "swing_metro_input_diagnostics_v1"
 RUNTIME_DIAGNOSTICS_PREFIX = "swing_metro_runtime_diagnostics_v1"
-V2_COLUMNS = (
-    V2_DIAGNOSTICS_PREFIX,
+_TICK_PIPELINE_COLUMNS = (
     "alarm_callback_invocations",
     "synchronous_start_publication_attempts",
     "successful_publications",
@@ -78,9 +75,7 @@ _SESSION_END_REASONS = (
     "disconnected",
     "superseded_start",
 )
-V3_COLUMNS = (
-    V3_DIAGNOSTICS_PREFIX,
-    *V2_COLUMNS[1:],
+_DELIVERY_COLUMNS = (
     *(f"delivery_{message_class}_{field}" for message_class in _DELIVERY_CLASSES for field in _DELIVERY_FIELDS),
     *(f"{queue}_removed_{reason}_{message_class}" for reason in _INVALIDATION_REASONS for message_class in _DELIVERY_CLASSES for queue in ("pending", "scheduled")),
     *(f"{field}_{message_class}" for message_class in _DELIVERY_CLASSES for field in ("scheduled_created", "scheduled_transferred", "outbox_inserted", "current_scheduled_depth", "current_outbox_depth")),
@@ -115,7 +110,8 @@ _LATENESS_BUCKETS = (
 )
 V4_COLUMNS = (
     V4_DIAGNOSTICS_PREFIX,
-    *V3_COLUMNS[1:],
+    *_TICK_PIPELINE_COLUMNS,
+    *_DELIVERY_COLUMNS,
     "current_scheduled_depth_total",
     "max_scheduled_depth",
     *(
@@ -144,19 +140,18 @@ RUNTIME_DIAGNOSTICS_COLUMNS = (
     "encoder_sample_window_intervals_above_1250_us",
 )
 
-# Keep these names for callers that only know the original v2 protocol.
-DIAGNOSTICS_PREFIX = V2_DIAGNOSTICS_PREFIX
-DIAGNOSTICS_COLUMNS = V2_COLUMNS
-DIAGNOSTICS_HEADER = ",".join(V2_COLUMNS)
-
 
 def diagnostics_columns_for_row(row: str) -> tuple[int, tuple[str, ...]]:
     fields = row.split(",")
-    schemas = ((2, V2_COLUMNS), (3, V3_COLUMNS), (4, V4_COLUMNS))
-    for version, columns in schemas:
-        if fields[0] == columns[0] and len(fields) == len(columns):
-            return version, columns
-    raise RuntimeError(f"unrecognized diagnostics prefix or field count: {fields[0]!r}, {len(fields)}")
+    if fields[0] != V4_DIAGNOSTICS_PREFIX:
+        raise RuntimeError(
+            f"unsupported live diagnostics format {fields[0]!r}; expected {V4_DIAGNOSTICS_PREFIX}"
+        )
+    if len(fields) != len(V4_COLUMNS):
+        raise RuntimeError(
+            f"invalid diagnostics field count: expected {len(V4_COLUMNS)}, got {len(fields)}"
+        )
+    return 4, V4_COLUMNS
 
 
 def diagnostics_header_for_row(row: str) -> str:

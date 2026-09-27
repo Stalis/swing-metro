@@ -7,15 +7,15 @@
 #include "engine/transport_controller.h"
 #if defined(SWING_METRO_STAGE5_FAULT_SCENARIOS)
 #include "engine/fault_midi_message_sink.h"
-#include "input/fault_command_parser.h"
 #endif
+#include "drivers/diagnostics/arduino_diagnostic_console.h"
 #include "input/app_event_handler.h"
 #include "input/app_input.h"
 #include "input/app_input_coordinator.h"
 #include "input/encoder_sample_diagnostics.h"
 #include "input/pad_button_ids.h"
 #include "input/periodic_scheduler.h"
-#include "input/serial_run_command.h"
+#include "input/serial_run_controller.h"
 #include "input/step_button_inputs.h"
 #include "program/program_slot_store.h"
 #include "program/program_storage_controller.h"
@@ -74,9 +74,6 @@ SwingMetro::PeriodicScheduler<MATRIX_SCAN_PERIOD_MS> matrixScanScheduler;
 SwingMetro::PeriodicScheduler<ENCODER_SAMPLE_PERIOD_US> encoderSampleScheduler;
 SwingMetro::EncoderSampleDiagnostics encoderSampleDiagnostics;
 SwingMetro::RuntimeTimingDiagnostics runtimeTimingDiagnostics;
-SwingMetro::EncoderSampleWindowDiagnostics runtimeEncoderSnapshot;
-std::uint32_t runtimeDiagnosticsRequestGeneration = 0;
-bool runtimeDiagnosticsExportPending = false;
 
 void tempoEncoderHandler(EncoderDirection direction);
 void tempoEncoderSwitchHandler(std::uint32_t nowUs);
@@ -152,347 +149,25 @@ constexpr const auto UPDATABLES = std::tie(tempoEncoder, swingEncoder, volumeEnc
 UiViewModel uiViewModel;
 bool internalAlarmActive = false;
 uint8_t internalAlarmBpm = 0;
-bool diagnosticsHeaderPrinted = false;
-SwingMetro::SerialRunCommandParser serialRunCommandParser;
+SwingMetro::ArduinoDiagnosticConsole diagnosticConsole;
+SwingMetro::DiagnosticsSerializer diagnosticsSerializer{diagnosticConsole};
+SwingMetro::DiagnosticsCapture diagnosticsCapture{transportController, internalTicks,
+                                                  encoderSampleDiagnostics,
+                                                  runtimeTimingDiagnostics, diagnosticsSerializer};
+SwingMetro::SerialRunController serialRunController{diagnosticConsole,
+                                                    mainSequencer,
+                                                    midiClockSettings,
+                                                    transportController,
+                                                    tempoCounter,
+                                                    swingCounter,
+                                                    runtimeTimingDiagnostics,
+                                                    encoderSampleDiagnostics,
+                                                    diagnosticsCapture
 #if defined(SWING_METRO_STAGE5_FAULT_SCENARIOS)
-SwingMetro::FaultCommandParser faultCommandParser;
-bool serialFaultCommand = false;
-
-constexpr std::array<const char*, 4> FAULT_SCENARIO_NAMES = {
-    "baseline", "retry_first_clock", "sustained_backpressure", "deterministic_disconnect"};
+                                                    ,
+                                                    &midiSink
 #endif
-bool serialRunActive = false;
-bool serialRunPreparing = false;
-bool serialRunCompletionPending = false;
-std::uint32_t serialRunStartedAtMs = 0;
-std::uint32_t serialRunDurationMs = 0;
-std::uint32_t serialRunStartSnapshotGeneration = 0;
-std::uint8_t serialRunBpm = 0;
-std::uint8_t serialRunSwing = 0;
-SwingMetro::SerialRunMode serialRunMode = SwingMetro::SerialRunMode::Internal;
-
-constexpr std::array<const char*, SwingMetro::DELIVERY_MESSAGE_CLASS_COUNT> DELIVERY_CLASS_NAMES = {
-    "clock", "transport", "note"};
-constexpr std::array<const char*,
-                     static_cast<std::size_t>(SwingMetro::InvalidationReason::SupersededStart) + 1>
-    INVALIDATION_REASON_NAMES = {"stop",
-                                 "mode_switch",
-                                 "storage",
-                                 "external_clock_lost",
-                                 "retry_window_exceeded",
-                                 "delivery_capacity",
-                                 "disconnected",
-                                 "superseded_start"};
-constexpr std::array<const char*, SwingMetro::DELIVERY_REMOVAL_REASON_COUNT>
-    DELIVERY_REMOVAL_NAMES = {
-        "clock_coalesced",   "clock_expired", "note_on_expired",     "stop",
-        "mode_switch",       "storage",       "external_clock_lost", "retry_window_exceeded",
-        "delivery_capacity", "disconnected",  "superseded_start",    "scheduled_overdue",
-        "stale_gate_off"};
-constexpr std::array<const char*, 4> LATENESS_DISTRIBUTION_NAMES = {
-    "clock_attempt", "clock_accepted", "note_attempt", "note_accepted"};
-constexpr std::array<const char*, SwingMetro::LatenessDistribution::POSITIVE_BUCKET_COUNT>
-    LATENESS_BUCKET_NAMES = {"1_10",     "11_50",     "51_100",     "101_250",      "251_500",
-                             "501_1000", "1001_5000", "5001_20000", "20001_100000", "ge_100001"};
-
-void printDeliveryDiagnosticsHeader() {
-    for (const auto* messageClass : DELIVERY_CLASS_NAMES) {
-        Serial.print(',');
-        Serial.print(F("delivery_"));
-        Serial.print(messageClass);
-        Serial.print(F("_attempts,delivery_"));
-        Serial.print(messageClass);
-        Serial.print(F("_accepted,delivery_"));
-        Serial.print(messageClass);
-        Serial.print(F("_retry_later,delivery_"));
-        Serial.print(messageClass);
-        Serial.print(F("_disconnected,delivery_"));
-        Serial.print(messageClass);
-        Serial.print(F("_retry_recovered,delivery_"));
-        Serial.print(messageClass);
-        Serial.print(F("_max_first_attempt_lateness_us,delivery_"));
-        Serial.print(messageClass);
-        Serial.print(F("_max_acceptance_lateness_us"));
-    }
-    for (const auto* reason : DELIVERY_REMOVAL_NAMES) {
-        for (const auto* messageClass : DELIVERY_CLASS_NAMES) {
-            Serial.print(F(",pending_removed_"));
-            Serial.print(reason);
-            Serial.print('_');
-            Serial.print(messageClass);
-            Serial.print(F(",scheduled_removed_"));
-            Serial.print(reason);
-            Serial.print('_');
-            Serial.print(messageClass);
-        }
-    }
-    for (const auto* messageClass : DELIVERY_CLASS_NAMES) {
-        Serial.print(F(",scheduled_created_"));
-        Serial.print(messageClass);
-        Serial.print(F(",scheduled_transferred_"));
-        Serial.print(messageClass);
-        Serial.print(F(",outbox_inserted_"));
-        Serial.print(messageClass);
-        Serial.print(F(",current_scheduled_depth_"));
-        Serial.print(messageClass);
-        Serial.print(F(",current_outbox_depth_"));
-        Serial.print(messageClass);
-    }
-    Serial.print(F(",clock_coalesced_count,clock_expired_count,note_on_expired_count,"
-                   "terminal_note_off_abandoned_count,terminal_stop_abandoned_count,"
-                   "current_outbox_depth,max_outbox_depth,max_send_attempts_per_public_pass,"
-                   "outbox_capacity_failures,delivery_capacity_safety_stops,"
-                   "retry_window_safety_stops,session_generation_advances,explicit_clean_starts,"
-                   "current_session_generation"));
-    for (const auto* reason : INVALIDATION_REASON_NAMES) {
-        Serial.print(F(",session_ends_"));
-        Serial.print(reason);
-    }
-    Serial.print(F(",current_scheduled_depth_total,max_scheduled_depth"));
-    for (const auto* distribution : LATENESS_DISTRIBUTION_NAMES) {
-        Serial.print(',');
-        Serial.print(distribution);
-        Serial.print(F("_lateness_early,"));
-        Serial.print(distribution);
-        Serial.print(F("_lateness_on_time,"));
-        Serial.print(distribution);
-        Serial.print(F("_lateness_unordered"));
-        for (const auto* bucket : LATENESS_BUCKET_NAMES) {
-            Serial.print(',');
-            Serial.print(distribution);
-            Serial.print(F("_lateness_"));
-            Serial.print(bucket);
-        }
-    }
-    Serial.print(F(",observed_internal_tick_queue_depth,"
-                   "observed_internal_tick_queue_high_water,internal_tick_queue_overflows"));
-}
-
-void printDeliveryDiagnostics(const SwingMetro::TransportDiagnostics& transport,
-                              const SwingMetro::InternalTickDiagnostics& producer) {
-    const auto print = [](std::uint32_t value) { Serial.print(value); };
-    for (const auto& delivery : transport.delivery) {
-        Serial.print(',');
-        print(delivery.attempts);
-        Serial.print(',');
-        print(delivery.accepted);
-        Serial.print(',');
-        print(delivery.retryLater);
-        Serial.print(',');
-        print(delivery.disconnected);
-        Serial.print(',');
-        print(delivery.retryRecovered);
-        Serial.print(',');
-        print(delivery.maxFirstAttemptLatenessUs);
-        Serial.print(',');
-        print(delivery.maxAcceptanceLatenessUs);
-    }
-    for (std::size_t reason = 0; reason < DELIVERY_REMOVAL_NAMES.size(); ++reason) {
-        for (std::size_t messageClass = 0; messageClass < DELIVERY_CLASS_NAMES.size();
-             ++messageClass) {
-            Serial.print(',');
-            print(transport.pendingRemovals[reason][messageClass]);
-            Serial.print(',');
-            print(transport.scheduledRemovals[reason][messageClass]);
-        }
-    }
-    for (std::size_t messageClass = 0; messageClass < DELIVERY_CLASS_NAMES.size(); ++messageClass) {
-        Serial.print(',');
-        print(transport.scheduledCreated[messageClass]);
-        Serial.print(',');
-        print(transport.scheduledTransferred[messageClass]);
-        Serial.print(',');
-        print(transport.outboxInserted[messageClass]);
-        Serial.print(',');
-        print(transport.currentScheduledDepth[messageClass]);
-        Serial.print(',');
-        print(transport.currentOutboxDepthByClass[messageClass]);
-    }
-    Serial.print(',');
-    print(transport.clockCoalescedCount);
-    Serial.print(',');
-    print(transport.clockExpiredCount);
-    Serial.print(',');
-    print(transport.noteOnExpiredCount);
-    Serial.print(',');
-    print(transport.terminalNoteOffAbandonedCount);
-    Serial.print(',');
-    print(transport.terminalStopAbandonedCount);
-    Serial.print(',');
-    print(transport.currentOutboxDepth);
-    Serial.print(',');
-    print(transport.maxOutboxDepth);
-    Serial.print(',');
-    print(transport.maxSendAttemptsPerPublicPass);
-    Serial.print(',');
-    print(transport.outboxCapacityFailures);
-    Serial.print(',');
-    print(transport.deliveryCapacitySafetyStops);
-    Serial.print(',');
-    print(transport.retryWindowSafetyStops);
-    Serial.print(',');
-    print(transport.sessionGenerationAdvances);
-    Serial.print(',');
-    print(transport.explicitCleanStarts);
-    Serial.print(',');
-    print(transport.currentSessionGeneration);
-    for (const auto count : transport.sessionEnds) {
-        Serial.print(',');
-        print(count);
-    }
-#if SWING_METRO_STAGE5_INSTRUMENTATION
-    Serial.print(',');
-    print(transport.currentScheduledDepthTotal);
-    Serial.print(',');
-    print(transport.maxScheduledDepth);
-    const auto printDistribution = [&print](const SwingMetro::LatenessDistribution& distribution) {
-        Serial.print(',');
-        print(distribution.early);
-        Serial.print(',');
-        print(distribution.onTime);
-        Serial.print(',');
-        print(distribution.unordered);
-        for (const auto bucket : distribution.positive) {
-            Serial.print(',');
-            print(bucket);
-        }
-    };
-    printDistribution(transport.clockAttemptLateness);
-    printDistribution(transport.clockAcceptedLateness);
-    printDistribution(transport.noteAttemptLateness);
-    printDistribution(transport.noteAcceptedLateness);
-#else
-    constexpr std::size_t stage5TransportFieldCount =
-        2 + (4 * (3 + SwingMetro::LatenessDistribution::POSITIVE_BUCKET_COUNT));
-    for (std::size_t field = 0; field < stage5TransportFieldCount; ++field) {
-        Serial.print(F(",0"));
-    }
-#endif
-    Serial.print(',');
-    print(producer.observedTickQueueDepth);
-    Serial.print(',');
-    print(producer.observedTickQueueHighWater);
-    Serial.print(',');
-    print(producer.tickQueueOverflows);
-}
-
-void exportInternalTimingDiagnostics(
-    const SwingMetro::RuntimeTimingSnapshot& runtime,
-    const SwingMetro::EncoderSampleWindowDiagnostics& encoderWindow) {
-    if (transportController.usesInternalTiming() || transportController.isRunning()) {
-        return;
-    }
-    const auto diagnostics = transportController.pipelineDiagnostics(internalTicks);
-    const auto& producer = diagnostics.producer;
-    const auto transport = transportController.diagnostics();
-
-    if (!diagnosticsHeaderPrinted) {
-        Serial.print(
-            F("swing_metro_diagnostics_v4,alarm_callback_invocations,"
-              "synchronous_start_publication_attempts,successful_publications,"
-              "failed_publications,tick_queue_overflows,stop_discards,mode_switch_discards,"
-              "storage_discards,alarm_arm_failures,stale_alarm_callbacks,"
-              "stale_alarm_arm_failures,missed_scheduled_targets,"
-              "out_of_horizon_alarm_callbacks,max_actual_callback_interval_us,"
-              "max_callback_lateness_us,successful_consumer_pops,budget_discards,"
-              "outgoing_internal_f8_attempts,max_service_interval_us,"
-              "max_internal_tick_processing_lateness_us,"
-              "max_external_tick_processing_lateness_us,max_f8_attempt_lateness_us,"
-              "max_queued_event_attempt_lateness_us,max_internal_ticks_popped_per_process_pass,"
-              "internal_tick_budget_reached_passes,"
-              "max_remaining_internal_ticks_after_budget_pass,max_process_duration_us"));
-        printDeliveryDiagnosticsHeader();
-        Serial.println();
-        Serial.println(F("swing_metro_input_diagnostics_v1,max_actual_encoder_sample_interval_us,"
-                         "encoder_sample_intervals_above_1250_us"));
-        Serial.println(F("swing_metro_runtime_diagnostics_v1,lv_timer_handler_count,"
-                         "lv_timer_handler_inclusive_total_us,lv_timer_handler_inclusive_max_us,"
-                         "display_flush_count,display_flush_inclusive_total_us,"
-                         "display_flush_inclusive_max_us,encoder_sample_window_max_interval_us,"
-                         "encoder_sample_window_intervals_above_1250_us"));
-        diagnosticsHeaderPrinted = true;
-    }
-
-    Serial.print(F("swing_metro_diagnostics_v4,"));
-    const auto print = [](std::uint32_t value) { Serial.print(value); };
-    const auto separator = []() { Serial.print(','); };
-    print(producer.alarmCallbackInvocations);
-    separator();
-    print(producer.synchronousStartPublicationAttempts);
-    separator();
-    print(producer.successfulPublications);
-    separator();
-    print(producer.failedPublications);
-    separator();
-    print(producer.failedPublications);
-    separator();
-    print(producer.stopDiscards);
-    separator();
-    print(producer.modeSwitchDiscards);
-    separator();
-    print(producer.storageDiscards);
-    separator();
-    print(producer.alarmArmFailures);
-    separator();
-    print(producer.staleAlarmCallbacks);
-    separator();
-    print(producer.staleAlarmArmFailures);
-    separator();
-    print(producer.missedScheduledTargets);
-    separator();
-    print(producer.outOfHorizonAlarmCallbacks);
-    separator();
-    print(producer.maxActualCallbackIntervalUs);
-    separator();
-    print(producer.maxCallbackLatenessUs);
-    separator();
-    print(diagnostics.successfulConsumerPops);
-    separator();
-    print(diagnostics.budgetDiscards);
-    separator();
-    print(diagnostics.outgoingInternalClockAttempts);
-    separator();
-    print(transport.maxServiceIntervalUs);
-    separator();
-    print(transport.maxInternalTickProcessingLatenessUs);
-    separator();
-    print(transport.maxExternalTickProcessingLatenessUs);
-    separator();
-    print(transport.maxClockAttemptLatenessUs);
-    separator();
-    print(transport.maxQueuedEventAttemptLatenessUs);
-    separator();
-    print(transport.maxInternalTicksPoppedPerProcessPass);
-    separator();
-    print(transport.internalTickBudgetReachedPasses);
-    separator();
-    print(transport.maxRemainingInternalTicksAfterBudgetPass);
-    separator();
-    print(transport.maxProcessDurationUs);
-    printDeliveryDiagnostics(transport, producer);
-    Serial.println();
-    Serial.print(F("swing_metro_input_diagnostics_v1,"));
-    Serial.print(encoderSampleDiagnostics.maxActualIntervalUs());
-    Serial.print(',');
-    Serial.println(encoderSampleDiagnostics.intervalsAboveBound());
-    Serial.print(F("swing_metro_runtime_diagnostics_v1,"));
-    print(runtime.lvTimerHandlerCount);
-    separator();
-    print(runtime.lvTimerHandlerInclusiveTotalUs);
-    separator();
-    print(runtime.lvTimerHandlerInclusiveMaxUs);
-    separator();
-    print(runtime.displayFlushCount);
-    separator();
-    print(runtime.displayFlushInclusiveTotalUs);
-    separator();
-    print(runtime.displayFlushInclusiveMaxUs);
-    separator();
-    print(encoderWindow.maxActualIntervalUs);
-    separator();
-    print(encoderWindow.intervalsAboveBound);
-    Serial.println();
-}
+};
 
 template <typename TAdapter>
 void handleEncoderDirection(const TAdapter& adapter, EncoderDirection direction) {
@@ -505,133 +180,6 @@ void handleEncoderDirection(const TAdapter& adapter, EncoderDirection direction)
 }
 
 void handleProgramStorageEvent(const SwingMetro::AppEvent& event, std::uint32_t nowUs);
-
-void pollSerialRunCommand() {
-    if (serialRunPreparing || serialRunActive || serialRunCompletionPending ||
-        runtimeDiagnosticsExportPending || transportController.usesInternalTiming()) {
-        return;
-    }
-    while (Serial.available() > 0) {
-        const auto byte = static_cast<char>(Serial.read());
-#if defined(SWING_METRO_STAGE5_FAULT_SCENARIOS)
-        if (!serialFaultCommand && byte == 'F') {
-            serialFaultCommand = true;
-        }
-        if (serialFaultCommand) {
-            const auto faultResult = faultCommandParser.push(byte);
-            if (byte == '\n') {
-                serialFaultCommand = false;
-            }
-            if (faultResult.status == SwingMetro::FaultCommandStatus::Pending) {
-                continue;
-            }
-            if (faultResult.status != SwingMetro::FaultCommandStatus::Ready ||
-                mainSequencer.isRunning()) {
-                Serial.println(F("swing_metro_fault_v1,error,select_only_while_stopped"));
-                continue;
-            }
-            midiSink.select(faultResult.scenario);
-            Serial.print(F("swing_metro_fault_v1,selected,"));
-            Serial.println(FAULT_SCENARIO_NAMES[static_cast<std::size_t>(faultResult.scenario)]);
-            Serial.flush();
-            continue;
-        }
-#endif
-        const auto result = serialRunCommandParser.push(byte);
-        if (result.status == SwingMetro::SerialRunCommandStatus::Pending) {
-            continue;
-        }
-        if (result.status == SwingMetro::SerialRunCommandStatus::Invalid ||
-            mainSequencer.isRunning()) {
-            Serial.println(F("swing_metro_control_v1,error,expected RUN or EXTERNAL_RUN "
-                             "<ms> <bpm> <swing> while stopped"));
-            continue;
-        }
-
-        serialRunDurationMs = result.command.durationMs;
-        serialRunBpm = result.command.bpm;
-        serialRunSwing = result.command.swing;
-        serialRunMode = result.command.mode;
-        if (serialRunMode == SwingMetro::SerialRunMode::External) {
-            if (midiClockSettings.mode() != SwingMetro::MidiClockMode::External) {
-                Serial.println(
-                    F("swing_metro_control_v1,error,external_run_requires_external_mode"));
-                continue;
-            }
-            serialRunStartSnapshotGeneration = runtimeTimingDiagnostics.requestSnapshot();
-            serialRunPreparing = true;
-            return;
-        }
-
-        tempoCounter.setValue(result.command.bpm);
-        swingCounter.setValue(result.command.swing);
-        mainSequencer.setBpm(tempoCounter.getValue());
-        mainSequencer.setSwing(swingCounter.getValue());
-        transportController.applyMode(SwingMetro::MidiClockMode::Internal, micros());
-        Serial.print(F("swing_metro_control_v1,run_started,"));
-        Serial.print(result.command.durationMs);
-        Serial.print(',');
-        Serial.print(result.command.bpm);
-        Serial.print(',');
-        Serial.println(result.command.swing);
-        Serial.flush();
-        serialRunStartedAtMs = millis();
-        serialRunActive = true;
-        transportController.toggle(micros());
-        return;
-    }
-}
-
-void updateSerialRun() {
-    if (serialRunPreparing) {
-        SwingMetro::RuntimeTimingSnapshot discardedSnapshot;
-        if (!runtimeTimingDiagnostics.readSnapshot(serialRunStartSnapshotGeneration,
-                                                   discardedSnapshot)) {
-            return;
-        }
-        (void)encoderSampleDiagnostics.snapshotAndResetWindow();
-        Serial.print(F("swing_metro_control_v1,run_started,"));
-        Serial.print(serialRunDurationMs);
-        Serial.print(',');
-        Serial.print(serialRunBpm);
-        Serial.print(',');
-        Serial.println(serialRunSwing);
-        Serial.flush();
-        serialRunStartedAtMs = millis();
-        serialRunPreparing = false;
-        serialRunActive = true;
-        return;
-    }
-    if (!serialRunActive) {
-        return;
-    }
-    if (serialRunMode == SwingMetro::SerialRunMode::Internal &&
-        !transportController.usesInternalTiming()) {
-        serialRunActive = false;
-        serialRunCompletionPending = true;
-        return;
-    }
-    if (millis() - serialRunStartedAtMs < serialRunDurationMs) {
-        return;
-    }
-    if (serialRunMode == SwingMetro::SerialRunMode::Internal) {
-        transportController.toggle(micros());
-    } else if (midiClockSettings.mode() != SwingMetro::MidiClockMode::External) {
-        Serial.println(F("swing_metro_control_v1,error,external_mode_changed_during_run"));
-        serialRunActive = false;
-        return;
-    } else if (transportController.isRunning()) {
-        Serial.println(F("swing_metro_control_v1,error,external_transport_still_running"));
-        serialRunActive = false;
-        return;
-    } else {
-        runtimeEncoderSnapshot = encoderSampleDiagnostics.snapshotAndResetWindow();
-        runtimeDiagnosticsRequestGeneration = runtimeTimingDiagnostics.requestSnapshot();
-        runtimeDiagnosticsExportPending = true;
-    }
-    serialRunActive = false;
-    serialRunCompletionPending = true;
-}
 
 void handleButtonBatch(const SwingMetro::StepButtonInputs::Batch& batch, std::uint32_t nowUs) {
     for (std::size_t index = 0; index < batch.size(); ++index) {
@@ -706,8 +254,7 @@ void handleProgramStorageEvent(const SwingMetro::AppEvent& event, std::uint32_t 
 void syncInternalAlarm() {
     const bool shouldRun = transportController.usesInternalTiming();
     if (shouldRun && !internalAlarmActive) {
-        (void)runtimeTimingDiagnostics.requestSnapshot();
-        (void)encoderSampleDiagnostics.snapshotAndResetWindow();
+        diagnosticsCapture.beginWindow();
         internalTickAlarm.start(mainSequencer.getBpm(),
                                 transportController.internalTickDiscardReason());
         internalAlarmActive = true;
@@ -715,9 +262,7 @@ void syncInternalAlarm() {
     } else if (!shouldRun && internalAlarmActive) {
         internalTickAlarm.stop(transportController.internalTickDiscardReason());
         internalAlarmActive = false;
-        runtimeEncoderSnapshot = encoderSampleDiagnostics.snapshotAndResetWindow();
-        runtimeDiagnosticsRequestGeneration = runtimeTimingDiagnostics.requestSnapshot();
-        runtimeDiagnosticsExportPending = true;
+        diagnosticsCapture.requestExport();
     } else if (shouldRun && internalAlarmBpm != mainSequencer.getBpm()) {
         internalTickAlarm.setBpm(mainSequencer.getBpm());
         internalAlarmBpm = mainSequencer.getBpm();
@@ -762,7 +307,7 @@ void setup() {
 }
 
 void loop() {
-    pollSerialRunCommand();
+    serialRunController.pollSerialRunCommand();
     midiClockReceiver.poll([&](const SwingMetro::MidiRealtimeEvent& event) {
         transportController.handleExternal(event, micros());
     });
@@ -781,19 +326,10 @@ void loop() {
         pollEncoderInputs(encoderNowUs);
     }
 
-    updateSerialRun();
+    serialRunController.updateSerialRun();
     syncInternalAlarm();
-    SwingMetro::RuntimeTimingSnapshot runtimeSnapshot;
-    if (runtimeDiagnosticsExportPending && !transportController.isRunning() &&
-        runtimeTimingDiagnostics.readSnapshot(runtimeDiagnosticsRequestGeneration,
-                                              runtimeSnapshot)) {
-        exportInternalTimingDiagnostics(runtimeSnapshot, runtimeEncoderSnapshot);
-        runtimeDiagnosticsExportPending = false;
-    }
-    if (serialRunCompletionPending && !internalAlarmActive && !runtimeDiagnosticsExportPending) {
-        Serial.println(F("swing_metro_control_v1,run_complete"));
-        serialRunCompletionPending = false;
-    }
+    diagnosticsCapture.exportIfReady();
+    serialRunController.completeIfReady(internalAlarmActive);
 
     UiSettings settings{tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue(),
                         mainSequencer.getDisplayStepIndex().value_or(UINT8_MAX),
