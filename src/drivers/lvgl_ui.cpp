@@ -6,23 +6,11 @@
 void LvglUi::setup() {
     _display.setup();
 
-    lv_subject_init_int(&_tempoSubject, 120);
-    lv_subject_set_max_value_int(&_tempoSubject, 240);
-    lv_subject_set_min_value_int(&_tempoSubject, 40);
-
-    lv_subject_init_int(&_swingSubject, 50);
-    lv_subject_set_min_value_int(&_swingSubject, 50);
-    lv_subject_set_max_value_int(&_swingSubject, 100);
-
-    lv_subject_init_int(&_volumeSubject, 100);
-    lv_subject_set_min_value_int(&_volumeSubject, 0);
-    lv_subject_set_max_value_int(&_volumeSubject, 100);
-
-    initMainScreen();
-    initStepSettingsScreen();
+    _mainScreen.create();
+    _stepSettingsScreen.create();
     initMidiClockModal();
     initProgramStorageModal();
-    lv_screen_load(_mainScreen);
+    lv_screen_load(_mainScreen.root());
 }
 
 void LvglUi::loop() {
@@ -40,130 +28,21 @@ void LvglUi::loop() {
 
 void LvglUi::readViewModel(const UiViewModel& viewModel) {
     const auto values = viewModel.read();
-    setTempo(values.main.tempo);
-    setSwing(values.main.swing);
-    setVolume(values.main.volume);
-
-    setSteps(values.main.notesState, values.main.activeNote);
-
-    if (values.page == UiPage::StepSettings && values.editor.selectedStep < SEQUENCER_STEPS_COUNT) {
-        static constexpr const char* noteNames[] = {"C",  "C#", "D",  "D#", "E",  "F",
-                                                    "F#", "G",  "G#", "A",  "A#", "B"};
-        if (values.editor.selectedStep != _displayedStep) {
-            _displayedStep = values.editor.selectedStep;
-            lv_label_set_text_fmt(_selectedStepLabel, "Step %u",
-                                  static_cast<unsigned>(values.editor.selectedStep + 1));
-        }
-        if (values.editor.selectedNote != _displayedNote && values.editor.selectedNote >= 36) {
-            _displayedNote = values.editor.selectedNote;
-            const auto relativeNote = static_cast<uint8_t>(values.editor.selectedNote - 36);
-            lv_label_set_text_fmt(_selectedNoteLabel, "Note: %s%u", noteNames[relativeNote % 12],
-                                  static_cast<unsigned>(relativeNote / 12));
-        }
-        if (values.editor.selectedVelocity != _displayedVelocity) {
-            _displayedVelocity = values.editor.selectedVelocity;
-            lv_label_set_text_fmt(_selectedVelocityLabel, "Velocity: %u",
-                                  static_cast<unsigned>(values.editor.selectedVelocity));
-        }
-        if (values.editor.selectedGate != _displayedGate) {
-            _displayedGate = values.editor.selectedGate;
-            lv_label_set_text_fmt(_selectedGateLabel, "Gate: %u%%",
-                                  static_cast<unsigned>(values.editor.selectedGate));
-        }
+    _mainScreen.apply(values.main);
+    if (values.page == UiPage::StepSettings) {
+        _stepSettingsScreen.apply(values.editor);
     }
 
     if (values.page != _currentPage) {
         _currentPage = values.page;
-        lv_screen_load(_currentPage == UiPage::StepSettings ? _stepSettingsScreen : _mainScreen);
+        lv_screen_load(_currentPage == UiPage::StepSettings ? _stepSettingsScreen.root()
+                                                            : _mainScreen.root());
     }
 
     setMidiClockModal(values.midiClock.modalOpen, values.midiClock.active,
                       values.midiClock.selection);
-    setExternalClock(values.main.externalClockStatus, values.main.externalTempo);
     setProgramStorageModal(values.storage.state, values.storage.selection, values.storage.action,
                            values.storage.slot, values.storage.resetChoice, values.storage.status);
-}
-
-void LvglUi::setTempo(uint8_t value) { lv_subject_set_int(&_tempoSubject, value); }
-void LvglUi::setSwing(uint8_t value) { lv_subject_set_int(&_swingSubject, value); }
-void LvglUi::setVolume(uint8_t value) { lv_subject_set_int(&_volumeSubject, value); }
-
-void LvglUi::setSteps(std::bitset<SEQUENCER_STEPS_COUNT> stepsState, uint8_t activeStep) {
-    _stepGrid.setSteps(stepsState, activeStep);
-}
-
-void LvglUi::initMainScreen() {
-    _mainScreen = lv_obj_create(nullptr);
-
-    lv_obj_set_style_text_font(_mainScreen, &lv_font_montserrat_12, 0);
-    UiTheme::setScreenStyle(_mainScreen);
-
-    auto* tempoLabel = lv_label_create(_mainScreen);
-    lv_obj_set_pos(tempoLabel, 10, 10);
-    lv_obj_set_style_text_color(tempoLabel, lv_color_hex(UiTheme::RED), 0);
-    lv_label_bind_text(tempoLabel, &_tempoSubject, "Tempo: %d");
-
-    auto* swingLabel = lv_label_create(_mainScreen);
-    lv_obj_set_pos(swingLabel, 10, 30);
-    lv_obj_set_style_text_color(swingLabel, lv_color_hex(UiTheme::GREEN), 0);
-    lv_label_bind_text(swingLabel, &_swingSubject, "Swing: %d");
-
-    auto* volumeLabel = lv_label_create(_mainScreen);
-    lv_obj_set_pos(volumeLabel, 10, 50);
-    lv_obj_set_style_text_color(volumeLabel, lv_color_hex(UiTheme::BLUE), 0);
-    lv_label_bind_text(volumeLabel, &_volumeSubject, "Volume: %d");
-
-    _externalClockLabel = lv_label_create(_mainScreen);
-    lv_obj_set_pos(_externalClockLabel, 10, 70);
-    lv_obj_set_style_text_color(_externalClockLabel, lv_color_hex(UiTheme::CYAN), 0);
-    lv_label_set_text(_externalClockLabel, "Clock: Waiting");
-
-    lv_obj_add_event_cb(_mainScreen, onMainScreenLoaded, LV_EVENT_SCREEN_LOADED, this);
-
-    _stepGrid.init(_mainScreen);
-}
-
-void LvglUi::setExternalClock(SwingMetro::ExternalMidiClockStatus status, uint8_t tempo) {
-    if (status == _displayedExternalClockStatus && tempo == _displayedExternalTempo) {
-        return;
-    }
-    _displayedExternalClockStatus = status;
-    _displayedExternalTempo = tempo;
-    static constexpr const char* names[] = {"Waiting", "Locked", "Lost"};
-    if (tempo == 0) {
-        lv_label_set_text_fmt(_externalClockLabel, "Clock: %s",
-                              names[static_cast<uint8_t>(status)]);
-    } else {
-        lv_label_set_text_fmt(_externalClockLabel, "Clock: %s %u BPM",
-                              names[static_cast<uint8_t>(status)], static_cast<unsigned>(tempo));
-    }
-}
-
-void LvglUi::initStepSettingsScreen() {
-    constexpr int16_t velocityLabelY = 80;
-    constexpr int16_t gateLabelY = 110;
-    _stepSettingsScreen = lv_obj_create(nullptr);
-    UiTheme::setScreenStyle(_stepSettingsScreen);
-
-    _selectedStepLabel = lv_label_create(_stepSettingsScreen);
-    lv_obj_set_pos(_selectedStepLabel, 10, 20);
-    lv_obj_set_style_text_color(_selectedStepLabel, lv_color_hex(UiTheme::ORANGE), 0);
-    lv_label_set_text(_selectedStepLabel, "Step 1");
-
-    _selectedNoteLabel = lv_label_create(_stepSettingsScreen);
-    lv_obj_set_pos(_selectedNoteLabel, 10, 50);
-    lv_obj_set_style_text_color(_selectedNoteLabel, lv_color_hex(UiTheme::WHITE), 0);
-    lv_label_set_text(_selectedNoteLabel, "Note: C0");
-
-    _selectedVelocityLabel = lv_label_create(_stepSettingsScreen);
-    lv_obj_set_pos(_selectedVelocityLabel, 10, velocityLabelY);
-    lv_obj_set_style_text_color(_selectedVelocityLabel, lv_color_hex(UiTheme::WHITE), 0);
-    lv_label_set_text(_selectedVelocityLabel, "Velocity: 127");
-
-    _selectedGateLabel = lv_label_create(_stepSettingsScreen);
-    lv_obj_set_pos(_selectedGateLabel, 10, gateLabelY);
-    lv_obj_set_style_text_color(_selectedGateLabel, lv_color_hex(UiTheme::WHITE), 0);
-    lv_label_set_text(_selectedGateLabel, "Gate: 100%");
 }
 
 void LvglUi::initMidiClockModal() {
@@ -325,9 +204,4 @@ void LvglUi::setProgramStorageModal(SwingMetro::ProgramStorageModalState state,
             lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
         }
     }
-}
-
-void LvglUi::onMainScreenLoaded(lv_event_t* event) {
-    auto& self = *static_cast<LvglUi*>(lv_event_get_user_data(event));
-    self._stepGrid.draw();
 }
