@@ -1,30 +1,22 @@
 #pragma once
 
-#include <Arduino_GFX_Library.h>
 #include <array>
 #include <lvgl.h>
 
 #include "components/ui_view_model.h"
 #include "engine/runtime_timing_diagnostics.h"
-
-constexpr const uint8_t DISPLAY_SPI_CLOCK_PIN = 10;
-constexpr const uint8_t DISPLAY_SPI_DATA_OUT_PIN = 11;
-constexpr const uint8_t DISPLAY_DATA_COMMAND_PIN = 12;
-constexpr const uint8_t DISPLAY_CHIP_SELECT_PIN = 13;
-constexpr const uint8_t DISPLAY_RESET_PIN = 14;
-constexpr const uint8_t DISPLAY_BACKLIGHT_PIN = 15;
-
-constexpr const int16_t DISPLAY_WIDTH = 128;
-constexpr const int16_t DISPLAY_HEIGHT = 160;
-constexpr const int16_t BUFFER_ROWS = 40;
-constexpr const int16_t BUFFER_SIZE = DISPLAY_HEIGHT * BUFFER_ROWS;
-
-constexpr const uint8_t SEQUENCER_STEPS_COUNT = 16;
+#include "ui/pico_display.h"
+#include "ui/step_grid.h"
 
 class LvglUi {
   public:
     explicit LvglUi(SwingMetro::RuntimeTimingDiagnostics& runtimeTimingDiagnostics)
-        : _runtimeTimingDiagnostics(runtimeTimingDiagnostics) {}
+        : _runtimeTimingDiagnostics(runtimeTimingDiagnostics), _display(runtimeTimingDiagnostics) {}
+
+    LvglUi(const LvglUi&) = delete;
+    LvglUi& operator=(const LvglUi&) = delete;
+    LvglUi(LvglUi&&) = delete;
+    LvglUi& operator=(LvglUi&&) = delete;
 
     void setup();
     void loop();
@@ -38,18 +30,7 @@ class LvglUi {
 
   private:
     SwingMetro::RuntimeTimingDiagnostics& _runtimeTimingDiagnostics;
-    std::array<lv_color_t, BUFFER_SIZE> _drawBuffer{};
-    lv_display_t* _display;
-    Arduino_RPiPicoSPI _bus{DISPLAY_DATA_COMMAND_PIN,
-                            DISPLAY_CHIP_SELECT_PIN,
-                            DISPLAY_SPI_CLOCK_PIN,
-                            DISPLAY_SPI_DATA_OUT_PIN,
-                            0,
-                            spi1};
-    Arduino_ST7735 _gfx{
-        &_bus, DISPLAY_RESET_PIN, 1U, false, DISPLAY_WIDTH, DISPLAY_HEIGHT, 0, 0, 0, 0, false};
-
-    static void flush(lv_display_t* display, const lv_area_t* area, uint8_t* pixels);
+    PicoDisplay _display;
 
     // SCREENS
     lv_obj_t* _mainScreen;
@@ -89,8 +70,7 @@ class LvglUi {
     SwingMetro::ProgramStoreStatus _displayedProgramStorageStatus =
         SwingMetro::ProgramStoreStatus::Ok;
 
-    // Main screen
-    std::array<lv_obj_t*, SEQUENCER_STEPS_COUNT> _stepSquares{};
+    StepGrid _stepGrid;
 
     void initMainScreen();
     void initStepSettingsScreen();
@@ -104,17 +84,11 @@ class LvglUi {
                                 SwingMetro::ProgramStorageAction action, uint8_t slot,
                                 SwingMetro::ProgramResetChoice resetChoice,
                                 SwingMetro::ProgramStoreStatus status);
-    void drawSequencerSteps();
-    void drawSequencerSteps(uint32_t rawValue);
-
     // DATA
     lv_subject_t _tempoSubject;
     lv_subject_t _swingSubject;
     lv_subject_t _volumeSubject;
 
-    lv_subject_t _sequencerStepsSubject;
-
     // HANDLERS
     static void onMainScreenLoaded(lv_event_t* event);
-    static void onStepsChanged(lv_observer_t* observer, lv_subject_t* subject);
 };
