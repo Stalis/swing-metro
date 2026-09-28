@@ -298,8 +298,10 @@ void setup() {
     mainSequencer.stop();
     (void)programSlotStore.mount();
     (void)programStorageController.restoreCurrentProgram();
-    uiViewModel.publish(appInputCoordinator.decorateUiSettings(
-        {tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue()}));
+    uiViewModel.publish(
+        appInputCoordinator.decorateUiSettings({.main = {.tempo = tempoCounter.getValue(),
+                                                         .swing = swingCounter.getValue(),
+                                                         .volume = volumeCounter.getValue()}}));
 
     mainSequencer.sync(micros());
     matrixScanScheduler.start(millis());
@@ -331,11 +333,14 @@ void loop() {
     diagnosticsCapture.exportIfReady();
     serialRunController.completeIfReady(internalAlarmActive);
 
-    UiSettings settings{tempoCounter.getValue(), swingCounter.getValue(), volumeCounter.getValue(),
-                        mainSequencer.getDisplayStepIndex().value_or(UINT8_MAX),
-                        mainSequencer.getStepsEnabled()};
-    settings.externalClockStatus = transportController.externalStatus();
-    settings.externalTempo = transportController.externalBpm();
+    UiSettings settings{
+        .main = {.tempo = tempoCounter.getValue(),
+                 .swing = swingCounter.getValue(),
+                 .volume = volumeCounter.getValue(),
+                 .activeNote = mainSequencer.getDisplayStepIndex().value_or(UINT8_MAX),
+                 .notesState = mainSequencer.getStepsEnabled()}};
+    settings.main.externalClockStatus = transportController.externalStatus();
+    settings.main.externalTempo = transportController.externalBpm();
     uiViewModel.publish(appInputCoordinator.decorateUiSettings(settings));
     appInputCoordinator.processProgramStorage();
     if (!appInputCoordinator.isProgramStorageModalOpen()) {

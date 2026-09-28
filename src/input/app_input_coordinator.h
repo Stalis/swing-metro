@@ -2,7 +2,7 @@
 
 #include "app_contexts.h"
 #include "app_event_handler.h"
-#include "components/ui_view_model.h"
+#include "components/ui_snapshot.h"
 #include "engine/transport_controller.h"
 #include "main_display_context.h"
 #include "program/program_storage_controller.h"
@@ -197,28 +197,28 @@ class AppInputCoordinator {
 
     [[nodiscard]] auto decorateUiSettings(UiSettings settings) const -> UiSettings {
         settings.page = currentPage();
-        settings.selectedStep = _selectedStep.value_or(UINT8_MAX);
-        settings.selectedNote = _selectedStep.has_value()
-                                    ? _sequencer.getStepMidiNote(*_selectedStep).value_or(36)
-                                    : 36;
-        settings.selectedVelocity = _selectedStep.has_value()
-                                        ? _sequencer.getStepVelocity(*_selectedStep).value_or(127)
-                                        : 127;
-        settings.selectedGate =
+        settings.editor.selectedStep = _selectedStep.value_or(UINT8_MAX);
+        settings.editor.selectedNote = _selectedStep.has_value()
+                                           ? _sequencer.getStepMidiNote(*_selectedStep).value_or(36)
+                                           : 36;
+        settings.editor.selectedVelocity =
+            _selectedStep.has_value() ? _sequencer.getStepVelocity(*_selectedStep).value_or(127)
+                                      : 127;
+        settings.editor.selectedGate =
             _selectedStep.has_value()
                 ? _sequencer.getStepGate(*_selectedStep).value_or(STEP_DEFAULT_GATE)
                 : STEP_DEFAULT_GATE;
-        settings.transportRunning = _sequencer.isRunning();
-        settings.shiftActive = isShiftActive();
-        settings.midiClockModalOpen = _midiClockModalOpen;
-        settings.midiClockActive = _midiClock.mode();
-        settings.midiClockSelection = _midiClockSelection;
-        settings.programStorageState = _programStorageState;
-        settings.programStorageSelection = _programStorageSelection;
-        settings.programStorageAction = _programStorageAction;
-        settings.programStorageSlot = _programStorageSlot;
-        settings.programStorageStatus = _programStorageStatus;
-        settings.programResetChoice = _programResetChoice;
+        settings.editor.transportRunning = _sequencer.isRunning();
+        settings.editor.shiftActive = isShiftActive();
+        settings.midiClock.modalOpen = _midiClockModalOpen;
+        settings.midiClock.active = _midiClock.mode();
+        settings.midiClock.selection = _midiClockSelection;
+        settings.storage.state = _programStorageState;
+        settings.storage.selection = _programStorageSelection;
+        settings.storage.action = _programStorageAction;
+        settings.storage.slot = _programStorageSlot;
+        settings.storage.status = _programStorageStatus;
+        settings.storage.resetChoice = _programResetChoice;
         return settings;
     }
 

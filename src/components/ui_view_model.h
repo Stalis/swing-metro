@@ -1,49 +1,10 @@
 #pragma once
 
-#include "engine/external_midi_clock.h"
-#include "engine/midi_clock_mode.h"
-#include "program/program_slot_store.h"
-#include "program/program_storage_modal.h"
+#include "ui_snapshot.h"
 
 #include <atomic>
-#include <bitset>
 #include <cstdint>
 #include <optional>
-
-enum class UiPage : uint8_t {
-    MainDisplay,
-    StepSettings,
-};
-
-struct UiSettings {
-    uint8_t tempo;
-    uint8_t swing;
-    uint8_t volume;
-    uint8_t activeNote;
-
-    std::bitset<16> notesState;
-    UiPage page = UiPage::MainDisplay;
-    uint8_t selectedStep = UINT8_MAX;
-    uint8_t selectedNote = 36;
-    uint8_t selectedVelocity = 127;
-    uint8_t selectedGate = 100;
-    bool transportRunning = true;
-    bool shiftActive = false;
-    bool midiClockModalOpen = false;
-    SwingMetro::MidiClockMode midiClockActive = SwingMetro::MidiClockMode::Off;
-    SwingMetro::MidiClockMenuItem midiClockSelection = SwingMetro::MidiClockMenuItem::Off;
-    SwingMetro::ExternalMidiClockStatus externalClockStatus =
-        SwingMetro::ExternalMidiClockStatus::Waiting;
-    uint8_t externalTempo = 0;
-    SwingMetro::ProgramStorageModalState programStorageState =
-        SwingMetro::ProgramStorageModalState::Closed;
-    SwingMetro::ProgramStorageMenuItem programStorageSelection =
-        SwingMetro::ProgramStorageMenuItem::Save;
-    SwingMetro::ProgramStorageAction programStorageAction = SwingMetro::ProgramStorageAction::Save;
-    uint8_t programStorageSlot = 0;
-    SwingMetro::ProgramResetChoice programResetChoice = SwingMetro::ProgramResetChoice::No;
-    SwingMetro::ProgramStoreStatus programStorageStatus = SwingMetro::ProgramStoreStatus::Ok;
-};
 
 class UiViewModel {
   public:
@@ -53,36 +14,37 @@ class UiViewModel {
             return;
         }
 
-        const uint32_t packed = static_cast<uint32_t>(settings.tempo) |
-                                static_cast<uint32_t>(settings.swing) << 8 |
-                                static_cast<uint32_t>(settings.volume) << 16 |
-                                static_cast<uint32_t>(settings.activeNote) << (16 + 8);
-        const uint16_t notesPacked = static_cast<uint16_t>(settings.notesState.to_ulong());
-        const uint32_t navigationPacked = static_cast<uint32_t>(settings.selectedStep) |
-                                          static_cast<uint32_t>(settings.selectedNote) << 8 |
-                                          static_cast<uint32_t>(settings.page) << 16 |
-                                          static_cast<uint32_t>(settings.transportRunning) << 17 |
-                                          static_cast<uint32_t>(settings.shiftActive) << 18 |
-                                          static_cast<uint32_t>(settings.selectedVelocity) << 19 |
-                                          static_cast<uint32_t>(settings.midiClockModalOpen) << 27 |
-                                          static_cast<uint32_t>(settings.midiClockActive) << 28 |
-                                          static_cast<uint32_t>(settings.midiClockSelection) << 30;
+        const uint32_t packed = static_cast<uint32_t>(settings.main.tempo) |
+                                static_cast<uint32_t>(settings.main.swing) << 8 |
+                                static_cast<uint32_t>(settings.main.volume) << 16 |
+                                static_cast<uint32_t>(settings.main.activeNote) << (16 + 8);
+        const uint16_t notesPacked = static_cast<uint16_t>(settings.main.notesState.to_ulong());
+        const uint32_t navigationPacked =
+            static_cast<uint32_t>(settings.editor.selectedStep) |
+            static_cast<uint32_t>(settings.editor.selectedNote) << 8 |
+            static_cast<uint32_t>(settings.page) << 16 |
+            static_cast<uint32_t>(settings.editor.transportRunning) << 17 |
+            static_cast<uint32_t>(settings.editor.shiftActive) << 18 |
+            static_cast<uint32_t>(settings.editor.selectedVelocity) << 19 |
+            static_cast<uint32_t>(settings.midiClock.modalOpen) << 27 |
+            static_cast<uint32_t>(settings.midiClock.active) << 28 |
+            static_cast<uint32_t>(settings.midiClock.selection) << 30;
 
         _generation.fetch_add(1, std::memory_order_seq_cst);
         _packed.store(packed, std::memory_order_seq_cst);
         _notesPacked.store(notesPacked, std::memory_order_seq_cst);
         _navigationPacked.store(navigationPacked, std::memory_order_seq_cst);
-        _selectedGate.store(settings.selectedGate, std::memory_order_seq_cst);
-        _externalClockPacked.store(static_cast<uint32_t>(settings.externalTempo) |
-                                       static_cast<uint32_t>(settings.externalClockStatus) << 8,
+        _selectedGate.store(settings.editor.selectedGate, std::memory_order_seq_cst);
+        _externalClockPacked.store(static_cast<uint32_t>(settings.main.externalTempo) |
+                                       static_cast<uint32_t>(settings.main.externalClockStatus)
+                                           << 8,
                                    std::memory_order_seq_cst);
-        _programStoragePacked.store(static_cast<uint32_t>(settings.programStorageState) |
-                                        static_cast<uint32_t>(settings.programStorageAction) << 3 |
-                                        static_cast<uint32_t>(settings.programStorageSelection)
-                                            << 4 |
-                                        static_cast<uint32_t>(settings.programStorageSlot) << 6 |
-                                        static_cast<uint32_t>(settings.programResetChoice) << 14 |
-                                        static_cast<uint32_t>(settings.programStorageStatus) << 15,
+        _programStoragePacked.store(static_cast<uint32_t>(settings.storage.state) |
+                                        static_cast<uint32_t>(settings.storage.action) << 3 |
+                                        static_cast<uint32_t>(settings.storage.selection) << 4 |
+                                        static_cast<uint32_t>(settings.storage.slot) << 6 |
+                                        static_cast<uint32_t>(settings.storage.resetChoice) << 14 |
+                                        static_cast<uint32_t>(settings.storage.status) << 15,
                                     std::memory_order_seq_cst);
         _generation.fetch_add(1, std::memory_order_seq_cst);
         _lastPublished = settings;
@@ -109,62 +71,64 @@ class UiViewModel {
             }
 
             return {
-                .tempo = static_cast<uint8_t>(packed),
-                .swing = static_cast<uint8_t>(packed >> 8),
-                .volume = static_cast<uint8_t>(packed >> 16),
-                .activeNote = static_cast<uint8_t>(packed >> 24),
-                .notesState = std::bitset<16>(notesPacked),
+                .main = {.tempo = static_cast<uint8_t>(packed),
+                         .swing = static_cast<uint8_t>(packed >> 8),
+                         .volume = static_cast<uint8_t>(packed >> 16),
+                         .activeNote = static_cast<uint8_t>(packed >> 24),
+                         .notesState = std::bitset<16>(notesPacked),
+                         .externalClockStatus = static_cast<SwingMetro::ExternalMidiClockStatus>(
+                             (externalClockPacked >> 8) & 3U),
+                         .externalTempo = static_cast<uint8_t>(externalClockPacked)},
+                .editor = {.selectedStep = static_cast<uint8_t>(navigationPacked),
+                           .selectedNote = static_cast<uint8_t>(navigationPacked >> 8),
+                           .selectedVelocity = static_cast<uint8_t>(navigationPacked >> 19),
+                           .selectedGate = selectedGate,
+                           .transportRunning = ((navigationPacked >> 17) & 1U) != 0,
+                           .shiftActive = ((navigationPacked >> 18) & 1U) != 0},
+                .midiClock = {.modalOpen = ((navigationPacked >> 27) & 1U) != 0,
+                              .active = static_cast<SwingMetro::MidiClockMode>(
+                                  (navigationPacked >> 28) & 3U),
+                              .selection = static_cast<SwingMetro::MidiClockMenuItem>(
+                                  navigationPacked >> 30)},
+                .storage = {.state = static_cast<SwingMetro::ProgramStorageModalState>(
+                                programStoragePacked & 7U),
+                            .selection = static_cast<SwingMetro::ProgramStorageMenuItem>(
+                                (programStoragePacked >> 4) & 3U),
+                            .action = static_cast<SwingMetro::ProgramStorageAction>(
+                                (programStoragePacked >> 3) & 1U),
+                            .slot = static_cast<uint8_t>((programStoragePacked >> 6) & 255U),
+                            .resetChoice = static_cast<SwingMetro::ProgramResetChoice>(
+                                (programStoragePacked >> 14) & 1U),
+                            .status = static_cast<SwingMetro::ProgramStoreStatus>(
+                                programStoragePacked >> 15)},
                 .page = static_cast<UiPage>((navigationPacked >> 16) & 1U),
-                .selectedStep = static_cast<uint8_t>(navigationPacked),
-                .selectedNote = static_cast<uint8_t>(navigationPacked >> 8),
-                .selectedVelocity = static_cast<uint8_t>(navigationPacked >> 19),
-                .selectedGate = selectedGate,
-                .transportRunning = ((navigationPacked >> 17) & 1U) != 0,
-                .shiftActive = ((navigationPacked >> 18) & 1U) != 0,
-                .midiClockModalOpen = ((navigationPacked >> 27) & 1U) != 0,
-                .midiClockActive =
-                    static_cast<SwingMetro::MidiClockMode>((navigationPacked >> 28) & 3U),
-                .midiClockSelection =
-                    static_cast<SwingMetro::MidiClockMenuItem>(navigationPacked >> 30),
-                .externalClockStatus = static_cast<SwingMetro::ExternalMidiClockStatus>(
-                    (externalClockPacked >> 8) & 3U),
-                .externalTempo = static_cast<uint8_t>(externalClockPacked),
-                .programStorageState =
-                    static_cast<SwingMetro::ProgramStorageModalState>(programStoragePacked & 7U),
-                .programStorageSelection = static_cast<SwingMetro::ProgramStorageMenuItem>(
-                    (programStoragePacked >> 4) & 3U),
-                .programStorageAction =
-                    static_cast<SwingMetro::ProgramStorageAction>((programStoragePacked >> 3) & 1U),
-                .programStorageSlot = static_cast<uint8_t>((programStoragePacked >> 6) & 255U),
-                .programResetChoice =
-                    static_cast<SwingMetro::ProgramResetChoice>((programStoragePacked >> 14) & 1U),
-                .programStorageStatus =
-                    static_cast<SwingMetro::ProgramStoreStatus>(programStoragePacked >> 15),
             };
         }
     }
 
   private:
     [[nodiscard]] static bool sameSettings(const UiSettings& left, const UiSettings& right) {
-        return left.tempo == right.tempo && left.swing == right.swing &&
-               left.volume == right.volume && left.activeNote == right.activeNote &&
-               left.notesState == right.notesState && left.page == right.page &&
-               left.selectedStep == right.selectedStep && left.selectedNote == right.selectedNote &&
-               left.selectedVelocity == right.selectedVelocity &&
-               left.selectedGate == right.selectedGate &&
-               left.transportRunning == right.transportRunning &&
-               left.shiftActive == right.shiftActive &&
-               left.midiClockModalOpen == right.midiClockModalOpen &&
-               left.midiClockActive == right.midiClockActive &&
-               left.midiClockSelection == right.midiClockSelection &&
-               left.externalClockStatus == right.externalClockStatus &&
-               left.externalTempo == right.externalTempo &&
-               left.programStorageState == right.programStorageState &&
-               left.programStorageSelection == right.programStorageSelection &&
-               left.programStorageAction == right.programStorageAction &&
-               left.programStorageSlot == right.programStorageSlot &&
-               left.programStorageStatus == right.programStorageStatus &&
-               left.programResetChoice == right.programResetChoice;
+        return left.main.tempo == right.main.tempo && left.main.swing == right.main.swing &&
+               left.main.volume == right.main.volume &&
+               left.main.activeNote == right.main.activeNote &&
+               left.main.notesState == right.main.notesState && left.page == right.page &&
+               left.editor.selectedStep == right.editor.selectedStep &&
+               left.editor.selectedNote == right.editor.selectedNote &&
+               left.editor.selectedVelocity == right.editor.selectedVelocity &&
+               left.editor.selectedGate == right.editor.selectedGate &&
+               left.editor.transportRunning == right.editor.transportRunning &&
+               left.editor.shiftActive == right.editor.shiftActive &&
+               left.midiClock.modalOpen == right.midiClock.modalOpen &&
+               left.midiClock.active == right.midiClock.active &&
+               left.midiClock.selection == right.midiClock.selection &&
+               left.main.externalClockStatus == right.main.externalClockStatus &&
+               left.main.externalTempo == right.main.externalTempo &&
+               left.storage.state == right.storage.state &&
+               left.storage.selection == right.storage.selection &&
+               left.storage.action == right.storage.action &&
+               left.storage.slot == right.storage.slot &&
+               left.storage.status == right.storage.status &&
+               left.storage.resetChoice == right.storage.resetChoice;
     }
 
     std::atomic<uint32_t> _packed{0};

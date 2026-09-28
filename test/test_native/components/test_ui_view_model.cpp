@@ -3,124 +3,208 @@
 
 #include "components/ui_view_model.h"
 
-void test_ui_view_model_returns_published_snapshot() {
-    UiViewModel viewModel;
-    std::bitset<16> notesState;
-    notesState.set(0);
-    notesState.set(7);
-    notesState.set(15);
-    viewModel.publish(
-        {.tempo = 240, .swing = 66, .volume = 100, .activeNote = 15, .notesState = notesState});
+namespace {
 
-    const UiSettings settings = viewModel.read();
-    TEST_ASSERT_EQUAL_UINT8(240, settings.tempo);
-    TEST_ASSERT_EQUAL_UINT8(66, settings.swing);
-    TEST_ASSERT_EQUAL_UINT8(100, settings.volume);
-    TEST_ASSERT_EQUAL_UINT8(15, settings.activeNote);
-    TEST_ASSERT_TRUE(settings.notesState.test(0));
-    TEST_ASSERT_TRUE(settings.notesState.test(7));
-    TEST_ASSERT_TRUE(settings.notesState.test(15));
-    TEST_ASSERT_FALSE(settings.notesState.test(1));
+UiSettings firstSettings() {
+    return {.main = {.tempo = 120,
+                     .swing = 50,
+                     .volume = 100,
+                     .activeNote = 1,
+                     .notesState = std::bitset<16>(0x0001),
+                     .externalClockStatus = SwingMetro::ExternalMidiClockStatus::Waiting,
+                     .externalTempo = 0},
+            .editor = {.selectedStep = UINT8_MAX,
+                       .selectedNote = 36,
+                       .selectedVelocity = 127,
+                       .selectedGate = 100,
+                       .transportRunning = true,
+                       .shiftActive = false},
+            .midiClock = {.modalOpen = false,
+                          .active = SwingMetro::MidiClockMode::Off,
+                          .selection = SwingMetro::MidiClockMenuItem::Off},
+            .storage = {.state = SwingMetro::ProgramStorageModalState::Closed,
+                        .selection = SwingMetro::ProgramStorageMenuItem::Save,
+                        .action = SwingMetro::ProgramStorageAction::Save,
+                        .slot = 0,
+                        .resetChoice = SwingMetro::ProgramResetChoice::No,
+                        .status = SwingMetro::ProgramStoreStatus::Ok},
+            .page = UiPage::MainDisplay};
 }
 
-void test_ui_view_model_replaces_the_whole_snapshot() {
-    UiViewModel viewModel;
-    std::bitset<16> firstNotesState;
-    firstNotesState.set(0);
-    firstNotesState.set(15);
-    viewModel.publish({.tempo = 120,
-                       .swing = 50,
-                       .volume = 100,
-                       .activeNote = 15,
-                       .notesState = firstNotesState});
-
-    std::bitset<16> secondNotesState;
-    secondNotesState.set(7);
-    viewModel.publish(
-        {.tempo = 121, .swing = 51, .volume = 99, .activeNote = 7, .notesState = secondNotesState});
-
-    const UiSettings settings = viewModel.read();
-    TEST_ASSERT_EQUAL_UINT8(121, settings.tempo);
-    TEST_ASSERT_EQUAL_UINT8(51, settings.swing);
-    TEST_ASSERT_EQUAL_UINT8(99, settings.volume);
-    TEST_ASSERT_EQUAL_UINT8(7, settings.activeNote);
-    TEST_ASSERT_FALSE(settings.notesState.test(0));
-    TEST_ASSERT_TRUE(settings.notesState.test(7));
-    TEST_ASSERT_FALSE(settings.notesState.test(15));
-}
-
-void test_ui_view_model_preserves_no_active_note() {
-    UiViewModel viewModel;
-    viewModel.publish(
-        {.tempo = 120, .swing = 50, .volume = 100, .activeNote = UINT8_MAX, .notesState = {}});
-
-    const UiSettings settings = viewModel.read();
-    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, settings.activeNote);
-}
-
-void test_ui_view_model_preserves_all_note_bits() {
-    UiViewModel viewModel;
-    std::bitset<16> notesState;
-    notesState.set();
-    viewModel.publish(
-        {.tempo = 120, .swing = 50, .volume = 100, .activeNote = 0, .notesState = notesState});
-
-    const UiSettings settings = viewModel.read();
-    TEST_ASSERT_EQUAL_HEX16(UINT16_MAX, static_cast<uint16_t>(settings.notesState.to_ulong()));
-}
-
-void test_ui_view_model_keeps_navigation_fields_together() {
-    UiViewModel viewModel;
-    viewModel.publish({.tempo = 120,
-                       .swing = 50,
-                       .volume = 100,
-                       .activeNote = 7,
-                       .notesState = {},
-                       .page = UiPage::StepSettings,
-                       .selectedStep = 7,
-                       .selectedNote = 49,
-                       .selectedVelocity = 96,
-                       .selectedGate = 75,
+UiSettings initialSettings() {
+    return {.main = {.tempo = 0,
+                     .swing = 0,
+                     .volume = 0,
+                     .activeNote = 0,
+                     .notesState = {},
+                     .externalClockStatus = SwingMetro::ExternalMidiClockStatus::Waiting,
+                     .externalTempo = 0},
+            .editor = {.selectedStep = 0,
+                       .selectedNote = 0,
+                       .selectedVelocity = 0,
+                       .selectedGate = 100,
                        .transportRunning = false,
-                       .shiftActive = true});
+                       .shiftActive = false},
+            .midiClock = {.modalOpen = false,
+                          .active = SwingMetro::MidiClockMode::Off,
+                          .selection = SwingMetro::MidiClockMenuItem::Off},
+            .storage = {.state = SwingMetro::ProgramStorageModalState::Closed,
+                        .selection = SwingMetro::ProgramStorageMenuItem::Save,
+                        .action = SwingMetro::ProgramStorageAction::Save,
+                        .slot = 0,
+                        .resetChoice = SwingMetro::ProgramResetChoice::No,
+                        .status = SwingMetro::ProgramStoreStatus::Ok},
+            .page = UiPage::MainDisplay};
+}
 
-    const UiSettings settings = viewModel.read();
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(UiPage::StepSettings),
-                            static_cast<uint8_t>(settings.page));
-    TEST_ASSERT_EQUAL_UINT8(7, settings.selectedStep);
-    TEST_ASSERT_EQUAL_UINT8(49, settings.selectedNote);
-    TEST_ASSERT_EQUAL_UINT8(96, settings.selectedVelocity);
-    TEST_ASSERT_EQUAL_UINT8(75, settings.selectedGate);
-    TEST_ASSERT_FALSE(settings.transportRunning);
-    TEST_ASSERT_TRUE(settings.shiftActive);
+UiSettings secondSettings() {
+    return {.main = {.tempo = 180,
+                     .swing = 75,
+                     .volume = 25,
+                     .activeNote = 12,
+                     .notesState = std::bitset<16>(0xF000),
+                     .externalClockStatus = SwingMetro::ExternalMidiClockStatus::Lost,
+                     .externalTempo = 199},
+            .editor = {.selectedStep = 12,
+                       .selectedNote = 61,
+                       .selectedVelocity = 64,
+                       .selectedGate = 25,
+                       .transportRunning = false,
+                       .shiftActive = true},
+            .midiClock = {.modalOpen = true,
+                          .active = SwingMetro::MidiClockMode::External,
+                          .selection = SwingMetro::MidiClockMenuItem::Cancel},
+            .storage = {.state = SwingMetro::ProgramStorageModalState::Error,
+                        .selection = SwingMetro::ProgramStorageMenuItem::ResetProgram,
+                        .action = SwingMetro::ProgramStorageAction::Load,
+                        .slot = SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT,
+                        .resetChoice = SwingMetro::ProgramResetChoice::Yes,
+                        .status = SwingMetro::ProgramStoreStatus::Empty},
+            .page = UiPage::StepSettings};
+}
+
+bool sameSettings(const UiSettings& left, const UiSettings& right) {
+    return left.main.tempo == right.main.tempo && left.main.swing == right.main.swing &&
+           left.main.volume == right.main.volume && left.main.activeNote == right.main.activeNote &&
+           left.main.notesState == right.main.notesState &&
+           left.main.externalClockStatus == right.main.externalClockStatus &&
+           left.main.externalTempo == right.main.externalTempo &&
+           left.editor.selectedStep == right.editor.selectedStep &&
+           left.editor.selectedNote == right.editor.selectedNote &&
+           left.editor.selectedVelocity == right.editor.selectedVelocity &&
+           left.editor.selectedGate == right.editor.selectedGate &&
+           left.editor.transportRunning == right.editor.transportRunning &&
+           left.editor.shiftActive == right.editor.shiftActive &&
+           left.midiClock.modalOpen == right.midiClock.modalOpen &&
+           left.midiClock.active == right.midiClock.active &&
+           left.midiClock.selection == right.midiClock.selection &&
+           left.storage.state == right.storage.state &&
+           left.storage.selection == right.storage.selection &&
+           left.storage.action == right.storage.action && left.storage.slot == right.storage.slot &&
+           left.storage.resetChoice == right.storage.resetChoice &&
+           left.storage.status == right.storage.status && left.page == right.page;
+}
+
+} // namespace
+
+void test_ui_view_model_returns_initial_snapshot_defaults() {
+    UiViewModel viewModel;
+    TEST_ASSERT_TRUE(sameSettings(initialSettings(), viewModel.read()));
+}
+
+void test_ui_view_model_roundtrips_all_fields() {
+    UiViewModel viewModel;
+    const auto settings = secondSettings();
+    viewModel.publish(settings);
+    TEST_ASSERT_TRUE(sameSettings(settings, viewModel.read()));
+}
+
+void test_ui_view_model_publishes_each_field_change() {
+    UiViewModel viewModel;
+    auto baseline = firstSettings();
+
+    const auto assertChange = [&viewModel, &baseline](const UiSettings& settings) {
+        viewModel.publish(baseline);
+        TEST_ASSERT_TRUE(sameSettings(baseline, viewModel.read()));
+        viewModel.publish(settings);
+        TEST_ASSERT_TRUE(sameSettings(settings, viewModel.read()));
+    };
+
+    auto changed = baseline;
+    changed.main.tempo = 121;
+    assertChange(changed);
+    changed = baseline;
+    changed.main.swing = 51;
+    assertChange(changed);
+    changed = baseline;
+    changed.main.volume = 99;
+    assertChange(changed);
+    changed = baseline;
+    changed.main.activeNote = UINT8_MAX;
+    assertChange(changed);
+    changed = baseline;
+    changed.main.notesState = std::bitset<16>(0x8000);
+    assertChange(changed);
+    changed = baseline;
+    changed.editor.transportRunning = false;
+    assertChange(changed);
+    changed = baseline;
+    changed.editor.shiftActive = true;
+    assertChange(changed);
+    changed = baseline;
+    changed.main.externalClockStatus = SwingMetro::ExternalMidiClockStatus::Locked;
+    assertChange(changed);
+    changed = baseline;
+    changed.main.externalTempo = 123;
+    assertChange(changed);
+    changed = baseline;
+    changed.editor.selectedStep = 7;
+    assertChange(changed);
+    changed = baseline;
+    changed.editor.selectedNote = 49;
+    assertChange(changed);
+    changed = baseline;
+    changed.editor.selectedVelocity = 96;
+    assertChange(changed);
+    changed = baseline;
+    changed.editor.selectedGate = 75;
+    assertChange(changed);
+    changed = baseline;
+    changed.midiClock.modalOpen = true;
+    assertChange(changed);
+    changed = baseline;
+    changed.midiClock.active = SwingMetro::MidiClockMode::Internal;
+    assertChange(changed);
+    changed = baseline;
+    changed.midiClock.selection = SwingMetro::MidiClockMenuItem::Cancel;
+    assertChange(changed);
+    changed = baseline;
+    changed.storage.state = SwingMetro::ProgramStorageModalState::Slot;
+    assertChange(changed);
+    changed = baseline;
+    changed.storage.selection = SwingMetro::ProgramStorageMenuItem::ResetProgram;
+    assertChange(changed);
+    changed = baseline;
+    changed.storage.action = SwingMetro::ProgramStorageAction::Load;
+    assertChange(changed);
+    changed = baseline;
+    changed.storage.slot = SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT;
+    assertChange(changed);
+    changed = baseline;
+    changed.storage.resetChoice = SwingMetro::ProgramResetChoice::Yes;
+    assertChange(changed);
+    changed = baseline;
+    changed.storage.status = SwingMetro::ProgramStoreStatus::Empty;
+    assertChange(changed);
+    changed = baseline;
+    changed.page = UiPage::StepSettings;
+    assertChange(changed);
 }
 
 void test_ui_view_model_reads_complete_concurrent_snapshots() {
     UiViewModel viewModel;
-    const UiSettings first{.tempo = 120,
-                           .swing = 50,
-                           .volume = 100,
-                           .activeNote = 1,
-                           .notesState = std::bitset<16>(0x0001),
-                           .page = UiPage::MainDisplay,
-                           .selectedStep = UINT8_MAX,
-                           .selectedNote = 36,
-                           .selectedVelocity = 127,
-                           .selectedGate = 100,
-                           .transportRunning = true,
-                           .shiftActive = false};
-    const UiSettings second{.tempo = 180,
-                            .swing = 75,
-                            .volume = 25,
-                            .activeNote = 12,
-                            .notesState = std::bitset<16>(0xF000),
-                            .page = UiPage::StepSettings,
-                            .selectedStep = 12,
-                            .selectedNote = 61,
-                            .selectedVelocity = 64,
-                            .selectedGate = 25,
-                            .transportRunning = false,
-                            .shiftActive = true};
+    const auto first = firstSettings();
+    const auto second = secondSettings();
     viewModel.publish(first);
 
     std::thread writer([&viewModel, &first, &second]() {
@@ -132,26 +216,7 @@ void test_ui_view_model_reads_complete_concurrent_snapshots() {
     bool coherent = true;
     for (int index = 0; index < 20000; ++index) {
         const auto value = viewModel.read();
-        const bool matchesFirst =
-            value.tempo == first.tempo && value.swing == first.swing &&
-            value.volume == first.volume && value.activeNote == first.activeNote &&
-            value.notesState == first.notesState && value.page == first.page &&
-            value.selectedStep == first.selectedStep && value.selectedNote == first.selectedNote &&
-            value.selectedVelocity == first.selectedVelocity &&
-            value.selectedGate == first.selectedGate &&
-            value.transportRunning == first.transportRunning &&
-            value.shiftActive == first.shiftActive;
-        const bool matchesSecond =
-            value.tempo == second.tempo && value.swing == second.swing &&
-            value.volume == second.volume && value.activeNote == second.activeNote &&
-            value.notesState == second.notesState && value.page == second.page &&
-            value.selectedStep == second.selectedStep &&
-            value.selectedNote == second.selectedNote &&
-            value.selectedVelocity == second.selectedVelocity &&
-            value.selectedGate == second.selectedGate &&
-            value.transportRunning == second.transportRunning &&
-            value.shiftActive == second.shiftActive;
-        if (!matchesFirst && !matchesSecond) {
+        if (!sameSettings(value, first) && !sameSettings(value, second)) {
             coherent = false;
             break;
         }
@@ -160,101 +225,9 @@ void test_ui_view_model_reads_complete_concurrent_snapshots() {
     TEST_ASSERT_TRUE(coherent);
 }
 
-void test_ui_view_model_publishes_velocity_only_change() {
-    UiViewModel viewModel;
-    UiSettings settings{.tempo = 120,
-                        .swing = 50,
-                        .volume = 100,
-                        .activeNote = UINT8_MAX,
-                        .page = UiPage::StepSettings,
-                        .selectedStep = 0,
-                        .selectedNote = 36,
-                        .selectedVelocity = 127};
-    viewModel.publish(settings);
-    settings.selectedVelocity = 126;
-    viewModel.publish(settings);
-    TEST_ASSERT_EQUAL_UINT8(126, viewModel.read().selectedVelocity);
-}
-
-void test_ui_view_model_publishes_gate_only_change() {
-    UiViewModel viewModel;
-    UiSettings settings{.tempo = 120,
-                        .swing = 50,
-                        .volume = 100,
-                        .activeNote = UINT8_MAX,
-                        .page = UiPage::StepSettings,
-                        .selectedStep = 0,
-                        .selectedGate = 100};
-    viewModel.publish(settings);
-    settings.selectedGate = 99;
-    viewModel.publish(settings);
-    TEST_ASSERT_EQUAL_UINT8(99, viewModel.read().selectedGate);
-}
-
-void test_ui_view_model_publishes_midi_clock_modal_snapshot() {
-    UiViewModel viewModel;
-    UiSettings settings{.tempo = 120, .swing = 50, .volume = 100, .activeNote = UINT8_MAX};
-    viewModel.publish(settings);
-    settings.midiClockModalOpen = true;
-    settings.midiClockActive = SwingMetro::MidiClockMode::Internal;
-    settings.midiClockSelection = SwingMetro::MidiClockMenuItem::Cancel;
-    viewModel.publish(settings);
-
-    const auto snapshot = viewModel.read();
-    TEST_ASSERT_TRUE(snapshot.midiClockModalOpen);
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::MidiClockMode::Internal),
-                            static_cast<uint8_t>(snapshot.midiClockActive));
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::MidiClockMenuItem::Cancel),
-                            static_cast<uint8_t>(snapshot.midiClockSelection));
-}
-
-void test_ui_view_model_publishes_external_clock_snapshot() {
-    UiViewModel viewModel;
-    UiSettings settings{.tempo = 120, .swing = 50, .volume = 100, .activeNote = UINT8_MAX};
-    settings.externalClockStatus = SwingMetro::ExternalMidiClockStatus::Locked;
-    settings.externalTempo = 123;
-    viewModel.publish(settings);
-
-    const auto snapshot = viewModel.read();
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ExternalMidiClockStatus::Locked),
-                            static_cast<uint8_t>(snapshot.externalClockStatus));
-    TEST_ASSERT_EQUAL_UINT8(123, snapshot.externalTempo);
-}
-
-void test_ui_view_model_publishes_program_storage_snapshot() {
-    UiViewModel viewModel;
-    UiSettings settings{.tempo = 120, .swing = 50, .volume = 100, .activeNote = UINT8_MAX};
-    settings.programStorageState = SwingMetro::ProgramStorageModalState::Slot;
-    settings.programStorageSelection = SwingMetro::ProgramStorageMenuItem::ResetProgram;
-    settings.programStorageAction = SwingMetro::ProgramStorageAction::Load;
-    settings.programStorageSlot = SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT;
-    settings.programResetChoice = SwingMetro::ProgramResetChoice::Yes;
-    settings.programStorageStatus = SwingMetro::ProgramStoreStatus::Empty;
-    viewModel.publish(settings);
-    const auto snapshot = viewModel.read();
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramStorageModalState::Slot),
-                            static_cast<uint8_t>(snapshot.programStorageState));
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramStorageAction::Load),
-                            static_cast<uint8_t>(snapshot.programStorageAction));
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramStorageMenuItem::ResetProgram),
-                            static_cast<uint8_t>(snapshot.programStorageSelection));
-    TEST_ASSERT_EQUAL_UINT8(SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT, snapshot.programStorageSlot);
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramResetChoice::Yes),
-                            static_cast<uint8_t>(snapshot.programResetChoice));
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SwingMetro::ProgramStoreStatus::Empty),
-                            static_cast<uint8_t>(snapshot.programStorageStatus));
-}
-
 void test_ui_view_model_main() {
-    RUN_TEST(test_ui_view_model_returns_published_snapshot);
-    RUN_TEST(test_ui_view_model_replaces_the_whole_snapshot);
-    RUN_TEST(test_ui_view_model_preserves_no_active_note);
-    RUN_TEST(test_ui_view_model_preserves_all_note_bits);
-    RUN_TEST(test_ui_view_model_keeps_navigation_fields_together);
+    RUN_TEST(test_ui_view_model_returns_initial_snapshot_defaults);
+    RUN_TEST(test_ui_view_model_roundtrips_all_fields);
+    RUN_TEST(test_ui_view_model_publishes_each_field_change);
     RUN_TEST(test_ui_view_model_reads_complete_concurrent_snapshots);
-    RUN_TEST(test_ui_view_model_publishes_velocity_only_change);
-    RUN_TEST(test_ui_view_model_publishes_gate_only_change);
-    RUN_TEST(test_ui_view_model_publishes_midi_clock_modal_snapshot);
-    RUN_TEST(test_ui_view_model_publishes_external_clock_snapshot);
-    RUN_TEST(test_ui_view_model_publishes_program_storage_snapshot);
 }

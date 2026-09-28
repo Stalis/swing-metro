@@ -111,13 +111,14 @@ void test_open_switch_close_and_publish_ui() {
     TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
     TEST_ASSERT_EQUAL_UINT8(5, *state.coordinator.selectedStep());
 
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
     const auto openUi = viewModel.read();
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(UiPage::StepSettings),
                             static_cast<std::uint8_t>(openUi.page));
-    TEST_ASSERT_EQUAL_UINT8(5, openUi.selectedStep);
-    TEST_ASSERT_EQUAL_UINT8(36, openUi.selectedNote);
-    TEST_ASSERT_EQUAL_UINT8(127, openUi.selectedVelocity);
+    TEST_ASSERT_EQUAL_UINT8(5, openUi.editor.selectedStep);
+    TEST_ASSERT_EQUAL_UINT8(36, openUi.editor.selectedNote);
+    TEST_ASSERT_EQUAL_UINT8(127, openUi.editor.selectedVelocity);
 
     longPress(state, 8, 1000);
     TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
@@ -126,11 +127,12 @@ void test_open_switch_close_and_publish_ui() {
     longPress(state, 8, 2000);
     TEST_ASSERT_EQUAL_UINT32(2, state.coordinator.stackSize());
     TEST_ASSERT_FALSE(state.coordinator.selectedStep().has_value());
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
     const auto closedUi = viewModel.read();
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(UiPage::MainDisplay),
                             static_cast<std::uint8_t>(closedUi.page));
-    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, closedUi.selectedStep);
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, closedUi.editor.selectedStep);
 }
 
 void test_encoder_changes_note_in_settings_and_tempo_after_close() {
@@ -276,16 +278,19 @@ void test_velocity_changes_only_selected_step_and_ui_snapshot() {
     turn(state, SwingMetro::InputId::SwingEncoder, -2);
     TEST_ASSERT_EQUAL_UINT8(125, *state.sequencer.getStepVelocity(0));
     TEST_ASSERT_EQUAL_UINT8(127, *state.sequencer.getStepVelocity(3));
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
-    TEST_ASSERT_EQUAL_UINT8(125, viewModel.read().selectedVelocity);
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
+    TEST_ASSERT_EQUAL_UINT8(125, viewModel.read().editor.selectedVelocity);
 
     click(state, 3, 1000);
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
-    TEST_ASSERT_EQUAL_UINT8(3, viewModel.read().selectedStep);
-    TEST_ASSERT_EQUAL_UINT8(127, viewModel.read().selectedVelocity);
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
+    TEST_ASSERT_EQUAL_UINT8(3, viewModel.read().editor.selectedStep);
+    TEST_ASSERT_EQUAL_UINT8(127, viewModel.read().editor.selectedVelocity);
     turn(state, SwingMetro::InputId::SwingEncoder, -1);
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
-    TEST_ASSERT_EQUAL_UINT8(126, viewModel.read().selectedVelocity);
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
+    TEST_ASSERT_EQUAL_UINT8(126, viewModel.read().editor.selectedVelocity);
     TEST_ASSERT_EQUAL_UINT8(125, *state.sequencer.getStepVelocity(0));
     TEST_ASSERT_EQUAL_UINT8(50, state.swing.getValue());
 }
@@ -303,9 +308,10 @@ void test_gate_clamps_changes_only_selected_step_and_publishes_snapshot() {
     turn(state, SwingMetro::InputId::VolumeEncoder, -1);
     TEST_ASSERT_EQUAL_UINT8(99, *state.sequencer.getStepGate(3));
     TEST_ASSERT_EQUAL_UINT8(STEP_MAX_GATE, *state.sequencer.getStepGate(0));
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
-    TEST_ASSERT_EQUAL_UINT8(3, viewModel.read().selectedStep);
-    TEST_ASSERT_EQUAL_UINT8(99, viewModel.read().selectedGate);
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
+    TEST_ASSERT_EQUAL_UINT8(3, viewModel.read().editor.selectedStep);
+    TEST_ASSERT_EQUAL_UINT8(99, viewModel.read().editor.selectedGate);
 }
 
 void test_click_in_settings_selects_step_without_toggling_it() {
@@ -319,11 +325,12 @@ void test_click_in_settings_selects_step_without_toggling_it() {
     TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().test(0));
     TEST_ASSERT_FALSE(state.sequencer.getStepsEnabled().test(2));
 
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
     const auto selectedUi = viewModel.read();
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(UiPage::StepSettings),
                             static_cast<std::uint8_t>(selectedUi.page));
-    TEST_ASSERT_EQUAL_UINT8(2, selectedUi.selectedStep);
+    TEST_ASSERT_EQUAL_UINT8(2, selectedUi.editor.selectedStep);
 
     turn(state, SwingMetro::InputId::TempoEncoder, 1);
     TEST_ASSERT_EQUAL_UINT8(36, *state.sequencer.getStepMidiNote(0));
@@ -352,8 +359,9 @@ void test_settings_reselects_on_press_without_adding_context_and_releases_on_clo
     TEST_ASSERT_EQUAL_UINT8(3, *state.coordinator.selectedStep());
     TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
     TEST_ASSERT_TRUE(state.coordinator.hasStepSettingsContext());
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
-    TEST_ASSERT_EQUAL_UINT8(3, viewModel.read().selectedStep);
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
+    TEST_ASSERT_EQUAL_UINT8(3, viewModel.read().editor.selectedStep);
     TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.buttons.update(3, 1500)));
     TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.buttons.onReleased(3, 1600)));
     TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
@@ -378,7 +386,8 @@ void test_settings_reselects_on_press_without_adding_context_and_releases_on_clo
     TEST_ASSERT_FALSE(state.coordinator.selectedStep().has_value());
     TEST_ASSERT_EQUAL_UINT32(0, routeBatch(state, state.buttons.onReleased(0, 4600)));
     TEST_ASSERT_EQUAL_UINT32(2, state.coordinator.stackSize());
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(UiPage::MainDisplay),
                             static_cast<std::uint8_t>(viewModel.read().page));
 }
@@ -501,23 +510,25 @@ void test_midi_clock_modal_clamps_confirms_and_publishes_snapshot() {
     TEST_ASSERT_EQUAL_UINT8(STEP_DEFAULT_GATE, *state.sequencer.getStepGate(0));
     TEST_ASSERT_EQUAL_UINT8(50, state.swing.getValue());
 
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
     const auto openUi = viewModel.read();
-    TEST_ASSERT_TRUE(openUi.midiClockModalOpen);
+    TEST_ASSERT_TRUE(openUi.midiClock.modalOpen);
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::Off),
-                            static_cast<std::uint8_t>(openUi.midiClockActive));
+                            static_cast<std::uint8_t>(openUi.midiClock.active));
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMenuItem::External),
-                            static_cast<std::uint8_t>(openUi.midiClockSelection));
+                            static_cast<std::uint8_t>(openUi.midiClock.selection));
 
     clickTempo(state, 1000);
     TEST_ASSERT_FALSE(state.coordinator.isMidiClockModalOpen());
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
                             static_cast<std::uint8_t>(state.midiClock.mode()));
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
     const auto closedUi = viewModel.read();
-    TEST_ASSERT_FALSE(closedUi.midiClockModalOpen);
+    TEST_ASSERT_FALSE(closedUi.midiClock.modalOpen);
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
-                            static_cast<std::uint8_t>(closedUi.midiClockActive));
+                            static_cast<std::uint8_t>(closedUi.midiClock.active));
 
     longPressTempo(state, 2000);
     turn(state, SwingMetro::InputId::TempoEncoder, 1);
@@ -594,11 +605,11 @@ void test_restart_runs_first_step_immediately_and_keeps_sixteenth_grid() {
     TEST_ASSERT_FALSE(state.sequencer.getDisplayStepIndex().has_value());
 
     viewModel.publish(state.coordinator.decorateUiSettings(
-        {.tempo = 120,
-         .swing = 50,
-         .volume = 100,
-         .activeNote = state.sequencer.getDisplayStepIndex().value_or(UINT8_MAX)}));
-    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, viewModel.read().activeNote);
+        {.main = {.tempo = 120,
+                  .swing = 50,
+                  .volume = 100,
+                  .activeNote = state.sequencer.getDisplayStepIndex().value_or(UINT8_MAX)}}));
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, viewModel.read().main.activeNote);
 
     TEST_ASSERT_TRUE(state.sequencer.update(300000));
     TEST_ASSERT_EQUAL_UINT8(0, *state.sequencer.getDisplayStepIndex());
@@ -777,13 +788,15 @@ void test_program_storage_modal_blocks_input_and_publishes_result() {
                                      nullptr, 1000);
     state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::ConfirmProgramStorageSlot{}},
                                      nullptr, 1000);
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStorageModalState::Busy),
-                            static_cast<std::uint8_t>(viewModel.read().programStorageState));
+                            static_cast<std::uint8_t>(viewModel.read().storage.state));
     state.coordinator.processProgramStorage();
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStorageModalState::Error),
-                            static_cast<std::uint8_t>(viewModel.read().programStorageState));
+                            static_cast<std::uint8_t>(viewModel.read().storage.state));
     state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::CloseProgramStorage{}},
                                      nullptr, 1000);
     TEST_ASSERT_FALSE(state.coordinator.isProgramStorageModalOpen());
@@ -798,9 +811,10 @@ void test_program_storage_cancel_closes_without_pending_operation() {
                                      nullptr, 1000);
     state.coordinator.handleAppEvent(
         SwingMetro::AppEvent{SwingMetro::SelectProgramStorageAction{2}}, nullptr, 1000);
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStorageMenuItem::Cancel),
-                            static_cast<std::uint8_t>(viewModel.read().programStorageSelection));
+                            static_cast<std::uint8_t>(viewModel.read().storage.selection));
     state.coordinator.handleAppEvent(
         SwingMetro::AppEvent{SwingMetro::ConfirmProgramStorageAction{}}, nullptr, 1000);
     TEST_ASSERT_FALSE(state.coordinator.isProgramStorageModalOpen());
@@ -813,9 +827,9 @@ void test_program_storage_cancel_closes_without_pending_operation() {
         SwingMetro::AppEvent{SwingMetro::ConfirmProgramStorageAction{}}, nullptr, 2000);
     state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::SelectProgramStorageSlot{-1}},
                                      nullptr, 2000);
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
-    TEST_ASSERT_EQUAL_UINT8(SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT,
-                            viewModel.read().programStorageSlot);
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
+    TEST_ASSERT_EQUAL_UINT8(SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT, viewModel.read().storage.slot);
     state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::ConfirmProgramStorageSlot{}},
                                      nullptr, 2000);
     TEST_ASSERT_FALSE(state.coordinator.isProgramStorageModalOpen());
@@ -832,27 +846,30 @@ void test_program_reset_requires_explicit_yes_confirmation() {
                                      nullptr, 1000);
     state.coordinator.handleAppEvent(
         SwingMetro::AppEvent{SwingMetro::SelectProgramStorageAction{3}}, nullptr, 1000);
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<std::uint8_t>(SwingMetro::ProgramStorageMenuItem::ResetProgram),
-        static_cast<std::uint8_t>(viewModel.read().programStorageSelection));
+        static_cast<std::uint8_t>(viewModel.read().storage.selection));
 
     state.coordinator.handleAppEvent(
         SwingMetro::AppEvent{SwingMetro::ConfirmProgramStorageAction{}}, nullptr, 1000);
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
     auto snapshot = viewModel.read();
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<std::uint8_t>(SwingMetro::ProgramStorageModalState::ResetConfirmation),
-        static_cast<std::uint8_t>(snapshot.programStorageState));
+        static_cast<std::uint8_t>(snapshot.storage.state));
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramResetChoice::No),
-                            static_cast<std::uint8_t>(snapshot.programResetChoice));
+                            static_cast<std::uint8_t>(snapshot.storage.resetChoice));
 
     state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::ConfirmProgramReset{}},
                                      nullptr, 1000);
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
     snapshot = viewModel.read();
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStorageModalState::Action),
-                            static_cast<std::uint8_t>(snapshot.programStorageState));
+                            static_cast<std::uint8_t>(snapshot.storage.state));
     state.coordinator.processProgramStorage();
     TEST_ASSERT_TRUE(state.coordinator.isProgramStorageModalOpen());
 
@@ -862,16 +879,18 @@ void test_program_reset_requires_explicit_yes_confirmation() {
                                      nullptr, 1000);
     state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::ConfirmProgramReset{}},
                                      nullptr, 1000);
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
     snapshot = viewModel.read();
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStorageModalState::Busy),
-                            static_cast<std::uint8_t>(snapshot.programStorageState));
+                            static_cast<std::uint8_t>(snapshot.storage.state));
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramResetChoice::Yes),
-                            static_cast<std::uint8_t>(snapshot.programResetChoice));
+                            static_cast<std::uint8_t>(snapshot.storage.resetChoice));
     state.coordinator.processProgramStorage();
-    viewModel.publish(state.coordinator.decorateUiSettings({120, 50, 100}));
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStorageModalState::Error),
-                            static_cast<std::uint8_t>(viewModel.read().programStorageState));
+                            static_cast<std::uint8_t>(viewModel.read().storage.state));
 }
 
 } // namespace

@@ -76,35 +76,35 @@ void LvglUi::loop() {
 
 void LvglUi::readViewModel(const UiViewModel& viewModel) {
     const auto values = viewModel.read();
-    setTempo(values.tempo);
-    setSwing(values.swing);
-    setVolume(values.volume);
+    setTempo(values.main.tempo);
+    setSwing(values.main.swing);
+    setVolume(values.main.volume);
 
-    setSteps(values.notesState, values.activeNote);
+    setSteps(values.main.notesState, values.main.activeNote);
 
-    if (values.page == UiPage::StepSettings && values.selectedStep < SEQUENCER_STEPS_COUNT) {
+    if (values.page == UiPage::StepSettings && values.editor.selectedStep < SEQUENCER_STEPS_COUNT) {
         static constexpr const char* noteNames[] = {"C",  "C#", "D",  "D#", "E",  "F",
                                                     "F#", "G",  "G#", "A",  "A#", "B"};
-        if (values.selectedStep != _displayedStep) {
-            _displayedStep = values.selectedStep;
+        if (values.editor.selectedStep != _displayedStep) {
+            _displayedStep = values.editor.selectedStep;
             lv_label_set_text_fmt(_selectedStepLabel, "Step %u",
-                                  static_cast<unsigned>(values.selectedStep + 1));
+                                  static_cast<unsigned>(values.editor.selectedStep + 1));
         }
-        if (values.selectedNote != _displayedNote && values.selectedNote >= 36) {
-            _displayedNote = values.selectedNote;
-            const auto relativeNote = static_cast<uint8_t>(values.selectedNote - 36);
+        if (values.editor.selectedNote != _displayedNote && values.editor.selectedNote >= 36) {
+            _displayedNote = values.editor.selectedNote;
+            const auto relativeNote = static_cast<uint8_t>(values.editor.selectedNote - 36);
             lv_label_set_text_fmt(_selectedNoteLabel, "Note: %s%u", noteNames[relativeNote % 12],
                                   static_cast<unsigned>(relativeNote / 12));
         }
-        if (values.selectedVelocity != _displayedVelocity) {
-            _displayedVelocity = values.selectedVelocity;
+        if (values.editor.selectedVelocity != _displayedVelocity) {
+            _displayedVelocity = values.editor.selectedVelocity;
             lv_label_set_text_fmt(_selectedVelocityLabel, "Velocity: %u",
-                                  static_cast<unsigned>(values.selectedVelocity));
+                                  static_cast<unsigned>(values.editor.selectedVelocity));
         }
-        if (values.selectedGate != _displayedGate) {
-            _displayedGate = values.selectedGate;
+        if (values.editor.selectedGate != _displayedGate) {
+            _displayedGate = values.editor.selectedGate;
             lv_label_set_text_fmt(_selectedGateLabel, "Gate: %u%%",
-                                  static_cast<unsigned>(values.selectedGate));
+                                  static_cast<unsigned>(values.editor.selectedGate));
         }
     }
 
@@ -113,11 +113,11 @@ void LvglUi::readViewModel(const UiViewModel& viewModel) {
         lv_screen_load(_currentPage == UiPage::StepSettings ? _stepSettingsScreen : _mainScreen);
     }
 
-    setMidiClockModal(values.midiClockModalOpen, values.midiClockActive, values.midiClockSelection);
-    setExternalClock(values.externalClockStatus, values.externalTempo);
-    setProgramStorageModal(values.programStorageState, values.programStorageSelection,
-                           values.programStorageAction, values.programStorageSlot,
-                           values.programResetChoice, values.programStorageStatus);
+    setMidiClockModal(values.midiClock.modalOpen, values.midiClock.active,
+                      values.midiClock.selection);
+    setExternalClock(values.main.externalClockStatus, values.main.externalTempo);
+    setProgramStorageModal(values.storage.state, values.storage.selection, values.storage.action,
+                           values.storage.slot, values.storage.resetChoice, values.storage.status);
 }
 
 void LvglUi::setTempo(uint8_t value) { lv_subject_set_int(&_tempoSubject, value); }
