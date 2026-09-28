@@ -2,6 +2,7 @@
 
 #include "app_event_handler.h"
 #include "app_input_router.h"
+#include "app_ui_snapshot_builder.h"
 #include "engine/transport_controller.h"
 #include "midi_clock_modal.h"
 #include "program/program_storage_request.h"
@@ -149,19 +150,15 @@ class AppInputCoordinator {
     }
 
     [[nodiscard]] auto decorateUiSettings(UiSettings settings) const -> UiSettings {
-        settings.page = currentPage();
-        settings.editor = _stepEditor.snapshot(selectedStep(), isShiftActive());
-        settings.midiClock.modalOpen = _midiClockModal.isOpen();
-        settings.midiClock.active = _midiClock.mode();
-        settings.midiClock.selection = _midiClockModal.selection();
         const auto& storage = _programStorageModal.snapshot();
-        settings.storage.state = storage.state;
-        settings.storage.selection = storage.selection;
-        settings.storage.action = storage.action;
-        settings.storage.slot = storage.slot;
-        settings.storage.status = storage.status;
-        settings.storage.resetChoice = storage.resetChoice;
-        return settings;
+        return AppUiSnapshotBuilder::decorate(settings,
+                                              {.stepEditor = _stepEditor,
+                                               .selectedStep = selectedStep(),
+                                               .shiftActive = isShiftActive(),
+                                               .midiClockModalOpen = _midiClockModal.isOpen(),
+                                               .midiClockActive = _midiClock.mode(),
+                                               .midiClockSelection = _midiClockModal.selection(),
+                                               .storage = storage});
     }
 
   private:
