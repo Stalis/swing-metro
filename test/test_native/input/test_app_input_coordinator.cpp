@@ -119,6 +119,19 @@ void test_open_switch_close_and_publish_ui() {
     TEST_ASSERT_EQUAL_UINT8(5, openUi.editor.selectedStep);
     TEST_ASSERT_EQUAL_UINT8(36, openUi.editor.selectedNote);
     TEST_ASSERT_EQUAL_UINT8(127, openUi.editor.selectedVelocity);
+    TEST_ASSERT_EQUAL_UINT8(STEP_DEFAULT_GATE, openUi.editor.selectedGate);
+    TEST_ASSERT_FALSE(openUi.editor.transportRunning);
+    TEST_ASSERT_FALSE(openUi.editor.shiftActive);
+
+    state.sequencer.toggleRunning(1000);
+    setShift(state, true);
+    viewModel.publish(
+        state.coordinator.decorateUiSettings({.main = {.tempo = 120, .swing = 50, .volume = 100}}));
+    const auto activeUi = viewModel.read();
+    TEST_ASSERT_TRUE(activeUi.editor.transportRunning);
+    TEST_ASSERT_TRUE(activeUi.editor.shiftActive);
+    state.sequencer.toggleRunning(2000);
+    setShift(state, false);
 
     longPress(state, 8, 1000);
     TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());

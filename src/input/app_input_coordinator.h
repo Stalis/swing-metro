@@ -2,9 +2,9 @@
 
 #include "app_event_handler.h"
 #include "app_input_router.h"
-#include "components/ui_snapshot.h"
 #include "engine/transport_controller.h"
 #include "program/program_storage_controller.h"
+#include "step_editor.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -20,8 +20,8 @@ class AppInputCoordinator {
     AppInputCoordinator(AppEventHandler& handler, Sequencer& sequencer,
                         MidiClockSettings& midiClock, TransportController* transport = nullptr,
                         ProgramStorageController* programStorage = nullptr)
-        : _handler{handler}, _sequencer{sequencer}, _midiClock{midiClock}, _transport{transport},
-          _programStorage{programStorage} {}
+        : _handler{handler}, _sequencer{sequencer}, _stepEditor{sequencer}, _midiClock{midiClock},
+          _transport{transport}, _programStorage{programStorage} {}
 
     auto dispatch(const InputEvent& input, std::uint32_t nowUs) -> std::optional<AppEvent> {
         const auto event = _inputRouter.dispatch(input);
@@ -41,17 +41,11 @@ class AppInputCoordinator {
         } else if (std::holds_alternative<CloseStepSettings>(event)) {
             contextChanged = _inputRouter.closeStepSettings();
         } else if (const auto* adjust = std::get_if<AdjustNote>(&event)) {
-            if (const auto selected = selectedStep(); selected.has_value()) {
-                (void)_sequencer.adjustStepNote(*selected, adjust->delta);
-            }
+            _stepEditor.adjustNote(selectedStep(), adjust->delta);
         } else if (const auto* adjust = std::get_if<AdjustVelocity>(&event)) {
-            if (const auto selected = selectedStep(); selected.has_value()) {
-                (void)_sequencer.adjustStepVelocity(*selected, adjust->delta);
-            }
+            _stepEditor.adjustVelocity(selectedStep(), adjust->delta);
         } else if (const auto* adjust = std::get_if<AdjustGate>(&event)) {
-            if (const auto selected = selectedStep(); selected.has_value()) {
-                (void)_sequencer.adjustStepGate(*selected, adjust->delta);
-            }
+            _stepEditor.adjustGate(selectedStep(), adjust->delta);
         } else if (std::holds_alternative<ToggleTransport>(event)) {
             if (_transport != nullptr) {
                 _transport->toggle(nowUs);
@@ -178,18 +172,8 @@ class AppInputCoordinator {
     }
 
     [[nodiscard]] auto decorateUiSettings(UiSettings settings) const -> UiSettings {
-        const auto selected = selectedStep();
         settings.page = currentPage();
-        settings.editor.selectedStep = selected.value_or(UINT8_MAX);
-        settings.editor.selectedNote =
-            selected.has_value() ? _sequencer.getStepMidiNote(*selected).value_or(36) : 36;
-        settings.editor.selectedVelocity =
-            selected.has_value() ? _sequencer.getStepVelocity(*selected).value_or(127) : 127;
-        settings.editor.selectedGate =
-            selected.has_value() ? _sequencer.getStepGate(*selected).value_or(STEP_DEFAULT_GATE)
-                                 : STEP_DEFAULT_GATE;
-        settings.editor.transportRunning = _sequencer.isRunning();
-        settings.editor.shiftActive = isShiftActive();
+        settings.editor = _stepEditor.snapshot(selectedStep(), isShiftActive());
         settings.midiClock.modalOpen = _midiClockModalOpen;
         settings.midiClock.active = _midiClock.mode();
         settings.midiClock.selection = _midiClockSelection;
@@ -324,6 +308,7 @@ class AppInputCoordinator {
 
     AppEventHandler& _handler;
     Sequencer& _sequencer;
+    StepEditor _stepEditor;
     MidiClockSettings& _midiClock;
     TransportController* _transport;
     ProgramStorageController* _programStorage;
