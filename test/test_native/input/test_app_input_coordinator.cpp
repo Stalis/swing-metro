@@ -2,6 +2,7 @@
 
 #include "components/ui_view_model.h"
 #include "engine/midi_clock_mode.h"
+#include "engine/transport_controller.h"
 #include "input/app_input_coordinator.h"
 #include "input/step_button_inputs.h"
 
@@ -14,6 +15,18 @@
 #include <variant>
 
 namespace {
+
+class RecordingMidiSink final : public SwingMetro::MidiMessageSink {
+  public:
+    auto send(const SwingMetro::MidiDeliveryAttempt& attempt) -> SwingMetro::SendResult override {
+        lastDeadlineUs = attempt.deadlineUs;
+        ++sendCount;
+        return SwingMetro::SendResult::Accepted;
+    }
+
+    std::uint32_t lastDeadlineUs = 0;
+    std::size_t sendCount = 0;
+};
 
 template <std::size_t Capacity = 8>
 struct State {
@@ -554,6 +567,70 @@ void test_midi_clock_modal_clamps_confirms_and_publishes_snapshot() {
                             static_cast<std::uint8_t>(state.midiClock.mode()));
 }
 
+void test_midi_clock_modal_restores_shift_after_confirming_selection() {
+    State state;
+    setShift(state, true);
+    TEST_ASSERT_TRUE(state.coordinator.isShiftActive());
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::OpenMidiClockSettings{}},
+                                     nullptr, 1000);
+    TEST_ASSERT_TRUE(state.coordinator.isMidiClockModalOpen());
+    TEST_ASSERT_FALSE(state.coordinator.isShiftActive());
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::AdjustMidiClockPreview{2}},
+                                     nullptr, 1000);
+    state.coordinator.handleAppEvent(SwingMetro::AppEvent{SwingMetro::ConfirmMidiClockSettings{}},
+                                     nullptr, 4321);
+    TEST_ASSERT_FALSE(state.coordinator.isMidiClockModalOpen());
+    TEST_ASSERT_TRUE(state.coordinator.isShiftActive());
+    TEST_ASSERT_EQUAL_UINT32(3, state.coordinator.stackSize());
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
+                            static_cast<std::uint8_t>(state.midiClock.mode()));
+}
+
+void test_direct_midi_clock_apply_uses_transport_timestamp_while_modal_is_closed() {
+    Counter<std::uint8_t> tempo{{.step = 1,
+                                 .value = 120,
+                                 .minValue = 40,
+                                 .maxValue = 240,
+                                 .overflowBehavior = CounterOverflowBehavior::Clamp}};
+    Counter<std::uint8_t> swing{{.step = 1,
+                                 .value = 50,
+                                 .minValue = 50,
+                                 .maxValue = SwingMetro::SWING_MAX_VALUE,
+                                 .overflowBehavior = CounterOverflowBehavior::Clamp}};
+    Counter<std::uint8_t> volume{{.step = 1,
+                                  .value = 100,
+                                  .minValue = 0,
+                                  .maxValue = 100,
+                                  .overflowBehavior = CounterOverflowBehavior::Clamp}};
+    Sequencer sequencer;
+    SwingMetro::MidiClockSettings midiClock;
+    SwingMetro::AppEventHandler handler{{
+        .tempo = tempo,
+        .swing = swing,
+        .volume = volume,
+        .sequencer = sequencer,
+    }};
+    RecordingMidiSink sink;
+    SwingMetro::TransportController transport{sequencer, midiClock, sink};
+    SwingMetro::AppInputCoordinator<8> coordinator{handler, sequencer, midiClock, &transport};
+
+    transport.applyMode(SwingMetro::MidiClockMode::Internal, 100);
+    transport.toggle(100);
+    coordinator.handleAppEvent(
+        SwingMetro::AppEvent{SwingMetro::ApplyMidiClockMode{SwingMetro::MidiClockMode::External}},
+        nullptr, 4321);
+
+    TEST_ASSERT_FALSE(coordinator.isMidiClockModalOpen());
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::MidiClockMode::External),
+                            static_cast<std::uint8_t>(midiClock.mode()));
+    TEST_ASSERT_EQUAL_UINT32(4321, sink.lastDeadlineUs);
+    TEST_ASSERT_TRUE(sink.sendCount > 1);
+}
+
 void test_modals_are_rejected_outside_their_host_page_and_cannot_stack() {
     State state;
     longPress(state, 2, 100);
@@ -924,6 +1001,8 @@ void test_app_input_coordinator_main() {
     RUN_TEST(test_shift_lifecycle_is_independent_of_navigation);
     RUN_TEST(test_tempo_switch_click_toggles_transport_once_and_long_press_does_not);
     RUN_TEST(test_midi_clock_modal_clamps_confirms_and_publishes_snapshot);
+    RUN_TEST(test_midi_clock_modal_restores_shift_after_confirming_selection);
+    RUN_TEST(test_direct_midi_clock_apply_uses_transport_timestamp_while_modal_is_closed);
     RUN_TEST(test_modals_are_rejected_outside_their_host_page_and_cannot_stack);
     RUN_TEST(test_restart_runs_first_step_immediately_and_keeps_sixteenth_grid);
     RUN_TEST(test_note_clamps_and_invalid_index);

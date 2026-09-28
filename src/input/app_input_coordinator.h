@@ -3,6 +3,7 @@
 #include "app_event_handler.h"
 #include "app_input_router.h"
 #include "engine/transport_controller.h"
+#include "midi_clock_modal.h"
 #include "program/program_storage_controller.h"
 #include "step_editor.h"
 
@@ -59,13 +60,11 @@ class AppInputCoordinator {
         } else if (std::holds_alternative<OpenMidiClockSettings>(event)) {
             contextChanged = openMidiClockSettings();
         } else if (const auto* adjust = std::get_if<AdjustMidiClockPreview>(&event)) {
-            adjustMidiClockPreview(adjust->delta);
+            _midiClockModal.adjustPreview(adjust->delta);
         } else if (std::holds_alternative<ConfirmMidiClockSettings>(event)) {
-            if (_midiClockModalOpen) {
-                if (_midiClockSelection != MidiClockMenuItem::Cancel) {
-                    handleAppEvent(AppEvent{ApplyMidiClockMode{
-                                       static_cast<MidiClockMode>(_midiClockSelection)}},
-                                   nullptr, nowUs);
+            if (_midiClockModal.isOpen()) {
+                if (const auto mode = _midiClockModal.confirmedMode(); mode.has_value()) {
+                    handleAppEvent(AppEvent{ApplyMidiClockMode{*mode}}, nullptr, nowUs);
                 }
                 contextChanged = closeMidiClockSettings();
             }
@@ -146,9 +145,11 @@ class AppInputCoordinator {
         return _inputRouter.stackSize();
     }
     [[nodiscard]] auto midiClockMode() const noexcept -> MidiClockMode { return _midiClock.mode(); }
-    [[nodiscard]] auto isMidiClockModalOpen() const noexcept -> bool { return _midiClockModalOpen; }
+    [[nodiscard]] auto isMidiClockModalOpen() const noexcept -> bool {
+        return _midiClockModal.isOpen();
+    }
     [[nodiscard]] auto midiClockSelection() const noexcept -> MidiClockMenuItem {
-        return _midiClockSelection;
+        return _midiClockModal.selection();
     }
     [[nodiscard]] auto isProgramStorageModalOpen() const noexcept -> bool {
         return _programStorageState != ProgramStorageModalState::Closed;
@@ -174,9 +175,9 @@ class AppInputCoordinator {
     [[nodiscard]] auto decorateUiSettings(UiSettings settings) const -> UiSettings {
         settings.page = currentPage();
         settings.editor = _stepEditor.snapshot(selectedStep(), isShiftActive());
-        settings.midiClock.modalOpen = _midiClockModalOpen;
+        settings.midiClock.modalOpen = _midiClockModal.isOpen();
         settings.midiClock.active = _midiClock.mode();
-        settings.midiClock.selection = _midiClockSelection;
+        settings.midiClock.selection = _midiClockModal.selection();
         settings.storage.state = _programStorageState;
         settings.storage.selection = _programStorageSelection;
         settings.storage.action = _programStorageAction;
@@ -206,7 +207,7 @@ class AppInputCoordinator {
     }
 
     [[nodiscard]] auto hasOpenModal() const noexcept -> bool {
-        return _midiClockModalOpen || isProgramStorageModalOpen();
+        return _midiClockModal.isOpen() || isProgramStorageModalOpen();
     }
 
     [[nodiscard]] auto canOpenModal(ModalId modal) const noexcept -> bool {
@@ -220,8 +221,7 @@ class AppInputCoordinator {
         if (!_inputRouter.openMidiClockSettings()) {
             return false;
         }
-        _midiClockModalOpen = true;
-        _midiClockSelection = static_cast<MidiClockMenuItem>(_midiClock.mode());
+        _midiClockModal.open(_midiClock.mode());
         return true;
     }
 
@@ -230,23 +230,8 @@ class AppInputCoordinator {
             return false;
         }
 
-        _midiClockModalOpen = false;
+        _midiClockModal.close();
         return true;
-    }
-
-    auto adjustMidiClockPreview(std::int8_t delta) noexcept -> void {
-        if (!_midiClockModalOpen) {
-            return;
-        }
-
-        const auto candidate = static_cast<std::int16_t>(_midiClockSelection) + delta;
-        if (candidate <= static_cast<std::int16_t>(MidiClockMenuItem::Off)) {
-            _midiClockSelection = MidiClockMenuItem::Off;
-        } else if (candidate >= static_cast<std::int16_t>(MidiClockMenuItem::Cancel)) {
-            _midiClockSelection = MidiClockMenuItem::Cancel;
-        } else {
-            _midiClockSelection = static_cast<MidiClockMenuItem>(candidate);
-        }
     }
 
     [[nodiscard]] auto openProgramStorage() -> bool {
@@ -313,8 +298,7 @@ class AppInputCoordinator {
     TransportController* _transport;
     ProgramStorageController* _programStorage;
     AppInputRouter<Capacity> _inputRouter;
-    MidiClockMenuItem _midiClockSelection = MidiClockMenuItem::Off;
-    bool _midiClockModalOpen = false;
+    MidiClockModal _midiClockModal;
     ProgramStorageModalState _programStorageState = ProgramStorageModalState::Closed;
     ProgramStorageMenuItem _programStorageSelection = ProgramStorageMenuItem::Save;
     ProgramStorageAction _programStorageAction = ProgramStorageAction::Save;
