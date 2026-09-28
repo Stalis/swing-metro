@@ -1,14 +1,12 @@
 #pragma once
 
-#include "app_contexts.h"
 #include "app_event_handler.h"
+#include "app_input_router.h"
 #include "components/ui_snapshot.h"
 #include "engine/transport_controller.h"
-#include "main_display_context.h"
 #include "program/program_storage_controller.h"
 
 #include <algorithm>
-#include <bitset>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -18,35 +16,20 @@ namespace SwingMetro {
 
 template <std::size_t Capacity>
 class AppInputCoordinator {
-    static_assert(Capacity >= 2, "AppInputCoordinator needs global and main contexts");
-
   public:
     AppInputCoordinator(AppEventHandler& handler, Sequencer& sequencer,
                         MidiClockSettings& midiClock, TransportController* transport = nullptr,
                         ProgramStorageController* programStorage = nullptr)
         : _handler{handler}, _sequencer{sequencer}, _midiClock{midiClock}, _transport{transport},
-          _programStorage{programStorage}, _shiftContext{_selectedStep} {
-        (void)_router.addContext(_globalContext);
-        (void)_router.addContext(_mainContext);
-    }
+          _programStorage{programStorage} {}
 
     auto dispatch(const InputEvent& input, std::uint32_t nowUs) -> std::optional<AppEvent> {
-        const auto source = static_cast<std::uint8_t>(input.source);
-        const auto* button = std::get_if<ContextInput::ButtonInput>(&input.payload);
-        if (button != nullptr && _capturedButtons.test(source)) {
-            if (button->phase == ContextInput::ButtonPhase::Released) {
-                _capturedButtons.reset(source);
-            }
+        const auto event = _inputRouter.dispatch(input);
+        if (!event.has_value()) {
             return std::nullopt;
         }
 
-        const auto result = _router.dispatch(input);
-        if (!result.hasEvent()) {
-            return std::nullopt;
-        }
-
-        const auto& event = result.event();
-        handleAppEvent(event, &input, nowUs);
+        handleAppEvent(*event, &input, nowUs);
         return event;
     }
 
@@ -54,20 +37,20 @@ class AppInputCoordinator {
         -> void {
         bool contextChanged = false;
         if (const auto* open = std::get_if<OpenStepSettings>(&event)) {
-            contextChanged = openStepSettings(open->step);
+            contextChanged = _inputRouter.openStepSettings(open->step);
         } else if (std::holds_alternative<CloseStepSettings>(event)) {
-            contextChanged = closeStepSettings();
+            contextChanged = _inputRouter.closeStepSettings();
         } else if (const auto* adjust = std::get_if<AdjustNote>(&event)) {
-            if (_selectedStep.has_value()) {
-                (void)_sequencer.adjustStepNote(*_selectedStep, adjust->delta);
+            if (const auto selected = selectedStep(); selected.has_value()) {
+                (void)_sequencer.adjustStepNote(*selected, adjust->delta);
             }
         } else if (const auto* adjust = std::get_if<AdjustVelocity>(&event)) {
-            if (_selectedStep.has_value()) {
-                (void)_sequencer.adjustStepVelocity(*_selectedStep, adjust->delta);
+            if (const auto selected = selectedStep(); selected.has_value()) {
+                (void)_sequencer.adjustStepVelocity(*selected, adjust->delta);
             }
         } else if (const auto* adjust = std::get_if<AdjustGate>(&event)) {
-            if (_selectedStep.has_value()) {
-                (void)_sequencer.adjustStepGate(*_selectedStep, adjust->delta);
+            if (const auto selected = selectedStep(); selected.has_value()) {
+                (void)_sequencer.adjustStepGate(*selected, adjust->delta);
             }
         } else if (std::holds_alternative<ToggleTransport>(event)) {
             if (_transport != nullptr) {
@@ -76,9 +59,9 @@ class AppInputCoordinator {
                 _sequencer.toggleRunning(nowUs);
             }
         } else if (std::holds_alternative<ActivateShift>(event)) {
-            (void)_router.addContext(_shiftContext);
+            _inputRouter.activateShift();
         } else if (std::holds_alternative<DeactivateShift>(event)) {
-            (void)_router.releaseContext(_shiftContext);
+            _inputRouter.deactivateShift();
         } else if (std::holds_alternative<OpenMidiClockSettings>(event)) {
             contextChanged = openMidiClockSettings();
         } else if (const auto* adjust = std::get_if<AdjustMidiClockPreview>(&event)) {
@@ -109,14 +92,14 @@ class AppInputCoordinator {
                 } else if (_programStorageSelection == ProgramStorageMenuItem::ResetProgram) {
                     _programResetChoice = ProgramResetChoice::No;
                     _programStorageState = ProgramStorageModalState::ResetConfirmation;
-                    _programStorageContext.setState(_programStorageState);
+                    _inputRouter.setProgramStorageState(_programStorageState);
                 } else {
                     _programStorageAction = _programStorageSelection == ProgramStorageMenuItem::Save
                                                 ? ProgramStorageAction::Save
                                                 : ProgramStorageAction::Load;
                     _programStorageState = ProgramStorageModalState::Slot;
                     _programStorageSlot = 0;
-                    _programStorageContext.setState(_programStorageState);
+                    _inputRouter.setProgramStorageState(_programStorageState);
                 }
             }
         } else if (const auto* select = std::get_if<SelectProgramStorageSlot>(&event)) {
@@ -127,7 +110,7 @@ class AppInputCoordinator {
                     contextChanged = closeProgramStorage();
                 } else {
                     _programStorageState = ProgramStorageModalState::Busy;
-                    _programStorageContext.setState(_programStorageState);
+                    _inputRouter.setProgramStorageState(_programStorageState);
                     _programStoragePending = true;
                 }
             }
@@ -142,7 +125,7 @@ class AppInputCoordinator {
                     _programStorageResetPending = true;
                     _programStoragePending = true;
                 }
-                _programStorageContext.setState(_programStorageState);
+                _inputRouter.setProgramStorageState(_programStorageState);
             }
         } else if (std::holds_alternative<CloseProgramStorage>(event)) {
             contextChanged = closeProgramStorage();
@@ -152,23 +135,22 @@ class AppInputCoordinator {
         }
 
         if (contextChanged && sourceInput != nullptr) {
-            const auto* button = std::get_if<ContextInput::ButtonInput>(&sourceInput->payload);
-            if (button != nullptr && button->phase != ContextInput::ButtonPhase::Released) {
-                _capturedButtons.set(static_cast<std::uint8_t>(sourceInput->source));
-            }
+            _inputRouter.captureButton(sourceInput);
         }
     }
 
     [[nodiscard]] auto selectedStep() const noexcept -> std::optional<std::uint8_t> {
-        return _selectedStep;
+        return _inputRouter.selectedStep();
     }
     [[nodiscard]] auto isShiftActive() const noexcept -> bool {
-        return _router.contains(_shiftContext);
+        return _inputRouter.isShiftActive();
     }
     [[nodiscard]] auto hasStepSettingsContext() const noexcept -> bool {
-        return _router.contains(_stepContext);
+        return _inputRouter.hasStepSettingsContext();
     }
-    [[nodiscard]] auto stackSize() const noexcept -> std::size_t { return _router.size(); }
+    [[nodiscard]] auto stackSize() const noexcept -> std::size_t {
+        return _inputRouter.stackSize();
+    }
     [[nodiscard]] auto midiClockMode() const noexcept -> MidiClockMode { return _midiClock.mode(); }
     [[nodiscard]] auto isMidiClockModalOpen() const noexcept -> bool { return _midiClockModalOpen; }
     [[nodiscard]] auto midiClockSelection() const noexcept -> MidiClockMenuItem {
@@ -192,22 +174,20 @@ class AppInputCoordinator {
         _programStorageState = _programStorageStatus == ProgramStoreStatus::Ok
                                    ? ProgramStorageModalState::Success
                                    : ProgramStorageModalState::Error;
-        _programStorageContext.setState(_programStorageState);
+        _inputRouter.setProgramStorageState(_programStorageState);
     }
 
     [[nodiscard]] auto decorateUiSettings(UiSettings settings) const -> UiSettings {
+        const auto selected = selectedStep();
         settings.page = currentPage();
-        settings.editor.selectedStep = _selectedStep.value_or(UINT8_MAX);
-        settings.editor.selectedNote = _selectedStep.has_value()
-                                           ? _sequencer.getStepMidiNote(*_selectedStep).value_or(36)
-                                           : 36;
+        settings.editor.selectedStep = selected.value_or(UINT8_MAX);
+        settings.editor.selectedNote =
+            selected.has_value() ? _sequencer.getStepMidiNote(*selected).value_or(36) : 36;
         settings.editor.selectedVelocity =
-            _selectedStep.has_value() ? _sequencer.getStepVelocity(*_selectedStep).value_or(127)
-                                      : 127;
+            selected.has_value() ? _sequencer.getStepVelocity(*selected).value_or(127) : 127;
         settings.editor.selectedGate =
-            _selectedStep.has_value()
-                ? _sequencer.getStepGate(*_selectedStep).value_or(STEP_DEFAULT_GATE)
-                : STEP_DEFAULT_GATE;
+            selected.has_value() ? _sequencer.getStepGate(*selected).value_or(STEP_DEFAULT_GATE)
+                                 : STEP_DEFAULT_GATE;
         settings.editor.transportRunning = _sequencer.isRunning();
         settings.editor.shiftActive = isShiftActive();
         settings.midiClock.modalOpen = _midiClockModalOpen;
@@ -229,7 +209,7 @@ class AppInputCoordinator {
     };
 
     [[nodiscard]] auto currentPage() const noexcept -> UiPage {
-        return _selectedStep.has_value() ? UiPage::StepSettings : UiPage::MainDisplay;
+        return selectedStep().has_value() ? UiPage::StepSettings : UiPage::MainDisplay;
     }
 
     [[nodiscard]] static constexpr auto modalHostPage(ModalId modal) noexcept -> UiPage {
@@ -249,90 +229,24 @@ class AppInputCoordinator {
         return !hasOpenModal() && currentPage() == modalHostPage(modal);
     }
 
-    [[nodiscard]] auto openStepSettings(std::uint8_t step) -> bool {
-        if (step >= STEPS_COUNT) {
-            return false;
-        }
-
-        if (_selectedStep.has_value()) {
-            if (*_selectedStep == step) {
-                return false;
-            }
-            _selectedStep = step;
-            _stepContext.setSelectedStep(step);
-            return true;
-        }
-
-        if (_router.size() == _router.capacity()) {
-            return false;
-        }
-
-        const bool shiftWasActive = isShiftActive();
-        if (shiftWasActive) {
-            (void)_router.releaseContext(_shiftContext);
-        }
-        const auto added = _router.addContext(_stepContext);
-        if (added != ContextInput::AddContextResult::Added) {
-            if (shiftWasActive) {
-                (void)_router.addContext(_shiftContext);
-            }
-            return false;
-        }
-        if (shiftWasActive) {
-            (void)_router.addContext(_shiftContext);
-        }
-        _selectedStep = step;
-        _stepContext.setSelectedStep(step);
-        return true;
-    }
-
-    [[nodiscard]] auto closeStepSettings() -> bool {
-        if (!_selectedStep.has_value()) {
-            return false;
-        }
-        if (_router.releaseContext(_stepContext) != ContextInput::ReleaseContextResult::Released) {
-            return false;
-        }
-        _selectedStep.reset();
-        return true;
-    }
-
     [[nodiscard]] auto openMidiClockSettings() -> bool {
         if (!canOpenModal(ModalId::MidiClockSettings)) {
             return false;
         }
-
-        const bool shiftWasActive = isShiftActive();
-        if (shiftWasActive) {
-            (void)_router.releaseContext(_shiftContext);
-        } else if (_router.size() == _router.capacity()) {
+        if (!_inputRouter.openMidiClockSettings()) {
             return false;
         }
-
-        if (_router.addContext(_midiClockContext) != ContextInput::AddContextResult::Added) {
-            if (shiftWasActive) {
-                (void)_router.addContext(_shiftContext);
-            }
-            return false;
-        }
-
         _midiClockModalOpen = true;
         _midiClockSelection = static_cast<MidiClockMenuItem>(_midiClock.mode());
-        _restoreShiftAfterMidiClockModal = shiftWasActive;
         return true;
     }
 
     [[nodiscard]] auto closeMidiClockSettings() -> bool {
-        if (_router.releaseContext(_midiClockContext) !=
-            ContextInput::ReleaseContextResult::Released) {
+        if (!_inputRouter.closeMidiClockSettings()) {
             return false;
         }
 
         _midiClockModalOpen = false;
-        if (_restoreShiftAfterMidiClockModal) {
-            (void)_router.addContext(_shiftContext);
-        }
-        _restoreShiftAfterMidiClockModal = false;
         return true;
     }
 
@@ -352,11 +266,7 @@ class AppInputCoordinator {
     }
 
     [[nodiscard]] auto openProgramStorage() -> bool {
-        if (!canOpenModal(ModalId::ProgramStorage) || _router.size() == _router.capacity()) {
-            return false;
-        }
-        (void)_router.releaseContext(_shiftContext);
-        if (_router.addContext(_programStorageContext) != ContextInput::AddContextResult::Added) {
+        if (!canOpenModal(ModalId::ProgramStorage) || !_inputRouter.openProgramStorage()) {
             return false;
         }
         _programStorageState = ProgramStorageModalState::Action;
@@ -366,15 +276,14 @@ class AppInputCoordinator {
         _programStorageStatus = ProgramStoreStatus::Ok;
         _programResetChoice = ProgramResetChoice::No;
         _programStorageResetPending = false;
-        _programStorageContext.setState(_programStorageState);
+        _inputRouter.setProgramStorageState(_programStorageState);
         return true;
     }
 
     auto closeProgramStorage() -> bool {
         if (!isProgramStorageModalOpen() ||
             _programStorageState == ProgramStorageModalState::Busy ||
-            _router.releaseContext(_programStorageContext) !=
-                ContextInput::ReleaseContextResult::Released) {
+            !_inputRouter.closeProgramStorage()) {
             return false;
         }
         _programStorageState = ProgramStorageModalState::Closed;
@@ -418,18 +327,9 @@ class AppInputCoordinator {
     MidiClockSettings& _midiClock;
     TransportController* _transport;
     ProgramStorageController* _programStorage;
-    std::optional<std::uint8_t> _selectedStep;
-    GlobalContext _globalContext;
-    MainDisplayContext _mainContext;
-    StepSettingsContext _stepContext;
-    ShiftContext _shiftContext;
-    MidiClockSettingsContext _midiClockContext;
-    ProgramStorageContext _programStorageContext;
-    ContextInput::Router<InputEvent, AppEvent, Capacity> _router;
-    std::bitset<256> _capturedButtons;
+    AppInputRouter<Capacity> _inputRouter;
     MidiClockMenuItem _midiClockSelection = MidiClockMenuItem::Off;
     bool _midiClockModalOpen = false;
-    bool _restoreShiftAfterMidiClockModal = false;
     ProgramStorageModalState _programStorageState = ProgramStorageModalState::Closed;
     ProgramStorageMenuItem _programStorageSelection = ProgramStorageMenuItem::Save;
     ProgramStorageAction _programStorageAction = ProgramStorageAction::Save;
