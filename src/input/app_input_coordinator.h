@@ -4,7 +4,7 @@
 #include "app_input_router.h"
 #include "engine/transport_controller.h"
 #include "midi_clock_modal.h"
-#include "program/program_storage_controller.h"
+#include "program/program_storage_request.h"
 #include "step_editor.h"
 
 #include <cstddef>
@@ -21,7 +21,7 @@ class AppInputCoordinator {
                         MidiClockSettings& midiClock, TransportController* transport = nullptr,
                         ProgramStorageController* programStorage = nullptr)
         : _handler{handler}, _sequencer{sequencer}, _stepEditor{sequencer}, _midiClock{midiClock},
-          _transport{transport}, _programStorage{programStorage} {}
+          _transport{transport}, _programStorageRequest{programStorage} {}
 
     auto dispatch(const InputEvent& input, std::uint32_t nowUs) -> std::optional<AppEvent> {
         const auto event = _inputRouter.dispatch(input);
@@ -88,7 +88,7 @@ class AppInputCoordinator {
             _programStorageModal.selectSlot(select->delta);
         } else if (std::holds_alternative<ConfirmProgramStorageSlot>(event)) {
             if (const auto command = _programStorageModal.confirmSlot(); command.has_value()) {
-                _pendingProgramStorageCommand = command;
+                _programStorageRequest.enqueue(*command);
                 _inputRouter.setProgramStorageState(_programStorageModal.snapshot().state);
             }
             if (_programStorageModal.closeRequested()) {
@@ -100,7 +100,7 @@ class AppInputCoordinator {
             if (_programStorageModal.snapshot().state ==
                 ProgramStorageModalState::ResetConfirmation) {
                 if (const auto command = _programStorageModal.confirmReset(); command.has_value()) {
-                    _pendingProgramStorageCommand = command;
+                    _programStorageRequest.enqueue(*command);
                 }
                 _inputRouter.setProgramStorageState(_programStorageModal.snapshot().state);
             }
@@ -140,20 +140,11 @@ class AppInputCoordinator {
     }
 
     auto processProgramStorage() -> void {
-        if (!_pendingProgramStorageCommand.has_value()) {
+        const auto status = _programStorageRequest.process();
+        if (!status.has_value()) {
             return;
         }
-        const auto command = *_pendingProgramStorageCommand;
-        _pendingProgramStorageCommand.reset();
-        const auto status =
-            _programStorage == nullptr ? ProgramStoreStatus::NotMounted
-            : command.operation == ProgramStorageOperation::Reset
-                ? _programStorage->resetCurrentProgram()
-                : _programStorage->perform(command.operation == ProgramStorageOperation::Save
-                                               ? ProgramStorageAction::Save
-                                               : ProgramStorageAction::Load,
-                                           command.slot);
-        _programStorageModal.complete(status);
+        _programStorageModal.complete(*status);
         _inputRouter.setProgramStorageState(_programStorageModal.snapshot().state);
     }
 
@@ -244,11 +235,10 @@ class AppInputCoordinator {
     StepEditor _stepEditor;
     MidiClockSettings& _midiClock;
     TransportController* _transport;
-    ProgramStorageController* _programStorage;
+    ProgramStorageRequest _programStorageRequest;
     AppInputRouter<Capacity> _inputRouter;
     MidiClockModal _midiClockModal;
     ProgramStorageModal _programStorageModal;
-    std::optional<ProgramStorageCommand> _pendingProgramStorageCommand;
 };
 
 } // namespace SwingMetro

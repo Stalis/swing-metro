@@ -34,6 +34,7 @@
 #include "../test/test_native/program/test_program_slot_store.h"
 #include "../test/test_native/program/test_program_storage_controller.h"
 #include "../test/test_native/program/test_program_storage_modal.h"
+#include "../test/test_native/program/test_program_storage_request.h"
 #include "../test/test_native/utils/counter/test_counter.h"
 #include <unity.h>
 
@@ -85,6 +86,7 @@ int main() {
     testProgramSlotStoreMain();
     testProgramStorageControllerMain();
     testProgramStorageModalMain();
+    testProgramStorageRequestMain();
 
     UNITY_END();
 }
