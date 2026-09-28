@@ -7,7 +7,6 @@
 #include "program/program_storage_controller.h"
 #include "step_editor.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -77,48 +76,33 @@ class AppInputCoordinator {
         } else if (std::holds_alternative<OpenProgramStorage>(event)) {
             contextChanged = openProgramStorage();
         } else if (const auto* select = std::get_if<SelectProgramStorageAction>(&event)) {
-            selectProgramStorageAction(select->delta);
+            _programStorageModal.selectAction(select->delta);
         } else if (std::holds_alternative<ConfirmProgramStorageAction>(event)) {
-            if (_programStorageState == ProgramStorageModalState::Action) {
-                if (_programStorageSelection == ProgramStorageMenuItem::Cancel) {
-                    contextChanged = closeProgramStorage();
-                } else if (_programStorageSelection == ProgramStorageMenuItem::ResetProgram) {
-                    _programResetChoice = ProgramResetChoice::No;
-                    _programStorageState = ProgramStorageModalState::ResetConfirmation;
-                    _inputRouter.setProgramStorageState(_programStorageState);
-                } else {
-                    _programStorageAction = _programStorageSelection == ProgramStorageMenuItem::Save
-                                                ? ProgramStorageAction::Save
-                                                : ProgramStorageAction::Load;
-                    _programStorageState = ProgramStorageModalState::Slot;
-                    _programStorageSlot = 0;
-                    _inputRouter.setProgramStorageState(_programStorageState);
-                }
+            if (_programStorageModal.confirmAction()) {
+                _inputRouter.setProgramStorageState(_programStorageModal.snapshot().state);
+            }
+            if (_programStorageModal.closeRequested()) {
+                contextChanged = closeProgramStorage();
             }
         } else if (const auto* select = std::get_if<SelectProgramStorageSlot>(&event)) {
-            selectProgramStorageSlot(select->delta);
+            _programStorageModal.selectSlot(select->delta);
         } else if (std::holds_alternative<ConfirmProgramStorageSlot>(event)) {
-            if (_programStorageState == ProgramStorageModalState::Slot) {
-                if (_programStorageSlot == PROGRAM_STORAGE_CANCEL_SLOT) {
-                    contextChanged = closeProgramStorage();
-                } else {
-                    _programStorageState = ProgramStorageModalState::Busy;
-                    _inputRouter.setProgramStorageState(_programStorageState);
-                    _programStoragePending = true;
-                }
+            if (const auto command = _programStorageModal.confirmSlot(); command.has_value()) {
+                _pendingProgramStorageCommand = command;
+                _inputRouter.setProgramStorageState(_programStorageModal.snapshot().state);
+            }
+            if (_programStorageModal.closeRequested()) {
+                contextChanged = closeProgramStorage();
             }
         } else if (const auto* select = std::get_if<SelectProgramResetChoice>(&event)) {
-            selectProgramResetChoice(select->delta);
+            _programStorageModal.selectResetChoice(select->delta);
         } else if (std::holds_alternative<ConfirmProgramReset>(event)) {
-            if (_programStorageState == ProgramStorageModalState::ResetConfirmation) {
-                if (_programResetChoice == ProgramResetChoice::No) {
-                    _programStorageState = ProgramStorageModalState::Action;
-                } else {
-                    _programStorageState = ProgramStorageModalState::Busy;
-                    _programStorageResetPending = true;
-                    _programStoragePending = true;
+            if (_programStorageModal.snapshot().state ==
+                ProgramStorageModalState::ResetConfirmation) {
+                if (const auto command = _programStorageModal.confirmReset(); command.has_value()) {
+                    _pendingProgramStorageCommand = command;
                 }
-                _inputRouter.setProgramStorageState(_programStorageState);
+                _inputRouter.setProgramStorageState(_programStorageModal.snapshot().state);
             }
         } else if (std::holds_alternative<CloseProgramStorage>(event)) {
             contextChanged = closeProgramStorage();
@@ -152,24 +136,25 @@ class AppInputCoordinator {
         return _midiClockModal.selection();
     }
     [[nodiscard]] auto isProgramStorageModalOpen() const noexcept -> bool {
-        return _programStorageState != ProgramStorageModalState::Closed;
+        return _programStorageModal.isOpen();
     }
 
     auto processProgramStorage() -> void {
-        if (!_programStoragePending) {
+        if (!_pendingProgramStorageCommand.has_value()) {
             return;
         }
-        _programStoragePending = false;
-        _programStorageStatus =
+        const auto command = *_pendingProgramStorageCommand;
+        _pendingProgramStorageCommand.reset();
+        const auto status =
             _programStorage == nullptr ? ProgramStoreStatus::NotMounted
-            : _programStorageResetPending
+            : command.operation == ProgramStorageOperation::Reset
                 ? _programStorage->resetCurrentProgram()
-                : _programStorage->perform(_programStorageAction, _programStorageSlot);
-        _programStorageResetPending = false;
-        _programStorageState = _programStorageStatus == ProgramStoreStatus::Ok
-                                   ? ProgramStorageModalState::Success
-                                   : ProgramStorageModalState::Error;
-        _inputRouter.setProgramStorageState(_programStorageState);
+                : _programStorage->perform(command.operation == ProgramStorageOperation::Save
+                                               ? ProgramStorageAction::Save
+                                               : ProgramStorageAction::Load,
+                                           command.slot);
+        _programStorageModal.complete(status);
+        _inputRouter.setProgramStorageState(_programStorageModal.snapshot().state);
     }
 
     [[nodiscard]] auto decorateUiSettings(UiSettings settings) const -> UiSettings {
@@ -178,12 +163,13 @@ class AppInputCoordinator {
         settings.midiClock.modalOpen = _midiClockModal.isOpen();
         settings.midiClock.active = _midiClock.mode();
         settings.midiClock.selection = _midiClockModal.selection();
-        settings.storage.state = _programStorageState;
-        settings.storage.selection = _programStorageSelection;
-        settings.storage.action = _programStorageAction;
-        settings.storage.slot = _programStorageSlot;
-        settings.storage.status = _programStorageStatus;
-        settings.storage.resetChoice = _programResetChoice;
+        const auto& storage = _programStorageModal.snapshot();
+        settings.storage.state = storage.state;
+        settings.storage.selection = storage.selection;
+        settings.storage.action = storage.action;
+        settings.storage.slot = storage.slot;
+        settings.storage.status = storage.status;
+        settings.storage.resetChoice = storage.resetChoice;
         return settings;
     }
 
@@ -238,57 +224,19 @@ class AppInputCoordinator {
         if (!canOpenModal(ModalId::ProgramStorage) || !_inputRouter.openProgramStorage()) {
             return false;
         }
-        _programStorageState = ProgramStorageModalState::Action;
-        _programStorageSelection = ProgramStorageMenuItem::Save;
-        _programStorageAction = ProgramStorageAction::Save;
-        _programStorageSlot = 0;
-        _programStorageStatus = ProgramStoreStatus::Ok;
-        _programResetChoice = ProgramResetChoice::No;
-        _programStorageResetPending = false;
-        _inputRouter.setProgramStorageState(_programStorageState);
+        _programStorageModal.open();
+        _inputRouter.setProgramStorageState(_programStorageModal.snapshot().state);
         return true;
     }
 
     auto closeProgramStorage() -> bool {
         if (!isProgramStorageModalOpen() ||
-            _programStorageState == ProgramStorageModalState::Busy ||
+            _programStorageModal.snapshot().state == ProgramStorageModalState::Busy ||
             !_inputRouter.closeProgramStorage()) {
             return false;
         }
-        _programStorageState = ProgramStorageModalState::Closed;
+        _programStorageModal.close();
         return true;
-    }
-
-    auto selectProgramStorageAction(std::int8_t delta) noexcept -> void {
-        if (_programStorageState == ProgramStorageModalState::Action && delta != 0) {
-            const auto candidate = static_cast<int>(_programStorageSelection) + delta;
-            _programStorageSelection = static_cast<ProgramStorageMenuItem>(
-                std::clamp(candidate, static_cast<int>(ProgramStorageMenuItem::Save),
-                           static_cast<int>(ProgramStorageMenuItem::ResetProgram)));
-        }
-    }
-
-    auto selectProgramResetChoice(std::int8_t delta) noexcept -> void {
-        if (_programStorageState != ProgramStorageModalState::ResetConfirmation || delta == 0) {
-            return;
-        }
-        const auto candidate = static_cast<int>(_programResetChoice) + delta;
-        _programResetChoice = static_cast<ProgramResetChoice>(
-            std::clamp(candidate, static_cast<int>(ProgramResetChoice::No),
-                       static_cast<int>(ProgramResetChoice::Yes)));
-    }
-
-    auto selectProgramStorageSlot(std::int8_t delta) noexcept -> void {
-        if (_programStorageState != ProgramStorageModalState::Slot || delta == 0) {
-            return;
-        }
-        const auto current = _programStorageSlot == PROGRAM_STORAGE_CANCEL_SLOT
-                                 ? -1
-                                 : static_cast<int>(_programStorageSlot);
-        const auto selected =
-            std::clamp(current + delta, -1, static_cast<int>(PROGRAM_USER_SLOT_COUNT - 1));
-        _programStorageSlot =
-            selected < 0 ? PROGRAM_STORAGE_CANCEL_SLOT : static_cast<std::uint8_t>(selected);
     }
 
     AppEventHandler& _handler;
@@ -299,14 +247,8 @@ class AppInputCoordinator {
     ProgramStorageController* _programStorage;
     AppInputRouter<Capacity> _inputRouter;
     MidiClockModal _midiClockModal;
-    ProgramStorageModalState _programStorageState = ProgramStorageModalState::Closed;
-    ProgramStorageMenuItem _programStorageSelection = ProgramStorageMenuItem::Save;
-    ProgramStorageAction _programStorageAction = ProgramStorageAction::Save;
-    std::uint8_t _programStorageSlot = 0;
-    ProgramStoreStatus _programStorageStatus = ProgramStoreStatus::Ok;
-    ProgramResetChoice _programResetChoice = ProgramResetChoice::No;
-    bool _programStoragePending = false;
-    bool _programStorageResetPending = false;
+    ProgramStorageModal _programStorageModal;
+    std::optional<ProgramStorageCommand> _pendingProgramStorageCommand;
 };
 
 } // namespace SwingMetro
