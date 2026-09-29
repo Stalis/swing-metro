@@ -13,7 +13,7 @@ Implemented on `codex/refactor-feature-foundation` after the user verified R2 on
 | R3.5 | `4b3ccfa` | `ProgramStorageRequest` queues one command and consumes it before calling `ProgramStorageController`. The controller remains the authority for the transport-running flash guard. |
 | R3.6 | `fdae922` | `AppUiSnapshotBuilder` assembles the existing page, editor, MIDI clock, and storage fields from named inputs. |
 
-`AppInputCoordinator` remains the public application facade and retains event ordering, modal exclusivity, transport actions, and the entry points used by `main.cpp`. It is 244 lines after R3, down from 441 before extraction. `main.cpp`, the `UiViewModel` mailbox, GUI code, program serialization, and the sequencer were not changed.
+`AppInputCoordinator` remains the public application facade and retains event ordering, modal exclusivity, transport actions, and the entry points used by `main.cpp`. It is 241 lines after R3, down from 441 before extraction. `main.cpp`, the `UiViewModel` mailbox, GUI code, program serialization, and the sequencer were not changed.
 
 The storage sequence remains: confirmation enters `Busy` and queues a command; `loop()` publishes that snapshot; `processProgramStorage()` consumes and executes the command; the next snapshot reports `Success` or `Error`. Opening and closing the storage transport window still happen in `main.cpp`. A null storage controller still yields `NotMounted`, and `ProgramStorageController` still returns `TransportRunning` before flash access while playback is active.
 
