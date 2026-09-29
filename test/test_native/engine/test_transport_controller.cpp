@@ -2,6 +2,7 @@
 
 #include "drivers/midi_usb_encoder.h"
 #include "engine/fault_midi_message_sink.h"
+#include "engine/midi_dispatcher.h"
 #include "engine/transport_controller.h"
 
 #include <array>
