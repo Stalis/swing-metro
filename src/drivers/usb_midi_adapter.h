@@ -1,8 +1,8 @@
 #pragma once
 
 #include "drivers/midi_usb_encoder.h"
+#include "engine/midi_message_sink.h"
 #include "engine/midi_realtime_event.h"
-#include "engine/transport_controller.h"
 
 #include <Adafruit_TinyUSB.h>
 

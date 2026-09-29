@@ -1,6 +1,6 @@
 #pragma once
 
-#include "transport_controller.h"
+#include "midi_message_sink.h"
 
 #include <array>
 #include <cstddef>

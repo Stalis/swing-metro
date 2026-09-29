@@ -3,7 +3,7 @@
 #include "diagnostic_output.h"
 #include "input/encoder_sample_diagnostics.h"
 #include "runtime_timing_diagnostics.h"
-#include "transport_controller.h"
+#include "transport_diagnostics.h"
 
 namespace SwingMetro {
 

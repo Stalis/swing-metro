@@ -1,6 +1,7 @@
 #pragma once
 
 #include "diagnostics_serializer.h"
+#include "transport_controller.h"
 
 namespace SwingMetro {
 

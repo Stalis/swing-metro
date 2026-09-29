@@ -1,6 +1,9 @@
 #pragma once
 
 #include "engine/diagnostics_capture.h"
+#include "engine/midi_clock_mode.h"
+#include "engine/sequencer.h"
+#include "engine/transport_controller.h"
 #if defined(SWING_METRO_STAGE5_FAULT_SCENARIOS)
 #include "engine/fault_midi_message_sink.h"
 #include "fault_command_parser.h"
