@@ -274,6 +274,20 @@ void test_actual_sounding_state_follows_transmitted_messages() {
     TEST_ASSERT_FALSE(sequencer.actualSoundingNote().has_value());
 }
 
+void test_note_lifecycle_keeps_queued_note_separate_from_accepted_note() {
+    NoteLifecycle lifecycle;
+    const NoteLaunch launch{60, 1, 2};
+
+    lifecycle.notifyNoteOnQueued(launch);
+    TEST_ASSERT_FALSE(lifecycle.actualSoundingNote().has_value());
+    TEST_ASSERT_EQUAL_UINT8(60, lifecycle.projectedOrActualLaunch()->note);
+    TEST_ASSERT_FALSE(lifecycle.requestNoteOff().has_value());
+
+    lifecycle.notifyNoteOnAccepted(launch);
+    TEST_ASSERT_EQUAL_UINT8(60, *lifecycle.requestNoteOff());
+    TEST_ASSERT_FALSE(lifecycle.requestNoteOff().has_value());
+}
+
 void test_cancelled_note_off_request_preserves_accepted_state_and_can_be_requested_again() {
     Sequencer sequencer;
     sequencer.notifyNoteOnAccepted(60);
@@ -404,6 +418,7 @@ void test_sequencer_main() {
     RUN_TEST(test_gate_pair_capacity_rejection_keeps_both_events_retryable);
     RUN_TEST(test_gate_pair_tick_quota_rejection_keeps_both_events_retryable);
     RUN_TEST(test_actual_sounding_state_follows_transmitted_messages);
+    RUN_TEST(test_note_lifecycle_keeps_queued_note_separate_from_accepted_note);
     RUN_TEST(test_cancelled_note_off_request_preserves_accepted_state_and_can_be_requested_again);
     RUN_TEST(test_disconnect_abandonment_is_not_note_off_acceptance);
     RUN_TEST(test_same_pitch_old_launch_off_does_not_clear_replacement);

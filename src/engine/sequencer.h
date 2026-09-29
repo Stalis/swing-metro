@@ -5,13 +5,12 @@
 #include <cstdint>
 #include <optional>
 
-#include "midi_event_queue.h"
+#include "note_lifecycle.h"
 
 using StepIndex = uint8_t;
 constexpr const StepIndex STEPS_COUNT = 16;
 constexpr SwingMetro::TransportTick SCHEDULING_LOOKAHEAD_TICKS = 2;
 
-using MIDI_Note = uint8_t;
 constexpr const uint8_t NOTES_IN_OCTAVE = 12;
 constexpr const uint8_t MIDI_OFFSET = NOTES_IN_OCTAVE * 3;
 constexpr const uint8_t STEP_DEFAULT_GATE = 100;
@@ -56,14 +55,6 @@ struct SequencerStep {
 [[nodiscard]] constexpr bool isValid(const SequencerStep& step) {
     return step.gate >= STEP_MIN_GATE && step.gate <= STEP_MAX_GATE;
 }
-
-enum class RemoteNoteState : std::uint8_t { Clean, Unknown };
-
-struct NoteLaunch {
-    MIDI_Note note = 0;
-    SwingMetro::MidiLaunchId launchId = 0;
-    std::uint32_t sessionGeneration = 0;
-};
 
 class Sequencer {
   public:
@@ -129,13 +120,9 @@ class Sequencer {
     uint8_t _bpm;
     uint8_t _swing = SwingMetro::SWING_MIN_VALUE;
     bool _running = false;
-    std::optional<NoteLaunch> _actualSoundingLaunch;
-    std::optional<NoteLaunch> _projectedLaunch;
-    std::optional<NoteLaunch> _requestedNoteOff;
-    RemoteNoteState _remoteNoteState = RemoteNoteState::Clean;
+    NoteLifecycle _noteLifecycle;
     SwingMetro::TransportTick _nextBoundaryTick = 0;
     SwingMetro::MidiLaunchId _nextLaunchId = 1;
-    std::uint32_t _sessionGeneration = 0;
     bool _schedulingComplete = false;
 
     uint32_t _stepPeriodUs;
