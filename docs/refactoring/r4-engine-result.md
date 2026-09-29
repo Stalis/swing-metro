@@ -18,6 +18,8 @@ Full `make verify` passed after P1, P2, P3, and P4b on 2026-09-29: format check,
 
 The existing literal straight and swing reference traces in `test_sequencer.cpp` still pass across ticks 0–96. They check message kind, tick/phase, note, velocity, MIDI channel 0, launch identity and generation, including gate deadlines and the cycle wrap. The engine integration suite also passes for internal Start/Clock/note ordering, external Start/Continue/loss/relock, capacity and quota failure, retry identity, eight attempts per pass, pending Stop/Off ordering, same-pitch replacement, disconnect and explicit restart, and diagnostic result accounting. P3 added one direct test that a queued Note On does not become actual until accepted, and that an accepted note produces one stop-Off request. These are local test and build results, not hardware timing measurements.
 
+A read-only OpenCode review inspected 20 engine, build and test files after the final commit and found no concrete behavioral regression. It did not rerun tests; the `make verify` results above are the execution evidence.
+
 | Firmware | R4 RAM / Flash | R3 RAM / Flash |
 | --- | ---: | ---: |
 | Production | 169,968 B / 731,880 B | 169,976 B / 731,736 B |
