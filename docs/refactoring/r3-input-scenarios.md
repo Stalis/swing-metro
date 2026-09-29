@@ -31,4 +31,6 @@ GitNexus impact and change analysis were run before edits and each commit. The a
 
 ## Device check before R4
 
-R3 firmware was built but not flashed. On the Pico 2 W, check a step's long press, selection of another step, and return to the main page; a held Shift across step navigation and a MIDI Clock dialog; MIDI Clock Cancel and each mode; storage Save/Load/Reset, both Cancel paths, Busy then Success/Error, and closing back to the previous context. Confirm that MIDI playback remains stable during input and that storage is rejected while transport runs. R4 can begin after this behavior is verified on the device.
+R3 firmware was built but not flashed by the implementation agent. On the Pico 2 W, the suggested check covers a step's long press, selection of another step, and return to the main page; a held Shift across step navigation and a MIDI Clock dialog; MIDI Clock Cancel and each mode; storage Save/Load/Reset, both Cancel paths, Busy then Success/Error, and closing back to the previous context. It also covers MIDI playback during input and rejection of storage while transport runs.
+
+On 2026-09-29, the user reported that they had checked the firmware and were satisfied with its behavior. This closes the R3 device gate for proceeding to R4. Individual checklist observations and timing captures were not supplied, so this report does not claim them as separately measured evidence.
