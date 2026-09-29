@@ -1,7 +1,6 @@
 #include "sequencer.h"
 
 #include <algorithm>
-#include <limits>
 
 constexpr uint8_t DEFAULT_BPM = 120;
 constexpr uint8_t MIN_BPM = 40;
@@ -146,9 +145,7 @@ void Sequencer::start() {
     _running = true;
     _currentStepIndex = 0;
     _hasCurrentStep = false;
-    _nextBoundaryTick = 0;
-    _nextLaunchId = 1;
-    _schedulingComplete = false;
+    _stepPlanner.reset();
 }
 
 void Sequencer::continuePlayback() { _running = true; }
@@ -156,47 +153,11 @@ void Sequencer::continuePlayback() { _running = true; }
 SwingMetro::MidiEventQueueEnqueueResult
 Sequencer::scheduleThrough(SwingMetro::TransportPosition position,
                            SwingMetro::MidiEventQueue& queue) {
-    if (!_running || _schedulingComplete) {
+    if (!_running) {
         return SwingMetro::MidiEventQueueEnqueueResult::Ok;
     }
-    const auto horizon = position.tick > std::numeric_limits<SwingMetro::TransportTick>::max() -
-                                             SCHEDULING_LOOKAHEAD_TICKS
-                             ? std::numeric_limits<SwingMetro::TransportTick>::max()
-                             : position.tick + SCHEDULING_LOOKAHEAD_TICKS;
-    while (_nextBoundaryTick <= horizon) {
-        const auto stepIndex = static_cast<StepIndex>(
-            (_nextBoundaryTick / SwingMetro::TICKS_PER_SIXTEENTH) % STEPS_COUNT);
-        const auto& step = _steps[stepIndex];
-        if (step.isEnabled) {
-            const SwingMetro::TransportPosition onPosition{
-                _nextBoundaryTick, SwingMetro::swingPhase(stepIndex, _swing)};
-            const auto launchId = _nextLaunchId;
-            const auto offPosition = SwingMetro::gateDeadline(onPosition, step.gate);
-            const std::array<SwingMetro::MidiEventRequest, 2> requests = {
-                SwingMetro::MidiEventRequest{
-                    onPosition, *SwingMetro::MidiMessage::noteOn(0, step.note, step.velocity),
-                    launchId, _noteLifecycle.sessionGeneration(), offPosition},
-                SwingMetro::MidiEventRequest{
-                    offPosition, *SwingMetro::MidiMessage::noteOff(0, step.note), launchId,
-                    _noteLifecycle.sessionGeneration(), offPosition},
-            };
-            const auto result = queue.enqueueBatch(requests, requests.size());
-            if (result != SwingMetro::MidiEventQueueEnqueueResult::Ok) {
-                return result;
-            }
-            ++_nextLaunchId;
-            if (_nextLaunchId == 0) {
-                ++_nextLaunchId;
-            }
-        }
-        if (_nextBoundaryTick > std::numeric_limits<SwingMetro::TransportTick>::max() -
-                                    SwingMetro::TICKS_PER_SIXTEENTH) {
-            _schedulingComplete = true;
-            break;
-        }
-        _nextBoundaryTick += SwingMetro::TICKS_PER_SIXTEENTH;
-    }
-    return SwingMetro::MidiEventQueueEnqueueResult::Ok;
+    return _stepPlanner.scheduleThrough(position, _steps, _swing,
+                                        _noteLifecycle.sessionGeneration(), queue);
 }
 
 void Sequencer::notifyBoundaryReached(SwingMetro::TransportTick tick) {

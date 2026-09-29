@@ -6,8 +6,7 @@
 #include <optional>
 
 #include "sequencer_step.h"
-
-constexpr SwingMetro::TransportTick SCHEDULING_LOOKAHEAD_TICKS = 2;
+#include "step_planner.h"
 
 class Sequencer {
   public:
@@ -74,9 +73,7 @@ class Sequencer {
     uint8_t _swing = SwingMetro::SWING_MIN_VALUE;
     bool _running = false;
     NoteLifecycle _noteLifecycle;
-    SwingMetro::TransportTick _nextBoundaryTick = 0;
-    SwingMetro::MidiLaunchId _nextLaunchId = 1;
-    bool _schedulingComplete = false;
+    StepPlanner _stepPlanner;
 
     uint32_t _stepPeriodUs;
     uint32_t _lastStepAt = 0;
