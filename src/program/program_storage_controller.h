@@ -20,6 +20,7 @@ class ProgramStorageController {
     [[nodiscard]] auto resetCurrentProgram() -> ProgramStoreStatus;
     [[nodiscard]] auto restoreCurrentProgram() -> ProgramStoreStatus;
     [[nodiscard]] auto syncCurrentProgramIfChanged() -> ProgramStoreStatus;
+    [[nodiscard]] auto currentDraftSnapshot() const -> ProgramDraft;
 
   private:
     [[nodiscard]] auto saveCurrentProgram(const Program& program, bool updateDraft = true)

@@ -217,6 +217,31 @@ void testControllerAutosaveRefreshesDraftWithoutChangingBankOrSource() {
     TEST_ASSERT_EQUAL_UINT8(3, state.draft.sourceId()->slot());
 }
 
+void testControllerReadsLiveDraftDuringPlaybackWithoutStorageAccess() {
+    State state;
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(SwingMetro::ProgramStoreStatus::Ok),
+                            static_cast<std::uint8_t>(state.controller.perform(
+                                SwingMetro::ProgramStorageAction::Save, 3)));
+    const auto id = *SwingMetro::ProgramId::fromSlot(3);
+    const auto writesBefore = state.storage.writes;
+    const auto readsBefore = state.storage.reads;
+
+    state.session.transport().toggle(0);
+    state.sequencer.toggleStep(0);
+    state.swing.setValue(80);
+    state.sequencer.setSwing(80);
+    const auto draft = state.controller.currentDraftSnapshot();
+
+    TEST_ASSERT_TRUE(draft.sourceId().has_value());
+    TEST_ASSERT_EQUAL_UINT8(3, draft.sourceId()->slot());
+    TEST_ASSERT_TRUE(draft.program().steps[0].enabled);
+    TEST_ASSERT_EQUAL_UINT8(80, draft.program().swing);
+    TEST_ASSERT_FALSE(state.bank.find(id)->program.steps[0].enabled);
+    TEST_ASSERT_EQUAL_UINT8(50, state.bank.find(id)->program.swing);
+    TEST_ASSERT_EQUAL_UINT32(writesBefore, state.storage.writes);
+    TEST_ASSERT_EQUAL_UINT32(readsBefore, state.storage.reads);
+}
+
 void testControllerRejectsRunningTransport() {
     State state;
     state.session.transport().toggle(0);
@@ -328,6 +353,7 @@ void testProgramStorageControllerMain() {
     RUN_TEST(testControllerKeepsRamSnapshotIfCurrentAutosaveFails);
     RUN_TEST(testControllerLoadsUserSlotIntoStoppedSessionBankAndDraft);
     RUN_TEST(testControllerAutosaveRefreshesDraftWithoutChangingBankOrSource);
+    RUN_TEST(testControllerReadsLiveDraftDuringPlaybackWithoutStorageAccess);
     RUN_TEST(testControllerRejectsRunningTransport);
     RUN_TEST(testControllerRestoresCurrentProgramAndDefaults);
     RUN_TEST(testControllerResetsAndPersistsInitialProgram);

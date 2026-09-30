@@ -107,11 +107,18 @@ auto ProgramStorageController::syncCurrentProgramIfChanged() -> ProgramStoreStat
     return saveCurrentProgram(program);
 }
 
+auto ProgramStorageController::currentDraftSnapshot() const -> ProgramDraft {
+    ProgramDraft snapshot;
+    const auto program = captureProgram(_session.tempo(), _swing, _volume,
+                                        _session.playback().sequencer(), _session.midiClock());
+    (void)snapshot.load(program, _draft.sourceId());
+    return snapshot;
+}
+
 auto ProgramStorageController::saveCurrentProgram(const Program& program, bool updateDraft)
     -> ProgramStoreStatus {
     const auto status = _store.save(PROGRAM_CURRENT_SLOT, program);
     if (status == ProgramStoreStatus::Ok) {
-        _session.playback().refreshAppliedProgram(program);
         if (updateDraft) {
             (void)_draft.load(program, _draft.sourceId());
         }

@@ -15,17 +15,14 @@ class Playback {
     [[nodiscard]] auto selectedProgramId() const noexcept -> std::optional<ProgramId> {
         return _selectedProgramId;
     }
-    [[nodiscard]] auto appliedProgram() const noexcept -> const Program& { return _appliedProgram; }
 
     auto applyProgram(const Program& program, std::optional<ProgramId> selectedProgramId) -> void;
     [[nodiscard]] auto scheduleThrough(TransportPosition position, MidiEventQueue& queue)
         -> MidiEventQueueEnqueueResult;
-    auto refreshAppliedProgram(const Program& program) noexcept -> void;
     auto selectProgram(std::optional<ProgramId> selectedProgramId) noexcept -> void;
 
   private:
     Sequencer _sequencer;
-    Program _appliedProgram{};
     std::optional<ProgramId> _selectedProgramId;
 };
 

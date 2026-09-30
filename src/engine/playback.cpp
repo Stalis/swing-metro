@@ -16,12 +16,7 @@ auto Playback::applyProgram(const Program& program, std::optional<ProgramId> sel
     }
     _sequencer.setSwing(program.swing);
     _sequencer.setSteps(steps);
-    _appliedProgram = program;
     _selectedProgramId = selectedProgramId;
-}
-
-auto Playback::refreshAppliedProgram(const Program& program) noexcept -> void {
-    _appliedProgram = program;
 }
 
 auto Playback::scheduleThrough(TransportPosition position, MidiEventQueue& queue)
