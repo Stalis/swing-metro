@@ -4,7 +4,7 @@
 #include "drivers/pico_internal_tick_alarm.h"
 #include "drivers/usb_midi_adapter.h"
 #include "engine/runtime_timing_diagnostics.h"
-#include "engine/transport_controller.h"
+#include "engine/session.h"
 #if defined(SWING_METRO_STAGE5_FAULT_SCENARIOS)
 #include "engine/fault_midi_message_sink.h"
 #endif
@@ -31,24 +31,25 @@
 #include <tuple>
 #include <variant>
 
-#include "engine/sequencer.h"
 #include <Adafruit_TinyUSB.h>
 #include <utils/counter.h>
 
 Adafruit_USBD_MIDI usbMidi;
 SwingMetro::UsbMidiRealtimeReceiver midiClockReceiver{usbMidi};
 
-Sequencer mainSequencer;
-SwingMetro::MidiClockSettings midiClockSettings;
 #if defined(SWING_METRO_STAGE5_FAULT_SCENARIOS)
 SwingMetro::UsbMidiMessageSink normalMidiSink{usbMidi};
 SwingMetro::FaultMidiMessageSink midiSink{normalMidiSink};
 #else
 SwingMetro::UsbMidiMessageSink midiSink{usbMidi};
 #endif
+SwingMetro::Session session{midiSink};
+Sequencer& mainSequencer = session.playback().sequencer();
+SwingMetro::MidiClockSettings& midiClockSettings = session.midiClock();
+Counter<uint8_t>& tempoCounter = session.tempo();
 SwingMetro::InternalTickSource internalTicks;
 SwingMetro::PicoInternalTickAlarm internalTickAlarm{internalTicks};
-SwingMetro::TransportController transportController{mainSequencer, midiClockSettings, midiSink};
+SwingMetro::TransportController& transportController = session.transport();
 SwingMetro::LittleFsProgramStorage programStorageBackend;
 SwingMetro::ProgramSlotStore programSlotStore{programStorageBackend};
 
@@ -87,12 +88,6 @@ constexpr EncoderSettings TEMPO_ENCODER_SETTINGS{
     .switchReleaseHandler = tempoEncoderSwitchReleaseHandler,
 };
 Encoder tempoEncoder(TEMPO_ENCODER_SETTINGS);
-Counter<uint8_t> tempoCounter({.step = 1,
-                               .value = 120,
-                               .minValue = 40,
-                               .maxValue = 240,
-                               .overflowBehavior = CounterOverflowBehavior::Clamp});
-
 void swingEncoderHandler(EncoderDirection direction);
 constexpr EncoderSettings SWING_ENCODER_SETTINGS{
     .pinA = 19,
@@ -131,8 +126,8 @@ SwingMetro::AppEventHandler appEventHandler{{
     .volume = volumeCounter,
     .sequencer = mainSequencer,
 }};
-SwingMetro::ProgramStorageController programStorageController{
-    programSlotStore, tempoCounter, swingCounter, volumeCounter, mainSequencer, midiClockSettings};
+SwingMetro::ProgramStorageController programStorageController{programSlotStore, session,
+                                                              swingCounter, volumeCounter};
 SwingMetro::AppInputCoordinator<INPUT_CONTEXT_CAPACITY> appInputCoordinator{
     appEventHandler, mainSequencer, midiClockSettings, &transportController,
     &programStorageController};

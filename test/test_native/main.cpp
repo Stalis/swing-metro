@@ -15,6 +15,7 @@
 #include "../test/test_native/engine/test_midi_pending_delivery_queue.h"
 #include "../test/test_native/engine/test_runtime_timing_diagnostics.h"
 #include "../test/test_native/engine/test_sequencer.h"
+#include "../test/test_native/engine/test_session.h"
 #include "../test/test_native/engine/test_transport.h"
 #include "../test/test_native/engine/test_transport_controller.h"
 #include "../test/test_native/input/test_app_event_handler.h"
@@ -61,6 +62,7 @@ int main() {
     test_midi_pending_delivery_queue_main();
     test_runtime_timing_diagnostics_main();
     test_sequencer_main();
+    testSessionMain();
     test_transport_main();
     test_transport_controller_main();
     test_midi_usb_encoder_main();

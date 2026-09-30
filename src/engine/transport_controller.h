@@ -7,6 +7,7 @@
 #include "midi_event_queue.h"
 #include "midi_message_sink.h"
 #include "midi_pending_delivery_queue.h"
+#include "playback.h"
 #include "sequencer.h"
 #include "stage5_instrumentation.h"
 #include "timestamp.h"
@@ -26,6 +27,12 @@ class TransportController {
                         MidiMessageSink& sink) noexcept
         : _sequencer{sequencer}, _settings{settings}, _queue{_ownedQueue},
           _dispatcher{_queue, _transport, sequencer, sink, _diagnostics} {}
+
+    TransportController(Playback& playback, MidiClockSettings& settings,
+                        MidiMessageSink& sink) noexcept
+        : _sequencer{playback.sequencer()}, _playback{&playback}, _settings{settings},
+          _queue{_ownedQueue},
+          _dispatcher{_queue, _transport, playback.sequencer(), sink, _diagnostics} {}
 
     TransportController(Sequencer& sequencer, MidiClockSettings& settings, MidiMessageSink& sink,
                         MidiEventQueue& queue) noexcept
@@ -144,6 +151,9 @@ class TransportController {
 
     [[nodiscard]] auto usesInternalTiming() const noexcept -> bool { return _internalTiming; }
     [[nodiscard]] auto isRunning() const noexcept -> bool { return _transport.snapshot().running; }
+    [[nodiscard]] auto sessionGeneration() const noexcept -> std::uint32_t {
+        return _dispatcher.sessionGeneration();
+    }
     [[nodiscard]] auto externalStatus() const noexcept -> ExternalMidiClockStatus {
         return _external.status();
     }
@@ -212,7 +222,9 @@ class TransportController {
 
     auto schedule(std::uint32_t nowUs) -> void {
         const auto before = _queue.classSummary();
-        const auto result = _sequencer.scheduleThrough(_dispatcher.position(), _queue);
+        const auto result = _playback != nullptr
+                                ? _playback->scheduleThrough(_dispatcher.position(), _queue)
+                                : _sequencer.scheduleThrough(_dispatcher.position(), _queue);
         const auto after = _queue.classSummary();
         for (std::size_t messageClass = 0; messageClass < DELIVERY_MESSAGE_CLASS_COUNT;
              ++messageClass) {
@@ -281,6 +293,7 @@ class TransportController {
     }
 
     Sequencer& _sequencer;
+    Playback* _playback = nullptr;
     MidiClockSettings& _settings;
     MidiEventQueue _ownedQueue;
     MidiEventQueue& _queue;

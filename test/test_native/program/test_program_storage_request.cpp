@@ -36,17 +36,24 @@ struct FakeStorage final : SwingMetro::ProgramStorageBackend {
     }
 };
 
+struct Sink final : SwingMetro::MidiMessageSink {
+    auto send(const SwingMetro::MidiDeliveryAttempt&) -> SwingMetro::SendResult override {
+        return SwingMetro::SendResult::Accepted;
+    }
+};
+
 struct State {
-    Counter<std::uint8_t> tempo{{.step = 1, .value = 120, .minValue = 40, .maxValue = 240}};
+    Sink sink;
+    SwingMetro::Session session{sink};
+    Counter<std::uint8_t>& tempo = session.tempo();
     Counter<std::uint8_t> swing{
         {.step = 1, .value = 50, .minValue = 50, .maxValue = SwingMetro::SWING_MAX_VALUE}};
     Counter<std::uint8_t> volume{{.step = 1, .value = 100, .minValue = 0, .maxValue = 100}};
-    Sequencer sequencer;
-    SwingMetro::MidiClockSettings midiClock;
+    Sequencer& sequencer = session.playback().sequencer();
+    SwingMetro::MidiClockSettings& midiClock = session.midiClock();
     FakeStorage storage;
     SwingMetro::ProgramSlotStore store{storage};
-    SwingMetro::ProgramStorageController controller{store,  tempo,     swing,
-                                                    volume, sequencer, midiClock};
+    SwingMetro::ProgramStorageController controller{store, session, swing, volume};
     SwingMetro::ProgramStorageRequest request{&controller};
 
     State() {
@@ -91,7 +98,7 @@ void testRequestForwardsSaveLoadAndReset() {
 
 void testRequestUsesControllerTransportGuard() {
     State state;
-    state.sequencer.toggleRunning(0);
+    state.session.transport().toggle(0);
     state.request.enqueue({.operation = SwingMetro::ProgramStorageOperation::Save, .slot = 0});
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<std::uint8_t>(SwingMetro::ProgramStoreStatus::TransportRunning),
