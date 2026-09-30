@@ -2,11 +2,11 @@
 
 R5 follows the approved [feature-foundation plan](../plans/2026-09-27-gitnexus-plan-refactor-feature-foundation.md) on `codex/refactor-feature-foundation`. Its purpose is to give Program, Session, and Playback separate owners while preserving the single-program musical trace. OpenCode Plan inspected the current source; Codex owns implementation and verification.
 
-## Blocking throughput gate
+## Throughput feasibility gate
 
 Before designing parallel playback, measure the real `UsbMidiMessageSink::send()` path on Pico 2 W. The future maximum is 16 programs × 16 MIDI channels × 16 attacks per sixteenth. At 240 BPM, a sixteenth lasts 62,500 µs and the attack spacing is 3,906.25 µs. With gate 100, each repeat boundary can require 256 Note Off followed by 256 Note On: 512 USB-MIDI packets at one position. The sustained load is 131,072 packets/s or 524,288 payload bytes/s before USB overhead. The current scheduled queue holds 16 events, permits eight packets per tick, and the dispatcher attempts eight sends per pass.
 
-The required result is zero lost Note On/Off and USB-stack acceptance within 1,000 µs of the scheduled position for every note, including the worst boundary. Record first-attempt and acceptance lateness, `RetryLater`, queue high-water, processing duration, Clock lateness, and host receipt separately. A sink-only probe is a lower-bound test: failure blocks R5 immediately; success would require a second full-pipeline run with Clock and normal UI load. Do not substitute host timestamps for device timestamps or silently coalesce/restrict the load. If the gate fails, record measurements, restore the prior firmware, and stop R5 before the model packages.
+The user revised the R5 feasibility limit on 2026-09-30 to **zero lost Note On/Off and USB-stack acceptance within 5,000 µs** of each scheduled position at the stated maximum. The earlier 1,000 µs target is deferred optimization, not an R5 gate. Record first-attempt and acceptance lateness, `RetryLater`, queue high-water, processing duration, Clock lateness, and host receipt separately. The sink-only probe establishes feasibility of the USB path and permits the structural R5 packages; it is not a full-pipeline guarantee. A later full-pipeline run with Clock and normal UI load is needed before claiming that future parallel playback meets the 5,000 µs bound. Do not substitute host timestamps for device timestamps or silently coalesce/restrict the load. A sink-only failure of the revised gate blocks R5; otherwise preserve the unmeasured integration risk explicitly.
 
 ## Contracts for packages after a passing gate
 

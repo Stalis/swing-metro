@@ -31,6 +31,7 @@
 #include "../test/test_native/input/test_step_button_integration.h"
 #include "../test/test_native/input/test_time_debouncer.h"
 #include "../test/test_native/program/test_program.h"
+#include "../test/test_native/program/test_program_bank.h"
 #include "../test/test_native/program/test_program_codec.h"
 #include "../test/test_native/program/test_program_slot_store.h"
 #include "../test/test_native/program/test_program_storage_controller.h"
@@ -84,6 +85,7 @@ int main() {
     test_step_button_integration_main();
     test_time_debouncer_main();
     testProgramMain();
+    testProgramBankMain();
     testProgramCodecMain();
     testProgramSlotStoreMain();
     testProgramStorageControllerMain();
