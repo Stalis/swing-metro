@@ -3,9 +3,11 @@
 namespace SwingMetro {
 
 ProgramStorageController::ProgramStorageController(ProgramSlotStore& store, Session& session,
+                                                   ProgramBank& bank, ProgramDraft& draft,
                                                    Counter<std::uint8_t>& swing,
                                                    Counter<std::uint8_t>& volume) noexcept
-    : _store(store), _session(session), _swing(swing), _volume(volume) {}
+    : _store(store), _session(session), _bank(bank), _draft(draft), _swing(swing), _volume(volume) {
+}
 
 auto ProgramStorageController::perform(ProgramStorageAction action, std::uint8_t slot)
     -> ProgramStoreStatus {
@@ -19,8 +21,20 @@ auto ProgramStorageController::perform(ProgramStorageAction action, std::uint8_t
         if (status != ProgramStoreStatus::Ok) {
             return status;
         }
-        _session.playback().selectProgram(ProgramId::fromSlot(slot));
-        return saveCurrentProgram(program);
+        const auto id = ProgramId::fromSlot(slot);
+        const auto currentStatus = saveCurrentProgram(program, !id.has_value());
+        if (currentStatus != ProgramStoreStatus::Ok || !id.has_value()) {
+            return currentStatus;
+        }
+        const auto bankStatus = _bank.replace(*id, program);
+        if (bankStatus != ProgramBankReplaceStatus::Ok) {
+            return bankStatus == ProgramBankReplaceStatus::RevisionExhausted
+                       ? ProgramStoreStatus::RevisionExhausted
+                       : ProgramStoreStatus::InvalidProgram;
+        }
+        _session.playback().selectProgram(id);
+        (void)_draft.load(program, id);
+        return ProgramStoreStatus::Ok;
     }
 
     Program program;
@@ -28,12 +42,18 @@ auto ProgramStorageController::perform(ProgramStorageAction action, std::uint8_t
     if (status != ProgramStoreStatus::Ok) {
         return status;
     }
-    if (!_session.applyProgram(program, ProgramId::fromSlot(slot))) {
+    const auto id = ProgramId::fromSlot(slot);
+    if (!_session.applyProgram(program, id)) {
         return ProgramStoreStatus::InvalidProgram;
     }
     _swing.setValue(program.swing);
     _volume.setValue(program.volume);
-    return saveCurrentProgram(program);
+    const auto currentStatus = saveCurrentProgram(program, !id.has_value());
+    if (currentStatus != ProgramStoreStatus::Ok || !id.has_value()) {
+        return currentStatus;
+    }
+    (void)_draft.load(program, id);
+    return ProgramStoreStatus::Ok;
 }
 
 auto ProgramStorageController::resetCurrentProgram() -> ProgramStoreStatus {
@@ -46,7 +66,11 @@ auto ProgramStorageController::resetCurrentProgram() -> ProgramStoreStatus {
     }
     _swing.setValue(program.swing);
     _volume.setValue(program.volume);
-    return saveCurrentProgram(program);
+    const auto status = saveCurrentProgram(program, false);
+    if (status == ProgramStoreStatus::Ok) {
+        (void)_draft.load(program, std::nullopt);
+    }
+    return status;
 }
 
 auto ProgramStorageController::restoreCurrentProgram() -> ProgramStoreStatus {
@@ -65,6 +89,9 @@ auto ProgramStorageController::restoreCurrentProgram() -> ProgramStoreStatus {
     _swing.setValue(program.swing);
     _volume.setValue(program.volume);
     rememberCurrentProgram(program);
+    if (status == ProgramStoreStatus::Ok) {
+        (void)_draft.load(program, std::nullopt);
+    }
     return status;
 }
 
@@ -80,10 +107,14 @@ auto ProgramStorageController::syncCurrentProgramIfChanged() -> ProgramStoreStat
     return saveCurrentProgram(program);
 }
 
-auto ProgramStorageController::saveCurrentProgram(const Program& program) -> ProgramStoreStatus {
+auto ProgramStorageController::saveCurrentProgram(const Program& program, bool updateDraft)
+    -> ProgramStoreStatus {
     const auto status = _store.save(PROGRAM_CURRENT_SLOT, program);
     if (status == ProgramStoreStatus::Ok) {
         _session.playback().refreshAppliedProgram(program);
+        if (updateDraft) {
+            (void)_draft.load(program, _draft.sourceId());
+        }
         rememberCurrentProgram(program);
     }
     return status;

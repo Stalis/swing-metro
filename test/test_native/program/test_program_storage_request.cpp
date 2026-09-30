@@ -53,7 +53,9 @@ struct State {
     SwingMetro::MidiClockSettings& midiClock = session.midiClock();
     FakeStorage storage;
     SwingMetro::ProgramSlotStore store{storage};
-    SwingMetro::ProgramStorageController controller{store, session, swing, volume};
+    SwingMetro::ProgramBank bank;
+    SwingMetro::ProgramDraft draft;
+    SwingMetro::ProgramStorageController controller{store, session, bank, draft, swing, volume};
     SwingMetro::ProgramStorageRequest request{&controller};
 
     State() {

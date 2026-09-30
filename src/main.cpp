@@ -52,6 +52,8 @@ SwingMetro::PicoInternalTickAlarm internalTickAlarm{internalTicks};
 SwingMetro::TransportController& transportController = session.transport();
 SwingMetro::LittleFsProgramStorage programStorageBackend;
 SwingMetro::ProgramSlotStore programSlotStore{programStorageBackend};
+SwingMetro::ProgramBank programBank;
+SwingMetro::ProgramDraft programDraft;
 
 // Room for global controls, the base screen, settings, and temporary overlays.
 constexpr std::size_t INPUT_CONTEXT_CAPACITY = 8;
@@ -126,8 +128,8 @@ SwingMetro::AppEventHandler appEventHandler{{
     .volume = volumeCounter,
     .sequencer = mainSequencer,
 }};
-SwingMetro::ProgramStorageController programStorageController{programSlotStore, session,
-                                                              swingCounter, volumeCounter};
+SwingMetro::ProgramStorageController programStorageController{
+    programSlotStore, session, programBank, programDraft, swingCounter, volumeCounter};
 SwingMetro::AppInputCoordinator<INPUT_CONTEXT_CAPACITY> appInputCoordinator{
     appEventHandler, mainSequencer, midiClockSettings, &transportController,
     &programStorageController};
