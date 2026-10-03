@@ -54,8 +54,9 @@ Live-сборщики поддерживают только `swing_metro_diagnos
 - `src/engine/diagnostics_serializer.{h,cpp}` — wire-format и порядок значений.
 - `src/engine/diagnostic_output.h` — минимальный текстовый выход сериализатора.
 - `src/drivers/diagnostics/arduino_diagnostic_console.h` — Serial и часы Arduino.
-- `src/main.cpp` — связывает объекты и сохраняет порядок loop: приём команды,
+- `src/application.{h,cpp}` — связывает объекты и сохраняет порядок loop: приём команды,
   MIDI/transport/input, обновление прогона, alarm, выгрузка, завершение, UI/storage.
+  `src/main.cpp` только делегирует четыре Arduino entry points объекту `Application`.
 
 LVGL остаётся на втором ядре; его снимки передаются через прежний атомарный API.
 Сборки production, instrumentation-off и fault остаются отдельными. В режиме off
