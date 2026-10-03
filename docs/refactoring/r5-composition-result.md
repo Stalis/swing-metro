@@ -49,7 +49,7 @@ Targeted native and firmware builds passed after each code package. The final `m
 | `rpipico2-stage5-instrumentation-off` | 170,996 B | 731,240 B |
 | `rpipico2-stage5-fault-scenarios` | 174,436 B | 733,000 B |
 
-GitNexus upstream impact was checked before edits, including CRITICAL risk for the transport schedule path; UNKNOWN results were checked against source calls. The code diff at `864a5f6` versus `d71b0cc` affected 28 files, 180 indexed symbols, and 191 processes and was rated CRITICAL, primarily because ownership moved into `Application`. Every package had `detect-changes --scope all` before its commit, then an index refresh. The process extractor itself reported truncated walks, so absent graph paths were not interpreted as proof of safety.
+GitNexus upstream impact was checked before edits, including CRITICAL risk for the transport schedule path; UNKNOWN results were checked against source calls. The final diff versus `d71b0cc` affected 28 files, 182 indexed symbols, and 191 processes and was rated CRITICAL, primarily because ownership moved into `Application`. Every package had `detect-changes --scope all` before its commit, then an index refresh. The process extractor itself reported truncated walks, so absent graph paths were not interpreted as proof of safety.
 
 ## Known limits and device checklist
 
