@@ -31,19 +31,21 @@ The full-refactor comparison to `6317513ff61d2de3673c2dc3927b85b2987603b5` repor
 
 ## Known limits and device check
 
-- R5 firmware has not received a new manual musical-behavior check after the refactor. R5's USB sink spike measured local stack acceptance only, not the engine queue, normal GUI/Clock load or host receipt. The 16-program guarantee remains unmeasured.
+- The user confirmed on 2026-10-03 that the post-refactor device check was performed and the result is satisfactory. No per-scenario trace or timing capture was supplied for this report. R5's USB sink spike measured local stack acceptance only, not the engine queue, normal GUI/Clock load or host receipt. The 16-program guarantee remains unmeasured.
 - If user-slot Save succeeds but current autosave then fails, the persistent slot may contain new data while the RAM bank still has its older snapshot; the controller reports failure. A later bank refresh or transaction design is needed before songs or parallel playback rely on that edge case.
 - Fixed 16-step one-shot programs, one playback and MIDI channel 1 remain the only implemented musical model. Song persistence, variable length, repeat/legato and multi-channel routing are specifications.
 
-### Manual Pico 2 W checklist — pending, not claimed as performed
+### Manual Pico 2 W checklist — user-confirmed acceptance
 
-- [ ] Flash the R6 production build; confirm USB enumeration, boot, restored current program and start-up display.
-- [ ] Run internal Clock through a full 16-step wrap at straight and swung settings; capture MIDI Clock and note timing.
-- [ ] In External mode, test Start, Continue, Stop, loss at the timeout, relock and deliberate resume; confirm no silent internal fallback.
-- [ ] Exercise gate 1, 25 and 100, same-pitch replacement and Off-before-On at shared boundaries, including the wrap.
-- [ ] Stop mid-note, restart and check that no stale Off cuts off the new launch.
-- [ ] Save/Load/Reset and autosave while stopped; try storage actions while running and confirm no LittleFS access.
-- [ ] Check GUI and buttons/encoders while MIDI is active; confirm coherent snapshots and responsive controls.
-- [ ] If using the fault build, test delayed/retried delivery, capacity stop, disconnect and explicit recovery; restore production afterward.
+The user reported that the device check was completed and the result was satisfactory on 2026-10-03. The items below remain a reproducible checklist; individual measurements and fault-build coverage were not supplied, so this report does not assert specific timings or traces.
 
-The branch is ready as a documented, automatically verified foundation for the recommended sequence: length → step modes → 16 parallel programs/MIDI routing → songs. Device acceptance and the full-system throughput gate remain separate work before making hardware timing or 16-program claims.
+- Flash the R6 production build; confirm USB enumeration, boot, restored current program and start-up display.
+- Run internal Clock through a full 16-step wrap at straight and swung settings; capture MIDI Clock and note timing.
+- In External mode, test Start, Continue, Stop, loss at the timeout, relock and deliberate resume; confirm no silent internal fallback.
+- Exercise gate 1, 25 and 100, same-pitch replacement and Off-before-On at shared boundaries, including the wrap.
+- Stop mid-note, restart and check that no stale Off cuts off the new launch.
+- Save/Load/Reset and autosave while stopped; try storage actions while running and confirm no LittleFS access.
+- Check GUI and buttons/encoders while MIDI is active; confirm coherent snapshots and responsive controls.
+- If using the fault build, test delayed/retried delivery, capacity stop, disconnect and explicit recovery; restore production afterward.
+
+The branch has automated verification and user-confirmed device acceptance as a foundation for the recommended sequence: length → step modes → 16 parallel programs/MIDI routing → songs. The full-system throughput gate remains separate work before making timing or 16-program claims for those future features.
