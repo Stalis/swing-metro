@@ -15,6 +15,12 @@ The user revised the R5 feasibility limit on 2026-09-30 to **zero lost Note On/O
 3. Storage checks session-wide transport activity before every LittleFS operation. Preserve current A/B images and wire version in R5. A future version imports v1 as length 16, one-shot, repeat 1, channel 0, and writes the new format only on an explicit stopped Save. Rewriting an existing user slot updates references to that `ProgramId`.
 4. `main.cpp` becomes board composition and four Arduino entry points. Core 0 keeps the existing serial, external MIDI, transport, input, diagnostics/alarm, UI snapshot, and stopped-storage order. Core 1 alone calls LVGL. `UiViewModel` retains its atomic snapshot protocol.
 
+## Future storage migration contract
+
+R5 leaves the v1 Program image and A/B slot-store format unchanged. A future container version must read v1 as a 16-step program with `one-shot`, repeat count 1, and MIDI channel 0 for every step. New length, articulation and routing fields require a new versioned container; unknown fields must not be silently written back as if they had been understood. Importing v1 in RAM does not rewrite flash. The first write of the new version happens only after an explicit user Save while the whole Session is stopped, retaining the A/B verification and revision procedure.
+
+Future song entries store `ProgramId` values, not pointers or copies. `ProgramId N` always resolves to user slot N (0..15); overwriting N changes the content later references resolve to. The current autosave slot 16 has no `ProgramId` and cannot appear in a song. Before starting a song, required slots must be resolved into RAM while stopped; no LittleFS read is permitted on a program transition during transport.
+
 The future same-channel/same-note policy is retrigger per party. Independent playback positions and note identities remain necessary; MIDI receivers determine how overlapping Note Off messages sound. R5 does not implement variable length, step modes, routing, parallel playback, or songs.
 
 ## Verification and commits
