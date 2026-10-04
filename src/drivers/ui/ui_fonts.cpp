@@ -1,14 +1,8 @@
 #include "ui_fonts.h"
 
-#include <cstddef>
-#include <cstdint>
+#include "silkscreen_pixel_fonts.h"
 
 namespace {
-
-// Silkscreen Flat adds the lowercase b used for flat notes. See OFL-Silkscreen.txt.
-const std::uint8_t silkscreenFlatTtf[] = {
-#include "silkscreen_flat_font_bytes.inc"
-};
 
 const lv_font_t* microFont = &lv_font_montserrat_8;
 const lv_font_t* smallFont = &lv_font_montserrat_8;
@@ -20,18 +14,10 @@ const lv_font_t* largeFont = &lv_font_montserrat_10;
 namespace UiFonts {
 
 void initialize() {
-    if (auto* font = lv_tiny_ttf_create_data(silkscreenFlatTtf, sizeof(silkscreenFlatTtf), 4)) {
-        microFont = font;
-    }
-    if (auto* font = lv_tiny_ttf_create_data(silkscreenFlatTtf, sizeof(silkscreenFlatTtf), 5)) {
-        smallFont = font;
-    }
-    if (auto* font = lv_tiny_ttf_create_data(silkscreenFlatTtf, sizeof(silkscreenFlatTtf), 6)) {
-        mediumFont = font;
-    }
-    if (auto* font = lv_tiny_ttf_create_data(silkscreenFlatTtf, sizeof(silkscreenFlatTtf), 7)) {
-        largeFont = font;
-    }
+    microFont = &silkscreen_flat_4;
+    smallFont = &silkscreen_flat_5;
+    mediumFont = &silkscreen_flat_6;
+    largeFont = &silkscreen_flat_7;
 }
 
 const lv_font_t* micro() { return microFont; }

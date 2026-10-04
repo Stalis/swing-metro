@@ -28,13 +28,13 @@ void StepGrid::init(lv_obj_t* parent) {
             UiTheme::createLabel(cell.frame, "01", 2, 1, UiTheme::CYAN, UiFonts::medium());
         cell.note = UiTheme::createLabel(cell.frame, "C0", 15, 1, UiTheme::WHITE, UiFonts::large());
         cell.velocityLabel =
-            UiTheme::createLabel(cell.frame, "VEL", 2, 8, UiTheme::CYAN, UiFonts::small());
+            UiTheme::createLabel(cell.frame, "VEL", 2, 10, UiTheme::CYAN, UiFonts::small());
         cell.velocity =
-            UiTheme::createLabel(cell.frame, "127", 24, 8, UiTheme::WHITE, UiFonts::small());
+            UiTheme::createLabel(cell.frame, "127", 24, 10, UiTheme::WHITE, UiFonts::small());
         cell.gateLabel =
-            UiTheme::createLabel(cell.frame, "GATE", 2, 14, UiTheme::CYAN, UiFonts::small());
+            UiTheme::createLabel(cell.frame, "GATE", 2, 16, UiTheme::CYAN, UiFonts::small());
         cell.gate =
-            UiTheme::createLabel(cell.frame, "100%", 20, 14, UiTheme::WHITE, UiFonts::small());
+            UiTheme::createLabel(cell.frame, "100%", 20, 16, UiTheme::WHITE, UiFonts::small());
         cell.off =
             UiTheme::createLabel(cell.frame, "OFF", 8, 9, UiTheme::YELLOW, UiFonts::medium());
     }
@@ -94,8 +94,8 @@ void StepGrid::apply(const UiSettings::Main& settings) {
             lv_label_set_text_fmt(cell.gate, "%u%%",
                                   static_cast<unsigned>(settings.stepGates[index]));
             lv_obj_align(cell.note, LV_ALIGN_TOP_RIGHT, -2, 1);
-            lv_obj_align(cell.velocity, LV_ALIGN_TOP_RIGHT, -2, 8);
-            lv_obj_align(cell.gate, LV_ALIGN_TOP_RIGHT, -2, 14);
+            lv_obj_align(cell.velocity, LV_ALIGN_TOP_RIGHT, -2, 10);
+            lv_obj_align(cell.gate, LV_ALIGN_TOP_RIGHT, -2, 16);
         } else if (!withinLength) {
             lv_label_set_text(cell.off, "--");
             lv_obj_set_style_text_color(cell.off, lv_color_hex(UiTheme::GRAY), 0);
