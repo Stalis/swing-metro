@@ -1,31 +1,31 @@
 #pragma once
 
+#include "components/ui_snapshot.h"
+
 #include <array>
-#include <bitset>
 #include <cstdint>
 
 #include <lvgl.h>
 
-constexpr const uint8_t SEQUENCER_STEPS_COUNT = 16;
+constexpr std::uint8_t SEQUENCER_STEPS_COUNT = 16;
 
 class StepGrid {
   public:
-    StepGrid() = default;
-
-    StepGrid(const StepGrid&) = delete;
-    StepGrid& operator=(const StepGrid&) = delete;
-    StepGrid(StepGrid&&) = delete;
-    StepGrid& operator=(StepGrid&&) = delete;
-
     void init(lv_obj_t* parent);
-    void setSteps(std::bitset<SEQUENCER_STEPS_COUNT> stepsState, uint8_t activeStep);
-    void draw();
+    void apply(const UiSettings::Main& settings);
 
   private:
-    lv_obj_t* _parent = nullptr;
-    std::array<lv_obj_t*, SEQUENCER_STEPS_COUNT> _squares{};
-    lv_subject_t _subject;
+    struct Cell {
+        lv_obj_t* frame = nullptr;
+        lv_obj_t* number = nullptr;
+        lv_obj_t* note = nullptr;
+        lv_obj_t* velocityLabel = nullptr;
+        lv_obj_t* velocity = nullptr;
+        lv_obj_t* gateLabel = nullptr;
+        lv_obj_t* gate = nullptr;
+        lv_obj_t* off = nullptr;
+        std::uint64_t renderKey = UINT64_MAX;
+    };
 
-    void draw(uint32_t rawValue);
-    static void onChanged(lv_observer_t* observer, lv_subject_t* subject);
+    std::array<Cell, SEQUENCER_STEPS_COUNT> _cells{};
 };

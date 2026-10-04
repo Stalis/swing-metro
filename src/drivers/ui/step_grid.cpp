@@ -1,55 +1,108 @@
 #include "step_grid.h"
 
+#include "ui_fonts.h"
+#include "ui_note_name.h"
 #include "ui_theme.h"
 
 void StepGrid::init(lv_obj_t* parent) {
-    _parent = parent;
-    lv_subject_init_int(&_subject, 0);
-    lv_subject_add_observer(&_subject, onChanged, this);
-}
+    constexpr std::int16_t cellWidth = 36;
+    constexpr std::int16_t cellHeight = 23;
+    constexpr std::int16_t pitchX = 39;
+    constexpr std::int16_t pitchY = 26;
 
-void StepGrid::setSteps(std::bitset<SEQUENCER_STEPS_COUNT> stepsState, uint8_t activeStep) {
-    lv_subject_set_int(&_subject,
-                       stepsState.to_ulong() | (static_cast<uint16_t>(activeStep) << 16));
-}
+    for (std::uint8_t index = 0; index < _cells.size(); ++index) {
+        const std::int16_t x = 3 + (index % 4) * pitchX;
+        const std::int16_t y = 24 + (index / 4) * pitchY;
+        auto& cell = _cells[index];
+        cell.frame = lv_obj_create(parent);
+        lv_obj_remove_style_all(cell.frame);
+        lv_obj_set_pos(cell.frame, x, y);
+        lv_obj_set_size(cell.frame, cellWidth, cellHeight);
+        lv_obj_set_style_bg_opa(cell.frame, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(cell.frame, 1, 0);
+        lv_obj_set_style_radius(cell.frame, 0, 0);
+        lv_obj_set_style_pad_all(cell.frame, 0, 0);
+        lv_obj_remove_flag(cell.frame, LV_OBJ_FLAG_SCROLLABLE);
 
-void StepGrid::draw() { draw(static_cast<uint32_t>(lv_subject_get_int(&_subject))); }
-
-void StepGrid::draw(uint32_t rawValue) {
-    constexpr int16_t stepSize = 9;
-    constexpr int16_t firstStepY = 105;
-    std::bitset<SEQUENCER_STEPS_COUNT> enabledSteps{static_cast<uint16_t>(rawValue)};
-    const uint8_t activeStep = rawValue >> 16;
-
-    for (uint8_t stepNumber = 0; stepNumber < enabledSteps.size(); ++stepNumber) {
-        const uint8_t row = stepNumber / 8;
-        const uint8_t column = stepNumber % 8;
-        auto* step = _squares[stepNumber];
-        if (step == nullptr) {
-            _squares[stepNumber] = lv_obj_create(_parent);
-            step = _squares[stepNumber];
-            lv_obj_set_size(step, stepSize, stepSize);
-            lv_obj_set_pos(step, 1 + (column * (stepSize + 1)),
-                           firstStepY + (row * (stepSize + 1)));
-            lv_obj_set_style_bg_opa(step, LV_OPA_COVER, 0);
-            lv_obj_set_style_border_width(step, 1, 0);
-            lv_obj_set_style_radius(step, 0, 0);
-            lv_obj_set_style_pad_all(step, 0, 0);
-            lv_obj_remove_flag(step, LV_OBJ_FLAG_SCROLLABLE);
-        }
-
-        lv_obj_set_style_bg_color(step,
-                                  enabledSteps[stepNumber] ? lv_color_hex(UiTheme::ORANGE)
-                                                           : lv_color_hex(UiTheme::BLACK),
-                                  0);
-        lv_obj_set_style_border_color(step,
-                                      stepNumber == activeStep ? lv_color_hex(UiTheme::RED)
-                                                               : lv_color_hex(UiTheme::YELLOW),
-                                      0);
+        cell.number =
+            UiTheme::createLabel(cell.frame, "01", 2, 1, UiTheme::CYAN, UiFonts::medium());
+        cell.note = UiTheme::createLabel(cell.frame, "C0", 15, 1, UiTheme::WHITE, UiFonts::large());
+        cell.velocityLabel =
+            UiTheme::createLabel(cell.frame, "VEL", 2, 8, UiTheme::CYAN, UiFonts::small());
+        cell.velocity =
+            UiTheme::createLabel(cell.frame, "127", 24, 8, UiTheme::WHITE, UiFonts::small());
+        cell.gateLabel =
+            UiTheme::createLabel(cell.frame, "GATE", 2, 14, UiTheme::CYAN, UiFonts::small());
+        cell.gate =
+            UiTheme::createLabel(cell.frame, "100%", 20, 14, UiTheme::WHITE, UiFonts::small());
+        cell.off =
+            UiTheme::createLabel(cell.frame, "OFF", 8, 9, UiTheme::YELLOW, UiFonts::medium());
     }
 }
 
-void StepGrid::onChanged(lv_observer_t* observer, lv_subject_t* subject) {
-    auto& self = *static_cast<StepGrid*>(lv_observer_get_user_data(observer));
-    self.draw(static_cast<uint32_t>(lv_subject_get_int(subject)));
+void StepGrid::apply(const UiSettings::Main& settings) {
+    for (std::uint8_t index = 0; index < _cells.size(); ++index) {
+        const bool enabled = settings.notesState[index];
+        const bool withinLength = index < settings.sequenceLength;
+        const bool active = index == settings.activeNote;
+        const bool focused = index == settings.highlightedStep;
+        const std::uint64_t renderKey =
+            static_cast<std::uint64_t>(settings.stepNotes[index]) |
+            static_cast<std::uint64_t>(settings.stepVelocities[index]) << 8 |
+            static_cast<std::uint64_t>(settings.stepGates[index]) << 16 |
+            static_cast<std::uint64_t>(enabled) << 24 |
+            static_cast<std::uint64_t>(withinLength) << 25 |
+            static_cast<std::uint64_t>(active) << 26 | static_cast<std::uint64_t>(focused) << 27;
+        auto& cell = _cells[index];
+        if (cell.renderKey == renderKey) {
+            continue;
+        }
+        cell.renderKey = renderKey;
+
+        const std::uint32_t border = active    ? UiTheme::RED
+                                     : focused ? UiTheme::YELLOW
+                                     : enabled ? UiTheme::CYAN
+                                               : UiTheme::GRAY;
+        lv_obj_set_style_border_color(cell.frame, lv_color_hex(border), 0);
+        lv_obj_set_style_bg_color(
+            cell.frame, lv_color_hex(enabled && withinLength ? UiTheme::DARK_TEAL : UiTheme::BLACK),
+            0);
+
+        lv_label_set_text_fmt(cell.number, "%02u", static_cast<unsigned>(index + 1));
+        lv_obj_set_style_text_color(cell.number,
+                                    lv_color_hex(withinLength ? UiTheme::CYAN : UiTheme::GRAY), 0);
+        const bool showEnabled = enabled && withinLength;
+        auto setHidden = [](lv_obj_t* object, bool hidden) {
+            if (hidden) {
+                lv_obj_add_flag(object, LV_OBJ_FLAG_HIDDEN);
+            } else {
+                lv_obj_remove_flag(object, LV_OBJ_FLAG_HIDDEN);
+            }
+        };
+        setHidden(cell.note, !showEnabled);
+        setHidden(cell.velocityLabel, !showEnabled);
+        setHidden(cell.velocity, !showEnabled);
+        setHidden(cell.gateLabel, !showEnabled);
+        setHidden(cell.gate, !showEnabled);
+        setHidden(cell.off, showEnabled || !withinLength);
+        if (showEnabled) {
+            char note[8]{};
+            UiNoteName::format(settings.stepNotes[index], note, sizeof(note));
+            lv_label_set_text(cell.note, note);
+            lv_label_set_text_fmt(cell.velocity, "%03u",
+                                  static_cast<unsigned>(settings.stepVelocities[index]));
+            lv_label_set_text_fmt(cell.gate, "%u%%",
+                                  static_cast<unsigned>(settings.stepGates[index]));
+            lv_obj_align(cell.note, LV_ALIGN_TOP_RIGHT, -2, 1);
+            lv_obj_align(cell.velocity, LV_ALIGN_TOP_RIGHT, -2, 8);
+            lv_obj_align(cell.gate, LV_ALIGN_TOP_RIGHT, -2, 14);
+        } else if (!withinLength) {
+            lv_label_set_text(cell.off, "--");
+            lv_obj_set_style_text_color(cell.off, lv_color_hex(UiTheme::GRAY), 0);
+            lv_obj_remove_flag(cell.off, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_label_set_text(cell.off, "OFF");
+            lv_obj_set_style_text_color(cell.off, lv_color_hex(UiTheme::YELLOW), 0);
+        }
+    }
 }

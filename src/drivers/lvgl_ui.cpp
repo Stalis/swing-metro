@@ -1,11 +1,14 @@
 #include "lvgl_ui.h"
 
 #include "engine/stage5_instrumentation.h"
+#include "ui/ui_fonts.h"
 
 void LvglUi::setup() {
     _display.setup();
+    UiFonts::initialize();
 
     _mainScreen.create();
+    _backdrop.create();
     _stepSettingsScreen.create();
     _midiClockDialog.create();
     _programStorageDialog.create();
@@ -28,16 +31,16 @@ void LvglUi::loop() {
 void LvglUi::readViewModel(const UiViewModel& viewModel) {
     const auto values = viewModel.read();
     _mainScreen.apply(values.main);
-    if (values.page == UiPage::StepSettings) {
+    const bool storageOpen = values.storage.state != SwingMetro::ProgramStorageModalState::Closed;
+    const bool midiOpen = !storageOpen && values.midiClock.modalOpen;
+    const bool stepOpen = !storageOpen && !midiOpen && values.page == UiPage::StepSettings;
+    _backdrop.setVisible(storageOpen || midiOpen || stepOpen);
+    _stepSettingsScreen.setVisible(stepOpen);
+    if (stepOpen) {
         _stepSettingsScreen.apply(values.editor);
     }
-
-    if (values.page != _currentPage) {
-        _currentPage = values.page;
-        lv_screen_load(_currentPage == UiPage::StepSettings ? _stepSettingsScreen.root()
-                                                            : _mainScreen.root());
-    }
-
-    _midiClockDialog.apply(values.midiClock);
+    auto midi = values.midiClock;
+    midi.modalOpen = midiOpen;
+    _midiClockDialog.apply(midi);
     _programStorageDialog.apply(values.storage);
 }

@@ -31,6 +31,7 @@
 #include "../test/test_native/input/test_serial_run_controller.h"
 #include "../test/test_native/input/test_step_button_integration.h"
 #include "../test/test_native/input/test_time_debouncer.h"
+#include "../test/test_native/input/test_ui_display_format.h"
 #include "../test/test_native/program/test_program.h"
 #include "../test/test_native/program/test_program_bank.h"
 #include "../test/test_native/program/test_program_codec.h"
@@ -86,6 +87,7 @@ int main() {
     test_encoder_sample_diagnostics_main();
     test_step_button_integration_main();
     test_time_debouncer_main();
+    test_ui_display_format_main();
     testProgramMain();
     testProgramBankMain();
     testProgramCodecMain();

@@ -17,6 +17,7 @@ class StepSettingsScreen {
 
     void create();
     [[nodiscard]] lv_obj_t* root() const { return _root; }
+    void setVisible(bool visible);
     void apply(const UiSettings::Editor& settings);
 
   private:
@@ -25,8 +26,14 @@ class StepSettingsScreen {
     lv_obj_t* _selectedNoteLabel = nullptr;
     lv_obj_t* _selectedVelocityLabel = nullptr;
     lv_obj_t* _selectedGateLabel = nullptr;
+    lv_obj_t* _modeValue = nullptr;
+    lv_obj_t* _repeatValue = nullptr;
+    lv_obj_t* _rows[5]{};
+    lv_obj_t* _labels[5]{};
     uint8_t _displayedStep = UINT8_MAX;
     uint8_t _displayedNote = UINT8_MAX;
     uint8_t _displayedVelocity = UINT8_MAX;
     uint8_t _displayedGate = UINT8_MAX;
+    UiStepMode _displayedMode = UiStepMode::Normal;
+    uint8_t _displayedRepeatCount = UINT8_MAX;
 };

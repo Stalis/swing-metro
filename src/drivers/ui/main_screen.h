@@ -22,15 +22,14 @@ class MainScreen {
 
   private:
     lv_obj_t* _root = nullptr;
-    lv_obj_t* _externalClockLabel = nullptr;
-    lv_subject_t _tempoSubject;
-    lv_subject_t _swingSubject;
-    lv_subject_t _volumeSubject;
-    SwingMetro::ExternalMidiClockStatus _displayedExternalClockStatus =
-        SwingMetro::ExternalMidiClockStatus::Waiting;
-    uint8_t _displayedExternalTempo = UINT8_MAX;
+    lv_obj_t* _tempoLabel = nullptr;
+    lv_obj_t* _swingLabel = nullptr;
+    lv_obj_t* _midiChannelsLabel = nullptr;
+    lv_obj_t* _clockModes[3]{};
+    bool _hasApplied = false;
+    std::uint8_t _displayedTempo = 0;
+    std::uint8_t _displayedSwing = 0;
+    std::uint16_t _displayedMidiChannelMask = 0;
+    SwingMetro::MidiClockMode _displayedClockMode = SwingMetro::MidiClockMode::Off;
     StepGrid _stepGrid;
-
-    void setExternalClock(SwingMetro::ExternalMidiClockStatus status, uint8_t tempo);
-    static void onScreenLoaded(lv_event_t* event);
 };

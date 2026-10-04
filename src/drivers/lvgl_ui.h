@@ -4,6 +4,7 @@
 #include "engine/runtime_timing_diagnostics.h"
 #include "ui/main_screen.h"
 #include "ui/midi_clock_dialog.h"
+#include "ui/modal_backdrop.h"
 #include "ui/pico_display.h"
 #include "ui/program_storage_dialog.h"
 #include "ui/step_settings_screen.h"
@@ -28,8 +29,8 @@ class LvglUi {
     PicoDisplay _display;
 
     MainScreen _mainScreen;
+    ModalBackdrop _backdrop;
     StepSettingsScreen _stepSettingsScreen;
     MidiClockDialog _midiClockDialog;
     ProgramStorageDialog _programStorageDialog;
-    UiPage _currentPage = UiPage::MainDisplay;
 };

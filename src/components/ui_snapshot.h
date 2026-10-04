@@ -5,6 +5,7 @@
 #include "program/program_slot_store.h"
 #include "program/program_storage_modal.h"
 
+#include <array>
 #include <bitset>
 #include <cstdint>
 
@@ -13,6 +14,8 @@ enum class UiPage : uint8_t {
     StepSettings,
 };
 
+enum class UiStepMode : uint8_t { Normal, Legato, Repeat };
+
 struct UiSettings {
     struct Main {
         uint8_t tempo;
@@ -20,6 +23,14 @@ struct UiSettings {
         uint8_t volume;
         uint8_t activeNote;
         std::bitset<16> notesState;
+        std::array<uint8_t, 16> stepNotes{};
+        std::array<uint8_t, 16> stepVelocities{};
+        std::array<uint8_t, 16> stepGates{};
+        uint8_t sequenceNumber = 1;
+        uint8_t sequenceLength = 16;
+        uint16_t midiChannelMask = 0xFFFF;
+        uint8_t highlightedStep = UINT8_MAX;
+        SwingMetro::MidiClockMode clockMode = SwingMetro::MidiClockMode::Off;
         SwingMetro::ExternalMidiClockStatus externalClockStatus =
             SwingMetro::ExternalMidiClockStatus::Waiting;
         uint8_t externalTempo = 0;
@@ -30,6 +41,8 @@ struct UiSettings {
         uint8_t selectedNote = 36;
         uint8_t selectedVelocity = 127;
         uint8_t selectedGate = 100;
+        UiStepMode mode = UiStepMode::Normal;
+        uint8_t repeatCount = 4;
         bool transportRunning = true;
         bool shiftActive = false;
     } editor;

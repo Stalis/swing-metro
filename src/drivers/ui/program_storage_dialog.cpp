@@ -1,39 +1,73 @@
 #include "program_storage_dialog.h"
 
+#include "input/ui_display_format.h"
+#include "ui_fonts.h"
 #include "ui_theme.h"
 
-void ProgramStorageDialog::create() {
-    _modal = lv_obj_create(lv_layer_top());
-    lv_obj_set_size(_modal, 120, 118);
-    lv_obj_align(_modal, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(_modal, lv_color_hex(UiTheme::DARK_GRAY), 0);
-    lv_obj_set_style_bg_opa(_modal, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(_modal, lv_color_hex(UiTheme::CYAN), 0);
-    lv_obj_set_style_border_width(_modal, 2, 0);
-    lv_obj_remove_flag(_modal, LV_OBJ_FLAG_SCROLLABLE);
-    _titleLabel = lv_label_create(_modal);
-    lv_obj_align(_titleLabel, LV_ALIGN_TOP_MID, 0, 8);
-    lv_obj_set_style_text_color(_titleLabel, lv_color_hex(UiTheme::WHITE), 0);
-    _valueLabel = lv_label_create(_modal);
-    lv_obj_align(_valueLabel, LV_ALIGN_CENTER, 0, 12);
-    lv_obj_set_style_text_color(_valueLabel, lv_color_hex(UiTheme::WHITE), 0);
-
-    static constexpr const char* actionNames[] = {"Save", "Load", "Cancel", "Reset program"};
-    for (uint8_t index = 0; index < _actionLabels.size(); ++index) {
-        auto* label = lv_label_create(_modal);
-        _actionLabels[index] = label;
-        lv_label_set_text(label, actionNames[index]);
-        lv_obj_set_width(label, 104);
-        lv_obj_set_style_text_font(label, &lv_font_montserrat_10, 0);
-        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_set_style_text_color(label, lv_color_hex(UiTheme::WHITE), 0);
-        lv_obj_align(label, LV_ALIGN_TOP_MID, 0, static_cast<int16_t>(30 + index * 18));
-        lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+namespace {
+void setHidden(lv_obj_t* object, bool hidden) {
+    if (hidden) {
+        lv_obj_add_flag(object, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_remove_flag(object, LV_OBJ_FLAG_HIDDEN);
     }
-    lv_obj_add_flag(_modal, LV_OBJ_FLAG_HIDDEN);
+}
+} // namespace
+
+void ProgramStorageDialog::create() {
+    _modal = UiTheme::createModalPanel(148, 112);
+    _titleLabel = UiTheme::createLabel(_modal, "SEQUENCE", 6, 5, UiTheme::CYAN, UiFonts::small());
+    _valueLabel = UiTheme::createLabel(_modal, "", 8, 48, UiTheme::WHITE, UiFonts::small());
+
+    static constexpr const char* ACTION_NAMES[] = {"SAVE", "LOAD", "CANCEL", "RESET"};
+    for (std::uint8_t index = 0; index < _actionLabels.size(); ++index) {
+        _actionLabels[index] = UiTheme::createLabel(
+            _modal, ACTION_NAMES[index], 9, static_cast<std::int16_t>(22 + index * 20),
+            index == 3 ? UiTheme::RED : UiTheme::WHITE, UiFonts::small());
+        lv_obj_set_size(_actionLabels[index], 130, 15);
+        setHidden(_actionLabels[index], true);
+    }
+
+    for (std::uint8_t index = 0; index < _slotLabels.size(); ++index) {
+        _slotLabels[index] =
+            UiTheme::createLabel(_modal, "", 9, static_cast<std::int16_t>(23 + index * 11),
+                                 UiTheme::WHITE, UiFonts::small());
+        lv_obj_set_size(_slotLabels[index], 119, 11);
+        setHidden(_slotLabels[index], true);
+    }
+    _scrollTrack = lv_obj_create(_modal);
+    lv_obj_remove_style_all(_scrollTrack);
+    lv_obj_set_pos(_scrollTrack, 134, 23);
+    lv_obj_set_size(_scrollTrack, 1, 66);
+    lv_obj_set_style_bg_color(_scrollTrack, lv_color_hex(UiTheme::GRAY), 0);
+    lv_obj_set_style_bg_opa(_scrollTrack, LV_OPA_COVER, 0);
+    _scrollThumb = lv_obj_create(_modal);
+    lv_obj_remove_style_all(_scrollThumb);
+    lv_obj_set_pos(_scrollThumb, 133, 23);
+    lv_obj_set_size(_scrollThumb, 3, 23);
+    lv_obj_set_style_bg_color(_scrollThumb, lv_color_hex(UiTheme::CYAN), 0);
+    lv_obj_set_style_bg_opa(_scrollThumb, LV_OPA_COVER, 0);
+    _slotFooter = UiTheme::createLabel(_modal, "01 / 16", 9, 98, UiTheme::CYAN, UiFonts::small());
+    setHidden(_scrollTrack, true);
+    setHidden(_scrollThumb, true);
+    setHidden(_slotFooter, true);
+
+    _resetPanel = UiTheme::createModalPanel(120, 58);
+    UiTheme::createLabel(_resetPanel, "RESET SEQ?", 6, 5, UiTheme::RED, UiFonts::small());
+    UiTheme::createLabel(_resetPanel, "CURRENT ONLY", 6, 22, UiTheme::WHITE, UiFonts::small());
+    _resetChoices[0] =
+        UiTheme::createLabel(_resetPanel, "NO", 9, 41, UiTheme::WHITE, UiFonts::small());
+    _resetChoices[1] =
+        UiTheme::createLabel(_resetPanel, "YES", 72, 41, UiTheme::WHITE, UiFonts::small());
+    for (auto* choice : _resetChoices) {
+        lv_obj_set_size(choice, 42, 13);
+    }
+    setHidden(_resetPanel, true);
+    setHidden(_modal, true);
 }
 
 void ProgramStorageDialog::apply(const UiSettings::Storage& settings) {
+    using State = SwingMetro::ProgramStorageModalState;
     if (settings.state == _displayedState && settings.selection == _displayedSelection &&
         settings.action == _displayedAction && settings.slot == _displayedSlot &&
         settings.resetChoice == _displayedResetChoice && settings.status == _displayedStatus) {
@@ -45,54 +79,71 @@ void ProgramStorageDialog::apply(const UiSettings::Storage& settings) {
     _displayedSlot = settings.slot;
     _displayedResetChoice = settings.resetChoice;
     _displayedStatus = settings.status;
-    if (settings.state == SwingMetro::ProgramStorageModalState::Closed) {
-        lv_obj_add_flag(_modal, LV_OBJ_FLAG_HIDDEN);
+
+    const bool reset = settings.state == State::ResetConfirmation;
+    setHidden(_resetPanel, !reset);
+    setHidden(_modal, settings.state == State::Closed || reset);
+    if (settings.state == State::Closed) {
         return;
     }
-    lv_obj_remove_flag(_modal, LV_OBJ_FLAG_HIDDEN);
-    if (settings.state == SwingMetro::ProgramStorageModalState::Action) {
-        lv_label_set_text(_titleLabel, "Save / Load");
-        lv_obj_add_flag(_valueLabel, LV_OBJ_FLAG_HIDDEN);
-        for (uint8_t index = 0; index < _actionLabels.size(); ++index) {
-            const bool selected = index == static_cast<uint8_t>(settings.selection);
-            lv_obj_remove_flag(_actionLabels[index], LV_OBJ_FLAG_HIDDEN);
-            UiTheme::setMenuItemStyle(_actionLabels[index], selected);
+    if (reset) {
+        for (std::uint8_t index = 0; index < 2; ++index) {
+            UiTheme::setMenuItemStyle(_resetChoices[index],
+                                      index == static_cast<std::uint8_t>(settings.resetChoice));
+            lv_obj_set_style_text_color(_resetChoices[index], lv_color_hex(UiTheme::WHITE), 0);
         }
-    } else if (settings.state == SwingMetro::ProgramStorageModalState::Slot) {
-        lv_obj_remove_flag(_valueLabel, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(_titleLabel, settings.action == SwingMetro::ProgramStorageAction::Save
-                                           ? "Save slot"
-                                           : "Load slot");
-        if (settings.slot == SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT) {
-            lv_label_set_text(_valueLabel, "Cancel");
-        } else {
-            lv_label_set_text_fmt(_valueLabel, "Slot %u", static_cast<unsigned>(settings.slot));
-        }
-    } else if (settings.state == SwingMetro::ProgramStorageModalState::ResetConfirmation) {
-        lv_obj_remove_flag(_valueLabel, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(_titleLabel, "Reset program?");
-        lv_label_set_text(
-            _valueLabel, settings.resetChoice == SwingMetro::ProgramResetChoice::No ? "No" : "Yes");
-    } else if (settings.state == SwingMetro::ProgramStorageModalState::Busy) {
-        lv_obj_remove_flag(_valueLabel, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(_titleLabel, "Program Storage");
-        if (settings.selection == SwingMetro::ProgramStorageMenuItem::ResetProgram) {
-            lv_label_set_text(_valueLabel, "Resetting...");
-        } else {
-            lv_label_set_text(_valueLabel, settings.action == SwingMetro::ProgramStorageAction::Save
-                                               ? "Saving..."
-                                               : "Loading...");
-        }
-    } else {
-        lv_obj_remove_flag(_valueLabel, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(
-            _titleLabel,
-            settings.state == SwingMetro::ProgramStorageModalState::Success ? "Complete" : "Error");
-        lv_label_set_text_fmt(_valueLabel, "Status %u", static_cast<unsigned>(settings.status));
+        return;
     }
-    if (settings.state != SwingMetro::ProgramStorageModalState::Action) {
-        for (auto* label : _actionLabels) {
-            lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+
+    const bool action = settings.state == State::Action;
+    const bool slots = settings.state == State::Slot;
+    for (auto* label : _actionLabels) {
+        setHidden(label, !action);
+    }
+    for (auto* label : _slotLabels) {
+        setHidden(label, !slots);
+    }
+    setHidden(_scrollTrack, !slots);
+    setHidden(_scrollThumb, !slots);
+    setHidden(_slotFooter, !slots);
+    setHidden(_valueLabel, action || slots);
+
+    if (action) {
+        lv_label_set_text(_titleLabel, "SEQUENCE");
+        for (std::uint8_t index = 0; index < _actionLabels.size(); ++index) {
+            UiTheme::setMenuItemStyle(_actionLabels[index],
+                                      index == static_cast<std::uint8_t>(settings.selection));
         }
+    } else if (slots) {
+        lv_label_set_text(_titleLabel, settings.action == SwingMetro::ProgramStorageAction::Save
+                                           ? "SAVE SLOT"
+                                           : "LOAD SLOT");
+        const int selected = settings.slot == SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT
+                                 ? -1
+                                 : static_cast<int>(settings.slot);
+        const int start = SwingMetro::UiDisplayFormat::slotWindowStart(settings.slot);
+        for (std::uint8_t row = 0; row < _slotLabels.size(); ++row) {
+            const int index = start + row;
+            if (index < 0) {
+                lv_label_set_text(_slotLabels[row], "CANCEL");
+            } else {
+                lv_label_set_text_fmt(_slotLabels[row], "SLOT %02u",
+                                      static_cast<unsigned>(index + 1));
+            }
+            UiTheme::setMenuItemStyle(_slotLabels[row], index == selected);
+        }
+        lv_label_set_text_fmt(_slotFooter, "%02u / 16",
+                              static_cast<unsigned>(selected < 0 ? 0 : selected + 1));
+        lv_obj_set_y(_scrollThumb, static_cast<std::int16_t>(23 + (start + 1) * 43 / 11));
+    } else if (settings.state == State::Busy) {
+        lv_label_set_text(_titleLabel, "SEQUENCE");
+        lv_label_set_text(
+            _valueLabel,
+            settings.selection == SwingMetro::ProgramStorageMenuItem::ResetProgram ? "RESETTING..."
+            : settings.action == SwingMetro::ProgramStorageAction::Save            ? "SAVING..."
+                                                                                   : "LOADING...");
+    } else {
+        lv_label_set_text(_titleLabel, settings.state == State::Success ? "COMPLETE" : "ERROR");
+        lv_label_set_text_fmt(_valueLabel, "STATUS %u", static_cast<unsigned>(settings.status));
     }
 }

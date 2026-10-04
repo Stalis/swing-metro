@@ -37,12 +37,17 @@ UiSettings initialSettings() {
                      .volume = 0,
                      .activeNote = 0,
                      .notesState = {},
+                     .sequenceNumber = 0,
+                     .sequenceLength = 0,
+                     .midiChannelMask = 0,
+                     .highlightedStep = 0,
                      .externalClockStatus = SwingMetro::ExternalMidiClockStatus::Waiting,
                      .externalTempo = 0},
             .editor = {.selectedStep = 0,
                        .selectedNote = 0,
                        .selectedVelocity = 0,
                        .selectedGate = 100,
+                       .repeatCount = 0,
                        .transportRunning = false,
                        .shiftActive = false},
             .midiClock = {.modalOpen = false,
@@ -63,12 +68,22 @@ UiSettings secondSettings() {
                      .volume = 25,
                      .activeNote = 12,
                      .notesState = std::bitset<16>(0xF000),
+                     .stepNotes = {61},
+                     .stepVelocities = {96},
+                     .stepGates = {75},
+                     .sequenceNumber = 2,
+                     .sequenceLength = 12,
+                     .midiChannelMask = 0x007F,
+                     .highlightedStep = 8,
+                     .clockMode = SwingMetro::MidiClockMode::External,
                      .externalClockStatus = SwingMetro::ExternalMidiClockStatus::Lost,
                      .externalTempo = 199},
             .editor = {.selectedStep = 12,
                        .selectedNote = 61,
                        .selectedVelocity = 64,
                        .selectedGate = 25,
+                       .mode = UiStepMode::Repeat,
+                       .repeatCount = 8,
                        .transportRunning = false,
                        .shiftActive = true},
             .midiClock = {.modalOpen = true,
@@ -87,12 +102,22 @@ bool sameSettings(const UiSettings& left, const UiSettings& right) {
     return left.main.tempo == right.main.tempo && left.main.swing == right.main.swing &&
            left.main.volume == right.main.volume && left.main.activeNote == right.main.activeNote &&
            left.main.notesState == right.main.notesState &&
+           left.main.stepNotes == right.main.stepNotes &&
+           left.main.stepVelocities == right.main.stepVelocities &&
+           left.main.stepGates == right.main.stepGates &&
+           left.main.sequenceNumber == right.main.sequenceNumber &&
+           left.main.sequenceLength == right.main.sequenceLength &&
+           left.main.midiChannelMask == right.main.midiChannelMask &&
+           left.main.highlightedStep == right.main.highlightedStep &&
+           left.main.clockMode == right.main.clockMode &&
            left.main.externalClockStatus == right.main.externalClockStatus &&
            left.main.externalTempo == right.main.externalTempo &&
            left.editor.selectedStep == right.editor.selectedStep &&
            left.editor.selectedNote == right.editor.selectedNote &&
            left.editor.selectedVelocity == right.editor.selectedVelocity &&
            left.editor.selectedGate == right.editor.selectedGate &&
+           left.editor.mode == right.editor.mode &&
+           left.editor.repeatCount == right.editor.repeatCount &&
            left.editor.transportRunning == right.editor.transportRunning &&
            left.editor.shiftActive == right.editor.shiftActive &&
            left.midiClock.modalOpen == right.midiClock.modalOpen &&
@@ -146,6 +171,30 @@ void test_ui_view_model_publishes_each_field_change() {
     changed.main.notesState = std::bitset<16>(0x8000);
     assertChange(changed);
     changed = baseline;
+    changed.main.stepNotes[0] = 61;
+    assertChange(changed);
+    changed = baseline;
+    changed.main.stepVelocities[0] = 96;
+    assertChange(changed);
+    changed = baseline;
+    changed.main.stepGates[0] = 75;
+    assertChange(changed);
+    changed = baseline;
+    changed.main.sequenceNumber = 2;
+    assertChange(changed);
+    changed = baseline;
+    changed.main.sequenceLength = 12;
+    assertChange(changed);
+    changed = baseline;
+    changed.main.midiChannelMask = 0x007F;
+    assertChange(changed);
+    changed = baseline;
+    changed.main.highlightedStep = 3;
+    assertChange(changed);
+    changed = baseline;
+    changed.main.clockMode = SwingMetro::MidiClockMode::Internal;
+    assertChange(changed);
+    changed = baseline;
     changed.editor.transportRunning = false;
     assertChange(changed);
     changed = baseline;
@@ -168,6 +217,12 @@ void test_ui_view_model_publishes_each_field_change() {
     assertChange(changed);
     changed = baseline;
     changed.editor.selectedGate = 75;
+    assertChange(changed);
+    changed = baseline;
+    changed.editor.mode = UiStepMode::Legato;
+    assertChange(changed);
+    changed = baseline;
+    changed.editor.repeatCount = 8;
     assertChange(changed);
     changed = baseline;
     changed.midiClock.modalOpen = true;

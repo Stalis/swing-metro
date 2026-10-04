@@ -22,7 +22,12 @@ void test_builder_preserves_main_and_decorates_all_snapshot_fields() {
         .resetChoice = SwingMetro::ProgramResetChoice::Yes,
     };
     const auto settings = SwingMetro::AppUiSnapshotBuilder::decorate(
-        {.main = {.tempo = 123, .swing = 61, .volume = 77, .activeNote = 4}},
+        {.main = {.tempo = 123,
+                  .swing = 61,
+                  .volume = 77,
+                  .activeNote = 4,
+                  .sequenceNumber = 3,
+                  .midiChannelMask = 0x007F}},
         {.stepEditor = stepEditor,
          .selectedStep = 4,
          .shiftActive = true,
@@ -35,6 +40,8 @@ void test_builder_preserves_main_and_decorates_all_snapshot_fields() {
     TEST_ASSERT_EQUAL_UINT8(61, settings.main.swing);
     TEST_ASSERT_EQUAL_UINT8(77, settings.main.volume);
     TEST_ASSERT_EQUAL_UINT8(4, settings.main.activeNote);
+    TEST_ASSERT_EQUAL_UINT8(3, settings.main.sequenceNumber);
+    TEST_ASSERT_EQUAL_UINT16(0x007F, settings.main.midiChannelMask);
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(UiPage::StepSettings),
                             static_cast<std::uint8_t>(settings.page));
     TEST_ASSERT_EQUAL_UINT8(4, settings.editor.selectedStep);

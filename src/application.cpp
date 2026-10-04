@@ -176,6 +176,12 @@ void Application::loop() {
                  .notesState = session_.playback().sequencer().getStepsEnabled()}};
     settings.main.externalClockStatus = session_.transport().externalStatus();
     settings.main.externalTempo = session_.transport().externalBpm();
+    const auto& steps = session_.playback().sequencer().steps();
+    for (std::size_t index = 0; index < steps.size(); ++index) {
+        settings.main.stepNotes[index] = steps[index].note;
+        settings.main.stepVelocities[index] = steps[index].velocity;
+        settings.main.stepGates[index] = steps[index].gate;
+    }
     uiViewModel_.publish(appInputCoordinator_.decorateUiSettings(settings));
     appInputCoordinator_.processProgramStorage();
     if (!appInputCoordinator_.isProgramStorageModalOpen()) {

@@ -15,6 +15,10 @@ void PicoDisplay::setup() {
     lv_init();
     lv_tick_set_cb([]() -> uint32_t { return millis(); });
 
+    if (_gfx.width() != 160 || _gfx.height() != 128) {
+        Serial.printf("Unexpected display size: %d x %d\n", _gfx.width(), _gfx.height());
+    }
+
     _display = lv_display_create(_gfx.width(), _gfx.height());
     lv_display_set_user_data(_display, this);
     lv_display_set_flush_cb(_display, flush);
