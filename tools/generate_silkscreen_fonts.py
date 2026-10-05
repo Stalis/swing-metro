@@ -6,6 +6,7 @@ Run from the repository root: python3 tools/generate_silkscreen_fonts.py
 
 from pathlib import Path
 import subprocess
+from math import ceil
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -17,18 +18,18 @@ SIZES = (4, 5, 6, 7)
 FIRST = 32
 LAST = 126
 THRESHOLD = 128
-SOURCE_SIZE = 10
+SOURCE_SIZE = 8
 SOURCE_CAP_TOP = 4
-SOURCE_CAP_HEIGHT = 7
-CELL_WIDTH = {4: 4, 5: 4, 6: 5, 7: 6}
+SOURCE_CAP_HEIGHT = 5
+GLYPH_HEIGHT = {4: 5, 5: 5, 6: 6, 7: 7}
 
 
-def bitmap_and_metrics(font, codepoint, cap_height, cell_width):
+def bitmap_and_metrics(font, codepoint, cap_height):
     char = chr(codepoint)
-    source_width = max(1, round(font.getlength(char)))
+    source_width = max(1, ceil(font.getlength(char)))
     canvas = Image.new("L", (source_width, SOURCE_CAP_HEIGHT))
     ImageDraw.Draw(canvas).text((0, -SOURCE_CAP_TOP), char, font=font, fill=255)
-    mask = canvas.resize((cell_width, cap_height), Image.Resampling.NEAREST)
+    mask = canvas.resize((source_width, cap_height), Image.Resampling.NEAREST)
     width, height = mask.size
     active = [
         (x, y)
@@ -36,9 +37,8 @@ def bitmap_and_metrics(font, codepoint, cap_height, cell_width):
         for x in range(width)
         if mask.getpixel((x, y)) >= THRESHOLD
     ]
-    advance = cell_width * 16
     if not active:
-        return [], (advance, 0, 0, 0, 0)
+        return [], (3 * 16, 0, 0, 0, 0)
 
     min_x = min(x for x, _ in active)
     max_x = max(x for x, _ in active)
@@ -46,7 +46,8 @@ def bitmap_and_metrics(font, codepoint, cap_height, cell_width):
     max_y = max(y for _, y in active)
     box_w = max_x - min_x + 1
     box_h = max_y - min_y + 1
-    ofs_x = min_x
+    advance = (box_w + 1) * 16
+    ofs_x = 0
     ofs_y = cap_height - max_y - 1
     bits = [
         int(mask.getpixel((x, y)) >= THRESHOLD)
@@ -58,12 +59,11 @@ def bitmap_and_metrics(font, codepoint, cap_height, cell_width):
 
 def make_font(size):
     font = ImageFont.truetype(SOURCE, SOURCE_SIZE)
-    cap_height = size if size > 4 else 4
-    cell_width = CELL_WIDTH[size]
+    cap_height = GLYPH_HEIGHT[size]
     packed = []
     glyphs = [(0, 0, 0, 0, 0, 0)]  # LVGL reserves glyph zero.
     for codepoint in range(FIRST, LAST + 1):
-        bits, metrics = bitmap_and_metrics(font, codepoint, cap_height, cell_width)
+        bits, metrics = bitmap_and_metrics(font, codepoint, cap_height)
         index = len(packed)
         for offset in range(0, len(bits), 8):
             chunk = bits[offset : offset + 8]
