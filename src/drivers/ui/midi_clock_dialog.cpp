@@ -38,15 +38,23 @@ void MidiClockDialog::apply(const UiSettings::MidiClock& settings) {
         settings.selection == _displayedSelection) {
         return;
     }
+    if (visibilityChanged || settings.active != _displayedActive) {
+        static constexpr const char* MODE_NAMES[] = {"OFF", "INTERNAL", "EXTERNAL"};
+        const auto active = static_cast<std::uint8_t>(settings.active);
+        lv_label_set_text(_activeLabel, MODE_NAMES[active < 3 ? active : 0]);
+        lv_obj_align(_activeLabel, LV_ALIGN_TOP_RIGHT, -9, 21);
+    }
+    if (visibilityChanged) {
+        for (std::uint8_t index = 0; index < _modeLabels.size(); ++index) {
+            UiTheme::setMenuItemStyle(_modeLabels[index],
+                                      index == static_cast<std::uint8_t>(settings.selection));
+        }
+    } else if (settings.selection != _displayedSelection) {
+        const auto previous = static_cast<std::uint8_t>(_displayedSelection);
+        const auto selected = static_cast<std::uint8_t>(settings.selection);
+        UiTheme::setMenuItemStyle(_modeLabels[previous], false);
+        UiTheme::setMenuItemStyle(_modeLabels[selected], true);
+    }
     _displayedActive = settings.active;
     _displayedSelection = settings.selection;
-    static constexpr const char* MODE_NAMES[] = {"OFF", "INTERNAL", "EXTERNAL"};
-    const auto active = static_cast<std::uint8_t>(settings.active);
-    lv_label_set_text(_activeLabel, MODE_NAMES[active < 3 ? active : 0]);
-    lv_obj_align(_activeLabel, LV_ALIGN_TOP_RIGHT, -9, 21);
-    for (std::uint8_t index = 0; index < _modeLabels.size(); ++index) {
-        UiTheme::setMenuItemStyle(_modeLabels[index],
-                                  index == static_cast<std::uint8_t>(settings.selection));
-        lv_obj_set_style_text_color(_modeLabels[index], lv_color_hex(UiTheme::WHITE), 0);
-    }
 }

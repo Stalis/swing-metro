@@ -48,11 +48,67 @@ void StepSettingsScreen::apply(const UiSettings::Editor& settings) {
     if (settings.selectedStep >= SEQUENCER_STEPS_COUNT) {
         return;
     }
-    if (settings.selectedStep == _displayedStep && settings.selectedNote == _displayedNote &&
-        settings.selectedVelocity == _displayedVelocity &&
-        settings.selectedGate == _displayedGate && settings.mode == _displayedMode &&
-        settings.repeatCount == _displayedRepeatCount) {
+    const bool first = _displayedStep == UINT8_MAX;
+    const bool stepChanged = settings.selectedStep != _displayedStep;
+    const bool noteChanged = settings.selectedNote != _displayedNote;
+    const bool velocityChanged = settings.selectedVelocity != _displayedVelocity;
+    const bool gateChanged = settings.selectedGate != _displayedGate;
+    const bool modeChanged = first || settings.mode != _displayedMode;
+    const bool repeatChanged = settings.repeatCount != _displayedRepeatCount;
+    if (!stepChanged && !noteChanged && !velocityChanged && !gateChanged && !modeChanged &&
+        !repeatChanged) {
         return;
+    }
+    if (stepChanged) {
+        lv_label_set_text_fmt(_selectedStepLabel, "STEP %02u",
+                              static_cast<unsigned>(settings.selectedStep + 1));
+    }
+    if (modeChanged) {
+        static constexpr const char* MODE_NAMES[] = {"NORMAL", "LEGATO", "REPEAT"};
+        const auto mode = static_cast<std::uint8_t>(settings.mode);
+        lv_label_set_text(_modeValue, MODE_NAMES[mode < 3 ? mode : 0]);
+    }
+    if (noteChanged) {
+        char note[8]{};
+        UiNoteName::format(settings.selectedNote, note, sizeof(note));
+        lv_label_set_text(_selectedNoteLabel, note);
+    }
+    if (velocityChanged) {
+        lv_label_set_text_fmt(_selectedVelocityLabel, "%03u",
+                              static_cast<unsigned>(settings.selectedVelocity));
+    }
+    if (gateChanged) {
+        lv_label_set_text_fmt(_selectedGateLabel, "%u%%",
+                              static_cast<unsigned>(settings.selectedGate));
+    }
+    if (repeatChanged) {
+        lv_label_set_text_fmt(_repeatValue, "%02u", static_cast<unsigned>(settings.repeatCount));
+    }
+
+    lv_obj_t* values[] = {_modeValue, _selectedNoteLabel, _selectedVelocityLabel,
+                          _selectedGateLabel, _repeatValue};
+    if (modeChanged) {
+        for (std::uint8_t index = 0; index < 5; ++index) {
+            const bool available = index == 0 || index == 3 ||
+                                   (settings.mode != UiStepMode::Legato &&
+                                    (index != 4 || settings.mode == UiStepMode::Repeat));
+            const bool selected = settings.mode == UiStepMode::Repeat ? index == 4 : index == 0;
+            lv_obj_set_style_bg_color(_rows[index], lv_color_hex(UiTheme::DARK_TEAL), 0);
+            lv_obj_set_style_bg_opa(_rows[index], selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_color(_rows[index], lv_color_hex(UiTheme::YELLOW), 0);
+            lv_obj_set_style_border_width(_rows[index], selected ? 1 : 0, 0);
+            const auto color = available ? UiTheme::CYAN : UiTheme::GRAY;
+            lv_obj_set_style_text_color(
+                _labels[index], lv_color_hex(available ? UiTheme::WHITE : UiTheme::GRAY), 0);
+            lv_obj_set_style_text_color(values[index], lv_color_hex(color), 0);
+        }
+    }
+    const bool valueChanged[] = {modeChanged, noteChanged, velocityChanged, gateChanged,
+                                 repeatChanged};
+    for (std::uint8_t index = 0; index < 5; ++index) {
+        if (valueChanged[index]) {
+            lv_obj_align(values[index], LV_ALIGN_RIGHT_MID, -3, 0);
+        }
     }
     _displayedStep = settings.selectedStep;
     _displayedNote = settings.selectedNote;
@@ -60,34 +116,4 @@ void StepSettingsScreen::apply(const UiSettings::Editor& settings) {
     _displayedGate = settings.selectedGate;
     _displayedMode = settings.mode;
     _displayedRepeatCount = settings.repeatCount;
-    lv_label_set_text_fmt(_selectedStepLabel, "STEP %02u",
-                          static_cast<unsigned>(settings.selectedStep + 1));
-    static constexpr const char* MODE_NAMES[] = {"NORMAL", "LEGATO", "REPEAT"};
-    const auto mode = static_cast<std::uint8_t>(settings.mode);
-    lv_label_set_text(_modeValue, MODE_NAMES[mode < 3 ? mode : 0]);
-    char note[8]{};
-    UiNoteName::format(settings.selectedNote, note, sizeof(note));
-    lv_label_set_text(_selectedNoteLabel, note);
-    lv_label_set_text_fmt(_selectedVelocityLabel, "%03u",
-                          static_cast<unsigned>(settings.selectedVelocity));
-    lv_label_set_text_fmt(_selectedGateLabel, "%u%%", static_cast<unsigned>(settings.selectedGate));
-    lv_label_set_text_fmt(_repeatValue, "%02u", static_cast<unsigned>(settings.repeatCount));
-
-    lv_obj_t* values[] = {_modeValue, _selectedNoteLabel, _selectedVelocityLabel,
-                          _selectedGateLabel, _repeatValue};
-    for (std::uint8_t index = 0; index < 5; ++index) {
-        const bool available = index == 0 || index == 3 ||
-                               (settings.mode != UiStepMode::Legato &&
-                                (index != 4 || settings.mode == UiStepMode::Repeat));
-        const bool selected = settings.mode == UiStepMode::Repeat ? index == 4 : index == 0;
-        lv_obj_set_style_bg_color(_rows[index], lv_color_hex(UiTheme::DARK_TEAL), 0);
-        lv_obj_set_style_bg_opa(_rows[index], selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_color(_rows[index], lv_color_hex(UiTheme::YELLOW), 0);
-        lv_obj_set_style_border_width(_rows[index], selected ? 1 : 0, 0);
-        const auto color = available ? UiTheme::CYAN : UiTheme::GRAY;
-        lv_obj_set_style_text_color(_labels[index],
-                                    lv_color_hex(available ? UiTheme::WHITE : UiTheme::GRAY), 0);
-        lv_obj_set_style_text_color(values[index], lv_color_hex(color), 0);
-        lv_obj_align(values[index], LV_ALIGN_RIGHT_MID, -3, 0);
-    }
 }

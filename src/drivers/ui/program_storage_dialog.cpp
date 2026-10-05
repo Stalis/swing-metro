@@ -73,6 +73,15 @@ void ProgramStorageDialog::apply(const UiSettings::Storage& settings) {
         settings.resetChoice == _displayedResetChoice && settings.status == _displayedStatus) {
         return;
     }
+    const bool stateChanged = settings.state != _displayedState;
+    const bool selectionChanged = settings.selection != _displayedSelection;
+    const bool actionChanged = settings.action != _displayedAction;
+    const bool slotChanged = settings.slot != _displayedSlot;
+    const bool resetChoiceChanged = settings.resetChoice != _displayedResetChoice;
+    const bool statusChanged = settings.status != _displayedStatus;
+    const auto previousSelection = _displayedSelection;
+    const auto previousSlot = _displayedSlot;
+    const auto previousResetChoice = _displayedResetChoice;
     _displayedState = settings.state;
     _displayedSelection = settings.selection;
     _displayedAction = settings.action;
@@ -81,69 +90,108 @@ void ProgramStorageDialog::apply(const UiSettings::Storage& settings) {
     _displayedStatus = settings.status;
 
     const bool reset = settings.state == State::ResetConfirmation;
-    setHidden(_resetPanel, !reset);
-    setHidden(_modal, settings.state == State::Closed || reset);
+    if (stateChanged) {
+        setHidden(_resetPanel, !reset);
+        setHidden(_modal, settings.state == State::Closed || reset);
+    }
     if (settings.state == State::Closed) {
         return;
     }
     if (reset) {
         for (std::uint8_t index = 0; index < 2; ++index) {
-            UiTheme::setMenuItemStyle(_resetChoices[index],
-                                      index == static_cast<std::uint8_t>(settings.resetChoice));
-            lv_obj_set_style_text_color(_resetChoices[index], lv_color_hex(UiTheme::WHITE), 0);
+            if (stateChanged || (resetChoiceChanged &&
+                                 (index == static_cast<std::uint8_t>(previousResetChoice) ||
+                                  index == static_cast<std::uint8_t>(settings.resetChoice)))) {
+                UiTheme::setMenuItemStyle(_resetChoices[index],
+                                          index == static_cast<std::uint8_t>(settings.resetChoice));
+            }
         }
         return;
     }
 
     const bool action = settings.state == State::Action;
     const bool slots = settings.state == State::Slot;
-    for (auto* label : _actionLabels) {
-        setHidden(label, !action);
+    if (stateChanged) {
+        for (auto* label : _actionLabels) {
+            setHidden(label, !action);
+        }
+        for (auto* label : _slotLabels) {
+            setHidden(label, !slots);
+        }
+        setHidden(_scrollTrack, !slots);
+        setHidden(_scrollThumb, !slots);
+        setHidden(_slotFooter, !slots);
+        setHidden(_valueLabel, action || slots);
     }
-    for (auto* label : _slotLabels) {
-        setHidden(label, !slots);
-    }
-    setHidden(_scrollTrack, !slots);
-    setHidden(_scrollThumb, !slots);
-    setHidden(_slotFooter, !slots);
-    setHidden(_valueLabel, action || slots);
 
     if (action) {
-        lv_label_set_text(_titleLabel, "SEQUENCE");
+        if (stateChanged) {
+            lv_label_set_text(_titleLabel, "SEQUENCE");
+        }
         for (std::uint8_t index = 0; index < _actionLabels.size(); ++index) {
-            UiTheme::setMenuItemStyle(_actionLabels[index],
-                                      index == static_cast<std::uint8_t>(settings.selection));
+            if (stateChanged ||
+                (selectionChanged && (index == static_cast<std::uint8_t>(previousSelection) ||
+                                      index == static_cast<std::uint8_t>(settings.selection)))) {
+                UiTheme::setMenuItemStyle(_actionLabels[index],
+                                          index == static_cast<std::uint8_t>(settings.selection));
+            }
         }
     } else if (slots) {
-        lv_label_set_text(_titleLabel, settings.action == SwingMetro::ProgramStorageAction::Save
-                                           ? "SAVE SLOT"
-                                           : "LOAD SLOT");
+        if (stateChanged || actionChanged) {
+            lv_label_set_text(_titleLabel, settings.action == SwingMetro::ProgramStorageAction::Save
+                                               ? "SAVE SLOT"
+                                               : "LOAD SLOT");
+        }
         const int selected = settings.slot == SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT
                                  ? -1
                                  : static_cast<int>(settings.slot);
         const int start = SwingMetro::UiDisplayFormat::slotWindowStart(settings.slot);
+        const int previousSelected = previousSlot == SwingMetro::PROGRAM_STORAGE_CANCEL_SLOT
+                                         ? -1
+                                         : static_cast<int>(previousSlot);
+        const int previousStart = SwingMetro::UiDisplayFormat::slotWindowStart(previousSlot);
+        const bool windowChanged = stateChanged || start != previousStart;
+        const int previousRow = previousSelected - previousStart;
+        const int selectedRow = selected - start;
         for (std::uint8_t row = 0; row < _slotLabels.size(); ++row) {
-            const int index = start + row;
-            if (index < 0) {
-                lv_label_set_text(_slotLabels[row], "CANCEL");
-            } else {
-                lv_label_set_text_fmt(_slotLabels[row], "SLOT %02u",
-                                      static_cast<unsigned>(index + 1));
+            if (windowChanged) {
+                const int index = start + row;
+                if (index < 0) {
+                    lv_label_set_text(_slotLabels[row], "CANCEL");
+                } else {
+                    lv_label_set_text_fmt(_slotLabels[row], "SLOT %02u",
+                                          static_cast<unsigned>(index + 1));
+                }
             }
-            UiTheme::setMenuItemStyle(_slotLabels[row], index == selected);
+            if (stateChanged || (slotChanged && (row == previousRow || row == selectedRow))) {
+                UiTheme::setMenuItemStyle(_slotLabels[row], row == selectedRow);
+            }
         }
-        lv_label_set_text_fmt(_slotFooter, "%02u / 16",
-                              static_cast<unsigned>(selected < 0 ? 0 : selected + 1));
-        lv_obj_set_y(_scrollThumb, static_cast<std::int16_t>(23 + (start + 1) * 43 / 11));
+        if (stateChanged || slotChanged) {
+            lv_label_set_text_fmt(_slotFooter, "%02u / 16",
+                                  static_cast<unsigned>(selected < 0 ? 0 : selected + 1));
+        }
+        if (windowChanged) {
+            lv_obj_set_y(_scrollThumb, static_cast<std::int16_t>(23 + (start + 1) * 43 / 11));
+        }
     } else if (settings.state == State::Busy) {
-        lv_label_set_text(_titleLabel, "SEQUENCE");
-        lv_label_set_text(
-            _valueLabel,
-            settings.selection == SwingMetro::ProgramStorageMenuItem::ResetProgram ? "RESETTING..."
-            : settings.action == SwingMetro::ProgramStorageAction::Save            ? "SAVING..."
-                                                                                   : "LOADING...");
+        if (stateChanged) {
+            lv_label_set_text(_titleLabel, "SEQUENCE");
+        }
+        if (stateChanged || selectionChanged || actionChanged) {
+            lv_label_set_text(_valueLabel,
+                              settings.selection == SwingMetro::ProgramStorageMenuItem::ResetProgram
+                                  ? "RESETTING..."
+                              : settings.action == SwingMetro::ProgramStorageAction::Save
+                                  ? "SAVING..."
+                                  : "LOADING...");
+        }
     } else {
-        lv_label_set_text(_titleLabel, settings.state == State::Success ? "COMPLETE" : "ERROR");
-        lv_label_set_text_fmt(_valueLabel, "STATUS %u", static_cast<unsigned>(settings.status));
+        if (stateChanged) {
+            lv_label_set_text(_titleLabel, settings.state == State::Success ? "COMPLETE" : "ERROR");
+        }
+        if (stateChanged || statusChanged) {
+            lv_label_set_text_fmt(_valueLabel, "STATUS %u", static_cast<unsigned>(settings.status));
+        }
     }
 }

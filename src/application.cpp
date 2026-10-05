@@ -184,7 +184,9 @@ void Application::loop() {
     }
     uiViewModel_.publish(appInputCoordinator_.decorateUiSettings(settings));
     appInputCoordinator_.processProgramStorage();
-    if (!appInputCoordinator_.isProgramStorageModalOpen()) {
+    if (!appInputCoordinator_.hasStepSettingsContext() &&
+        !appInputCoordinator_.isMidiClockModalOpen() &&
+        !appInputCoordinator_.isProgramStorageModalOpen()) {
         (void)programStorageController_.syncCurrentProgramIfChanged();
     }
 }
