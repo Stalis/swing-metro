@@ -4,7 +4,7 @@
 
 namespace SwingMetro {
 
-enum class UiStepDisplayState : std::uint8_t { Disabled, Off, Enabled, EnabledActive };
+enum class UiStepDisplayState : std::uint8_t { Disabled, Off, Enabled, EnabledActive, OffActive };
 
 [[nodiscard]] constexpr auto uiStepDisplayState(bool enabled, bool active,
                                                 bool withinLength) noexcept -> UiStepDisplayState {
@@ -12,7 +12,7 @@ enum class UiStepDisplayState : std::uint8_t { Disabled, Off, Enabled, EnabledAc
         return UiStepDisplayState::Disabled;
     }
     if (!enabled) {
-        return UiStepDisplayState::Off;
+        return active ? UiStepDisplayState::OffActive : UiStepDisplayState::Off;
     }
     return active ? UiStepDisplayState::EnabledActive : UiStepDisplayState::Enabled;
 }

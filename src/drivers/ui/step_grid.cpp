@@ -61,10 +61,12 @@ void StepGrid::apply(const UiSettings::Main& settings) {
         const bool showEnabled = visualState == SwingMetro::UiStepDisplayState::Enabled ||
                                  visualState == SwingMetro::UiStepDisplayState::EnabledActive;
         const std::uint32_t border =
-            visualState == SwingMetro::UiStepDisplayState::EnabledActive ? UiTheme::RED
-            : visualState == SwingMetro::UiStepDisplayState::Enabled     ? UiTheme::CYAN
-            : visualState == SwingMetro::UiStepDisplayState::Off         ? UiTheme::YELLOW
-                                                                         : UiTheme::GRAY;
+            visualState == SwingMetro::UiStepDisplayState::EnabledActive ||
+                    visualState == SwingMetro::UiStepDisplayState::OffActive
+                ? UiTheme::RED
+            : visualState == SwingMetro::UiStepDisplayState::Enabled ? UiTheme::CYAN
+            : visualState == SwingMetro::UiStepDisplayState::Off     ? UiTheme::YELLOW
+                                                                     : UiTheme::GRAY;
         lv_obj_set_style_border_color(cell.frame, lv_color_hex(border), 0);
         lv_obj_set_style_bg_color(
             cell.frame, lv_color_hex(showEnabled ? UiTheme::DARK_TEAL : UiTheme::BLACK), 0);

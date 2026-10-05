@@ -33,4 +33,5 @@ class LvglUi {
     StepSettingsScreen _stepSettingsScreen;
     MidiClockDialog _midiClockDialog;
     ProgramStorageDialog _programStorageDialog;
+    bool _modalOpen = false;
 };

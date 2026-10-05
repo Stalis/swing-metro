@@ -143,10 +143,12 @@ void test_step_display_state_uses_live_enabled_active_and_length() {
                             static_cast<std::uint8_t>(uiStepDisplayState(true, true, true)));
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(UiStepDisplayState::Off),
                             static_cast<std::uint8_t>(uiStepDisplayState(false, false, true)));
-    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(UiStepDisplayState::Off),
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(UiStepDisplayState::OffActive),
                             static_cast<std::uint8_t>(uiStepDisplayState(false, true, true)));
     TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(UiStepDisplayState::Disabled),
                             static_cast<std::uint8_t>(uiStepDisplayState(true, true, false)));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<std::uint8_t>(UiStepDisplayState::Disabled),
+                            static_cast<std::uint8_t>(uiStepDisplayState(false, true, false)));
 }
 
 } // namespace

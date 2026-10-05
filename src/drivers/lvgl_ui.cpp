@@ -30,11 +30,17 @@ void LvglUi::loop() {
 
 void LvglUi::readViewModel(const UiViewModel& viewModel) {
     const auto values = viewModel.read();
-    _mainScreen.apply(values.main);
     const bool storageOpen = values.storage.state != SwingMetro::ProgramStorageModalState::Closed;
     const bool midiOpen = !storageOpen && values.midiClock.modalOpen;
     const bool stepOpen = !storageOpen && !midiOpen && values.page == UiPage::StepSettings;
-    _backdrop.setVisible(storageOpen || midiOpen || stepOpen);
+    const bool modalOpen = storageOpen || midiOpen || stepOpen;
+    if (!modalOpen || !_modalOpen) {
+        _mainScreen.apply(values.main);
+    }
+    if (modalOpen && !_modalOpen) {
+        _backdrop.capture(_mainScreen.root());
+    }
+    _backdrop.setVisible(modalOpen);
     _stepSettingsScreen.setVisible(stepOpen);
     if (stepOpen) {
         _stepSettingsScreen.apply(values.editor);
@@ -43,4 +49,5 @@ void LvglUi::readViewModel(const UiViewModel& viewModel) {
     midi.modalOpen = midiOpen;
     _midiClockDialog.apply(midi);
     _programStorageDialog.apply(values.storage);
+    _modalOpen = modalOpen;
 }
