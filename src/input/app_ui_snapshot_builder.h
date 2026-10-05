@@ -2,7 +2,6 @@
 
 #include "components/ui_snapshot.h"
 #include "input/step_editor.h"
-#include "input/ui_mock_data.h"
 
 #include <cstdint>
 #include <optional>
@@ -26,11 +25,13 @@ class AppUiSnapshotBuilder {
         settings.page =
             sources.selectedStep.has_value() ? UiPage::StepSettings : UiPage::MainDisplay;
         settings.editor = sources.stepEditor.snapshot(sources.selectedStep, sources.shiftActive);
-        settings.editor.mode = UiMockData::stepMode(sources.selectedStep);
-        settings.editor.repeatCount = UiMockData::repeatCount();
+        settings.editor.mode = UiStepMode::Normal;
+        settings.editor.repeatCount = 4;
+        if (!settings.editor.transportRunning) {
+            settings.main.activeNote = UINT8_MAX;
+        }
         settings.main.highlightedStep = sources.selectedStep.value_or(UINT8_MAX);
         settings.main.clockMode = sources.midiClockActive;
-        UiMockData::applyMainPreview(settings.main);
         settings.midiClock.modalOpen = sources.midiClockModalOpen;
         settings.midiClock.active = sources.midiClockActive;
         settings.midiClock.selection = sources.midiClockSelection;

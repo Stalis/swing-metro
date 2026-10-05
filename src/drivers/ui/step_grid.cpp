@@ -1,5 +1,6 @@
 #include "step_grid.h"
 
+#include "input/ui_step_display_state.h"
 #include "ui_fonts.h"
 #include "ui_note_name.h"
 #include "ui_theme.h"
@@ -45,33 +46,35 @@ void StepGrid::apply(const UiSettings::Main& settings) {
         const bool enabled = settings.notesState[index];
         const bool withinLength = index < settings.sequenceLength;
         const bool active = index == settings.activeNote;
-        const bool focused = index == settings.highlightedStep;
+        const auto visualState = SwingMetro::uiStepDisplayState(enabled, active, withinLength);
         const std::uint64_t renderKey =
             static_cast<std::uint64_t>(settings.stepNotes[index]) |
             static_cast<std::uint64_t>(settings.stepVelocities[index]) << 8 |
             static_cast<std::uint64_t>(settings.stepGates[index]) << 16 |
-            static_cast<std::uint64_t>(enabled) << 24 |
-            static_cast<std::uint64_t>(withinLength) << 25 |
-            static_cast<std::uint64_t>(active) << 26 | static_cast<std::uint64_t>(focused) << 27;
+            static_cast<std::uint64_t>(visualState) << 24;
         auto& cell = _cells[index];
         if (cell.renderKey == renderKey) {
             continue;
         }
         cell.renderKey = renderKey;
 
-        const std::uint32_t border = active    ? UiTheme::RED
-                                     : focused ? UiTheme::YELLOW
-                                     : enabled ? UiTheme::CYAN
-                                               : UiTheme::GRAY;
+        const bool showEnabled = visualState == SwingMetro::UiStepDisplayState::Enabled ||
+                                 visualState == SwingMetro::UiStepDisplayState::EnabledActive;
+        const std::uint32_t border =
+            visualState == SwingMetro::UiStepDisplayState::EnabledActive ? UiTheme::RED
+            : visualState == SwingMetro::UiStepDisplayState::Enabled     ? UiTheme::CYAN
+            : visualState == SwingMetro::UiStepDisplayState::Off         ? UiTheme::YELLOW
+                                                                         : UiTheme::GRAY;
         lv_obj_set_style_border_color(cell.frame, lv_color_hex(border), 0);
         lv_obj_set_style_bg_color(
-            cell.frame, lv_color_hex(enabled && withinLength ? UiTheme::DARK_TEAL : UiTheme::BLACK),
-            0);
+            cell.frame, lv_color_hex(showEnabled ? UiTheme::DARK_TEAL : UiTheme::BLACK), 0);
 
         lv_label_set_text_fmt(cell.number, "%02u", static_cast<unsigned>(index + 1));
-        lv_obj_set_style_text_color(cell.number,
-                                    lv_color_hex(withinLength ? UiTheme::CYAN : UiTheme::GRAY), 0);
-        const bool showEnabled = enabled && withinLength;
+        lv_obj_set_style_text_color(
+            cell.number,
+            lv_color_hex(visualState != SwingMetro::UiStepDisplayState::Disabled ? UiTheme::CYAN
+                                                                                 : UiTheme::GRAY),
+            0);
         auto setHidden = [](lv_obj_t* object, bool hidden) {
             if (hidden) {
                 lv_obj_add_flag(object, LV_OBJ_FLAG_HIDDEN);
